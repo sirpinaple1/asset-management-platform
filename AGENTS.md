@@ -35,31 +35,31 @@
 7. **重大决策写 ADR**，进展更新 STATUS.md
 8. **鉴权不可自建**：登录/用户/角色/菜单/权限复用 comm_public_basic，asset 库不存权限主数据（见 ADR-0004）
 
-## 代码组织速览
+## 仓库结构
 
 ```
-asset-management/
+asset-backend/                    # 本仓库（后端）
 ├── AGENTS.md                     # 本文件
-├── STATUS.md                     # 进度看板
+├── STATUS.md                     # 进度看板（主版本在此维护）
 ├── docs/
 │   ├── ENGINEERING.md            # 工程宪法（红线+原则）
 │   ├── REVIEW-001-*.md           # 方案审阅记录
-│   └── adr/                      # 架构决策记录
-├── asset-backend/                # 后端单模块三层（待建）
-│   └── src/main/java/com/sk/asset/
-│       ├── config/               # Spring Security、Swagger、AuthPort 配置
-│       ├── common/               # 异常、Result、常量
-│       ├── auth/                 # 鉴权接入：AuthPort(HTTP 调 comm_public_basic)、TokenFilter
-│       ├── controller/{上下文}/   # REST 控制器（asset/category/location/lifecycle/inventory/...）
-│       ├── service/{上下文}/      # Service + Impl（镜像 controller）
-│       ├── mapper/{上下文}/       # MyBatis Plus Mapper
-│       ├── entity/{上下文}/       # PO
-│       ├── dto/{上下文}/          # 请求/响应 DTO
-│       └── enums/{上下文}/        # 枚举
-├── asset-frontend/               # 前端业务工程（待建，不含登录页）
-└── references/                   # 调研参考（不入正式产物）
-    ├── asset-mgmt-system/        # chyinan（工程规范参考）
-    └── ciyo-itasset/             # 西柚（业务模型参考，GPL-3.0 仅参考）
+│   ├── adr/                      # 架构决策记录（0001-0006）
+│   └── modules/                  # 模块设计 spec（M01-M09 + M-FE01）
+└── src/main/java/com/sk/asset/
+    ├── config/                   # Spring Security、Swagger、AuthPort 配置
+    ├── common/                   # 异常、Result、常量
+    ├── auth/                     # 鉴权：AuthPort(HTTP 调 comm_public_basic)、TokenFilter
+    ├── controller/{上下文}/       # REST 控制器
+    ├── service/{上下文}/          # Service + Impl
+    ├── mapper/{上下文}/           # MyBatis Plus Mapper
+    ├── entity/{上下文}/           # PO
+    ├── dto/{上下文}/              # 请求/响应 DTO
+    └── enums/{上下文}/            # 枚举
+
+# 关联仓库
+前端：/Users/zhuanzmima0000/Documents/git/asset-frontend/
+设计档案 + references：/Users/zhuanzmima0000/Documents/git/asset-management/
 ```
 
 ## 鉴权接入要点（见 ADR-0004）
