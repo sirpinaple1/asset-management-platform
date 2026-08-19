@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: asset-backend
+  # 默认激活 local（application-local.yml 已 gitignore，R3 红线）；
+  # 测试/生产通过环境变量 SPRING_PROFILES_ACTIVE 覆盖。
+  # 数据源连接串/密码只存在于 application-local.yml，本文件不放任何敏感信息。
+  profiles:
+    active: local
+
+  # JSON 序列化（与 produce 约定一致）
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: non_null
+
+  # 数据库迁移（脚本位于 db/migration，schema 变更唯一合法途径）
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    encoding: UTF-8
+
+server:
+  port: 6006
+
+# MyBatis-Plus（逻辑删除约定与 produce 一致）
+mybatis-plus:
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+    banner: false
+  configuration:
+    map-underscore-to-camel-case: true
+
+# API 文档：knife4j 静态 UI（/doc.html，由 webjar 提供），OpenAPI 数据端点由 SpringDoc 提供
+# （knife4j 只用 UI，不启用其增强组件，原因见 pom.xml 注释）
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
+# 跨域白名单：asset-frontend（M-FE01 Vite 开发服务器默认端口 5173）；
+# 多个 origin 用逗号分隔；测试/生产由各自 profile 覆盖
+app:
+  cors:
+    allowed-origins: http://localhost:5173

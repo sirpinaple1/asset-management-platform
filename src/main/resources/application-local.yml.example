@@ -1,0 +1,18 @@
+# ============================================================
+# 本地开发环境配置模板
+# 复制为同目录 application-local.yml 后按本机实际情况修改。
+# application-local.yml 已被 .gitignore 排除（R3 红线：连接串/密码不入库）。
+# ============================================================
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # 本机 MariaDB / MySQL 均使用此驱动；库名 db_sk_asset 需先手工创建
+    url: jdbc:mysql://127.0.0.1:3306/db_sk_asset?useUnicode=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    username: root
+    password: 123456
+
+logging:
+  level:
+    com.sk.asset: debug
+    # 排查 SQL 时打开：
+    # com.sk.asset.mapper: debug
