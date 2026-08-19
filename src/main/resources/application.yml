@@ -46,3 +46,13 @@ springdoc:
 app:
   cors:
     allowed-origins: http://localhost:5173
+  # 鉴权复用 comm_public_basic（ADR-0004）：
+  # base-url 真实地址不入库（R3 红线），只在 application-local.yml / 环境变量提供
+  auth:
+    system-code: asset
+    cache-ttl-seconds: 30
+    connect-timeout-ms: 2000
+    read-timeout-ms: 5000
+  security:
+    # API 文档端点是否免认证：仅 local 置 true（fail-closed，默认 false）
+    docs-permit-all: false

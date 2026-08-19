@@ -89,6 +89,12 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- 鉴权 token 本地短缓存（ADR-0004：30-60s TTL 摊薄回源，版本由 Spring Boot BOM 管理，Apache-2.0） -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
         <!-- 测试：JUnit5 + Mockito + MockMvc -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

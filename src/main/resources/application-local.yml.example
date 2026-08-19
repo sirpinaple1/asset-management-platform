@@ -16,3 +16,11 @@ logging:
     com.sk.asset: debug
     # 排查 SQL 时打开：
     # com.sk.asset.mapper: debug
+
+# 本地 comm_public_basic（私改版，端口 6002，永久 token 方便联调）
+app:
+  auth:
+    base-url: http://127.0.0.1:6002
+  security:
+    # 本地放开 /doc.html、/v3/api-docs 等文档端点（生产 fail-closed）
+    docs-permit-all: true

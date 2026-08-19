@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-**Phase 1 骨架搭建中**：M01-A 后端骨架已完成，下一步 M01-B 鉴权接入（AuthPort + TokenFilter）。
+**Phase 1 骨架搭建中**：M01-A + M01-B 后端骨架与鉴权接入已完成，下一步 M-FE01 前端骨架（token 接收拦截器 + /dashboard 验证页）。
 
 ## 已完成
 
@@ -32,6 +32,18 @@
   - SecurityConfig 增加 CORS：`CorsConfigurationSource` bean（origin 白名单 `app.cors.allowed-origins`，默认 `http://localhost:5173` 即 M-FE01 Vite 开发端口）+ 链上 `.cors(withDefaults())`；allowCredentials=true 显式 origin
   - permitAll 占位链加 `@Profile("local")`：非 local 环境回退 Spring Boot 默认安全配置（全部请求需认证，fail-closed）
   - 验证：白名单 origin 预检 200 + 正确回显 Allow-Origin/Credentials；非白名单 origin 预检 403；prod profile 无认证访问 /doc.html、/v3/api-docs 均 401
+- [x] **M01-B 前置阻塞项解除**（2026-08-19，grillme 会话核实）：
+  - **comm_public_basic 接口契约核实完成**（origin/main 与本地私改版逐项比对，契约层一致）：响应统一 `{code, message, data}`，code=200 成功；token 一律 `Authorization: Bearer` 头；`/login/userSystemAuth` 需额外携带请求头 `systemCode: asset`；**无效/缺失 token 时三接口（checkToken/getAuth/userSystemAuth）均经 TokenException 全局处理返回 HTTP 401 + {code:401}**（ExceptionConfig:148，实测确认）
+  - **auth-center-frontend token 传递方式确认**：登录成功后跳转子系统时 token 通过 **URL query 参数**传递；子系统前端取参后以 `Authorization: Bearer` 头访问后端 → M-FE01 落地接收拦截器
+- [x] **M01-B 鉴权接入**（2026-08-19）：
+  - `auth/` 包：`AuthPort` 接口 + `CommPublicBasicAuthPort`（RestClient 三连回源 checkToken→getAuth→userSystemAuth + Caffeine 30s 短缓存仅存成功结果 + 401/403/503 语义映射）、`TokenAuthFilter`（Bearer 提取 → SecurityContext + UserContext 注入，finally 双清理）、`AuthContext`/`UserContext`
+  - `SecurityConfig`：STATELESS + TokenAuthFilter 替换 permitAll 占位；文档端点 fail-closed（仅 local `app.security.docs-permit-all=true` 放行）；CORS 复用前置处理
+  - `GET /api/v1/me` 验证接口（MeResp：用户信息 + asset 角色 + 按钮权限码）
+  - 配置 `app.auth.*`（base-url 不入库，application-local.yml + .example 模板）
+  - 本地 comm_public_basic 库 `basic_portal_project` 注册 asset 项目（id=22，web_url=localhost:5173，**is_visible=0 暂隐藏**，M-FE01 前端就绪后置 1）
+  - **契约修复**：comm_public_basic 无效 token 返回 HTTP 401，最初实现误按"服务不可用 503"处理 → 新增 `translateResponseError` 映射（401→401"token 无效或已过期"，其余→503 fail-closed）
+  - 测试：**单测 19 个全过**（AuthPort 11 / TokenFilter 6 / MeController 2），`mvn clean test` BUILD SUCCESS
+  - **全链路实测**（本地 comm_public_basic:6002 + asset-backend:6006）：admin 登录取 token（密码 RSA 公钥加密）→ 无 token 401 / 伪造 token 401（修复后语义正确）/ 有效 token + 空 asset 角色 403"尚未分配 asset 系统角色"（admin 为默认密码用户，被 comm_public_basic"默认密码用户不得进入业务系统"策略拦截，判定语义正确）。**200 成功路径由单测覆盖**（有效token_三接口全通过_返回上下文并写缓存）；live 200 需非默认密码 + 有角色的用户，待 M-FE01 联调或正式用户就绪时补验
 
 ## 进行中
 
@@ -40,11 +52,9 @@
 ## 待办（按模块分阶段，详见 docs/modules/）
 
 ### Phase 1 — 骨架（所有模块的前提）
-1. **[阻塞] clone auth-center-frontend** 确认前端 token 传递方式（见阻塞项）
-2. **[阻塞] 核实 comm_public_basic GitLab 原始版接口契约**（见阻塞项）
-3. ~~**M01-A** 后端骨架~~（已完成，2026-08-19）
-4. **M01-B** 鉴权接入：AuthPort + TokenFilter + UserContext + `/api/v1/me` 验证接口
-5. **M-FE01** 前端骨架：Vue3+Vite+Element Plus+Pinia + token 接收拦截器 + /dashboard 验证页
+1. ~~**M01-A** 后端骨架~~（已完成，2026-08-19）
+2. ~~**M01-B** 鉴权接入：AuthPort + TokenFilter + UserContext + `/api/v1/me` 验证接口~~（已完成，2026-08-19）
+3. **M-FE01** 前端骨架：Vue3+Vite+Element Plus+Pinia + token 接收拦截器（URL query 取参）+ /dashboard 验证页
 
 ### Phase 2 — 基础数据（M03+ 的外键依赖）
 6. **M02** 基础数据 CRUD：company / asset_category / asset_location(树) / manufacturer / supplier / asset_model
@@ -74,13 +84,15 @@
 
 ## 阻塞 / 待决策
 
-- **comm_public_basic 接口契约待核实**：本地为私改版，接入实现时须以 GitLab 原始版为准（用户提示）。需在 M01-B 实现前从 GitLab 拉取/核实 `/login/checkToken`、`/login/userSystemAuth`、`PortalProject` 的原始接口契约。
-- **auth-center-frontend 接入方式待确认**：clone 后校准前端 token 传递方式。
+- （无。原两项阻塞已于 2026-08-19 解除，核实结论见"M01-B 前置阻塞项解除"条目）
 
-## 本地开发环境备忘（M01-A 实测，2026-08-19）
+## 本地开发环境备忘（M01-A/M01-B 实测，2026-08-19）
 
 - 后端端口 **6006**；本地库 `db_sk_asset`（127.0.0.1:3306，实际为 MySQL 9.6 Homebrew 版，非 MariaDB）
-- `application-local.yml`（gitignore）存连接信息，模板 `application-local.yml.example`
+- `application-local.yml`（gitignore）存连接信息 + comm_public_basic 地址（127.0.0.1:6002），模板 `application-local.yml.example`
+- comm_public_basic 本地（私改版）：端口 6002，库 `db_comm_public_basic`（127.0.0.1:3306），token TTL -1 永久；登录 `POST /login/check` 密码需 RSA 公钥加密（PKCS#1 v1.5，公钥见其 application.yml；openssl 命令：`printf '密码' | openssl pkeyutl -encrypt -pubin -inkey pub.pem | base64`，公钥包 X.509 PEM 头尾）
+- ⚠️ admin/123456 为**默认密码用户**：comm_public_basic 策略拦截其进入业务系统（userSystemAuth 返回空角色 → asset-backend 403）。联调 200 成功路径需使用改过密码或新建的用户
+- asset 已注册 `basic_portal_project`（id=22，is_visible=0 暂隐藏；M-FE01 就绪后 `UPDATE basic_portal_project SET is_visible=1, is_enabled=1 WHERE project_en='asset'`）
 - ⚠️ **M02 种子数据脚本版本号必须晚于 20260819**（V1 已占用 `V20260819`，M02 文档中的 `V20260819__seed_base_data.sql` 需改为实施当日版本号，否则 Flyway 撞号）
 - ⚠️ knife4j 只引入 `knife4j-openapi3-ui` 静态 webjar：其 4.5.0 增强 starter 与 springdoc 2.3+ 不兼容（`getGroupConfigs` 移除触发 NoSuchMethodError），勿改回 `knife4j-openapi3-jakarta-spring-boot-starter` + `knife4j.enable=true`
 - Flyway 对 MySQL 9.6 报"未测试版本"警告（正常，迁移已成功；如遇问题可显式升级 flyway 版本）
@@ -94,5 +106,5 @@
 
 ---
 
-**最后更新**：2026-08-19（M01-B 前置处理完成：BearerAuth 文档认证 / CORS 白名单 / permitAll 限 local）
+**最后更新**：2026-08-19（M01-B 鉴权接入完成：阻塞项解除 / AuthPort+TokenFilter+/api/v1/me / 19 单测全过 / 全链路实测 401·403 语义正确）
 **当前阶段负责人**：待指派
