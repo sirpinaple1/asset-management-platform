@@ -1,0 +1,18 @@
+# CI 门槛（ENGINEERING.md Q2）：push 触发编译 + 全量测试
+# 测试均为 Mockito/MockMvc 纯单测（无 Spring 上下文、无真实数据库依赖），Runner 无需额外服务。
+# Maven 仓库缓存在项目目录下，跨流水线复用依赖，首次构建较慢属正常。
+
+stages:
+  - verify
+
+verify:
+  stage: verify
+  image: maven:3.9-eclipse-temurin-17
+  variables:
+    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  cache:
+    key: asset-backend-maven
+    paths:
+      - .m2/repository
+  script:
+    - mvn clean verify -B
