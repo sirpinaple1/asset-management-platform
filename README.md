@@ -25,13 +25,16 @@ npm run dev        # http://localhost:5173（asset-backend CORS 白名单已含�
 src/
 ├── api/
 │   ├── config/request.ts   # axios 实例：Bearer 头 + 401/403/503 拦截
-│   ├── interface/          # Result / MeInfo 等契约类型
-│   └── modules/            # 各模块请求函数（user.ts: GET /api/v1/me）
+│   ├── interface/          # Result / MeInfo / basedata 等契约类型
+│   └── modules/            # 各模块请求函数（user.ts、basedata.ts）
 ├── stores/user.ts          # useUserStore：token 登录态 + /me 信息
+├── stores/basedata.ts      # M02 基础数据（公司/厂商/供应商等）状态管理
 ├── router/index.ts         # 路由守卫：接收 token → 清洗 URL → 未登录跳 auth-center
 ├── utils/token.ts          # token 存取 / URL 参数清洗 / 登录页跳转
-├── layouts/DefaultLayout.vue  # 顶栏 + 侧边栏 + 内容区
-└── views/dashboard/        # 工作台（鉴权全链路验证页）
+├── layouts/DefaultLayout.vue  # 顶栏 + 侧边栏（含基础数据菜单）+ 内容区
+└── views/
+    ├── dashboard/          # 工作台（鉴权全链路验证页）
+    └── basedata/           # M02 基础数据：公司（只读）/厂商/供应商 CRUD
 ```
 
 ## 鉴权链路（ADR-0004）
@@ -40,3 +43,10 @@ auth-center-frontend 登录 → 跳 `localhost:5173?token=xxx&name=xxx&systemcod
 → 路由守卫存 localStorage 并清洗 URL → axios 携带 `Authorization: Bearer <token>`
 → asset-backend(6006) TokenAuthFilter → comm_public_basic 校验。
 token 失效（HTTP 401）自动清除并跳回 auth-center 登录页（带 returnUrl）。
+
+## 开发进度
+
+- [x] M-FE01: 前端骨架（鉴权验证、工作台）
+- [x] M02-Frontend: 基础数据 CRUD（公司/厂商/供应商，验收清单见 `docs/M02-前端验收清单.md`）
+- [ ] M02-Frontend-Tree: 分类/位置树形结构
+- [ ] M02-Frontend-Model: 型号管理（关联分类+厂商）
