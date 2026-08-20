@@ -76,6 +76,13 @@
     - **P2 待修（M03 时一并处理）**：③ 删除无引用完整性检查（manufacturer/supplier/location/model 被删除时不检查是否被 asset_model/asset 引用，M03 有数据后将产生悬挂引用）；④ AssetModelReq 外键 ID（categoryId/manufacturerId/depreciationId/companyId）无存在性校验；⑤ AssetModel 详情接口不带关联名称（列表 JOIN 带、详情不带，不一致）
     - **P3 minor**：⑥ Manufacturer/Supplier/Category Controller 测试未覆盖 404 分支（Category 仅 1 个测试，getById 未测）；⑦ email 字段缺 @Email 格式校验；⑧ CompanyServiceImpl.list() 缺排序（其余 list 均有 orderBy）；⑨ Service 单测多为转发验证型，M03 起复杂业务应测业务规则
 
+- [x] **DevOps 基建：远端 + CI + 健康端点**（2026-08-20）：
+  - 公司 GitLab 远端建立：`gitlab.tritree.cn/sirpinaple/asset-backend`（私有，push-to-create）；本机 `~/.ssh/config` 映射 `id_rsa_gitlab`，push 直连免密
+  - GitLab CI（`.gitlab-ci.yml`）：push 触发 `mvn clean verify`（纯单测无 DB 依赖），Maven 仓库跨流水线缓存；**共享 runner 是否接单待网页确认**（pipeline 页 pending=无 runner 需找管理员或自注册）
+  - Actuator 健康端点：只暴露 `/actuator/health`（含 liveness/readiness 探针，容器健康检查就绪），其余 actuator 端点 fail-closed
+  - **修复存量 bug**：docs-permit-all 失效——TokenAuthFilter 的 401 先于授权层发生，local 下 `/doc.html` 实测无法免 token 访问（401）。引入公共路径旁路机制：`shouldNotFilter` 旁路 + 授权层 permitAll 由 SecurityConfig 同一份 publicPaths 派生，永不脱节
+  - 测试 75/75（TokenAuthFilterTest 新增 4 个旁路用例：健康端点/子端点/业务路径不旁路/文档端点旁路）
+
 ## 进行中
 
 - （无）
@@ -138,5 +145,5 @@
 
 ---
 
-**最后更新**：2026-08-20（M02 基础数据模块完成 + 代码质量审查 REVIEW-M02：分层/命名/契约/测试通过，2 项 P1 待修清单见 M02 条目；71 个测试全部通过；V20260820 种子数据脚本待手动执行至测试库 172.16.5.247）
+**最后更新**：2026-08-20（DevOps 基建：GitLab 远端 + CI 流水线 + Actuator 健康端点 + docs-permit-all 存量 bug 修复，测试 75/75；此前同日完成 M02 + REVIEW-M02 审查）
 **当前阶段负责人**：待指派
