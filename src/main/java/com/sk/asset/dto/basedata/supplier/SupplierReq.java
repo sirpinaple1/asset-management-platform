@@ -1,0 +1,52 @@
+package com.sk.asset.dto.basedata.supplier;
+
+import com.sk.asset.entity.basedata.Supplier;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import lombok.Data;
+
+/**
+ * 供应商请求 DTO
+ */
+@Data
+public class SupplierReq {
+
+    @NotBlank(message = "供应商名称不能为空")
+    @Size(max = 200, message = "供应商名称长度不能超过 200")
+    private String name;
+
+    @Size(max = 100, message = "联系人长度不能超过 100")
+    private String contact;
+
+    @Size(max = 50, message = "联系电话长度不能超过 50")
+    private String phone;
+
+    @Size(max = 100, message = "邮箱长度不能超过 100")
+    private String email;
+
+    @Size(max = 500, message = "地址长度不能超过 500")
+    private String address;
+
+    @Size(max = 500, message = "备注长度不能超过 500")
+    private String remark;
+
+    public Supplier toEntity() {
+        Supplier entity = new Supplier();
+        entity.setName(this.name);
+        entity.setContact(this.contact);
+        entity.setPhone(this.phone);
+        entity.setEmail(this.email);
+        entity.setAddress(this.address);
+        entity.setRemark(this.remark);
+        return entity;
+    }
+
+    public void updateEntity(Supplier entity) {
+        entity.setName(this.name);
+        entity.setContact(this.contact);
+        entity.setPhone(this.phone);
+        entity.setEmail(this.email);
+        entity.setAddress(this.address);
+        entity.setRemark(this.remark);
+    }
+}
