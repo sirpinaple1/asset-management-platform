@@ -14,6 +14,7 @@ export interface Manufacturer {
   name: string
   contact?: string
   phone?: string
+  email?: string
   address?: string
   remark?: string
   createdAt: string
@@ -25,6 +26,7 @@ export interface ManufacturerForm {
   name: string
   contact?: string
   phone?: string
+  email?: string
   address?: string
   remark?: string
 }
@@ -35,6 +37,7 @@ export interface Supplier {
   name: string
   contact?: string
   phone?: string
+  email?: string
   address?: string
   remark?: string
   createdAt: string
@@ -46,6 +49,7 @@ export interface SupplierForm {
   name: string
   contact?: string
   phone?: string
+  email?: string
   address?: string
   remark?: string
 }

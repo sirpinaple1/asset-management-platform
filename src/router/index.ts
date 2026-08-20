@@ -24,6 +24,12 @@ const router = createRouter({
           name: 'basedata-manufacturers',
           component: () => import('@/views/basedata/ManufacturerList.vue'),
           meta: { title: '厂商管理' }
+        },
+        {
+          path: 'basedata/suppliers',
+          name: 'basedata-suppliers',
+          component: () => import('@/views/basedata/SupplierList.vue'),
+          meta: { title: '供应商管理' }
         }
       ]
     },
