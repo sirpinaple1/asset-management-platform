@@ -8,3 +8,5 @@ target/
 application-local.yml
 application-local.properties
 *.env
+# gitlab-runner 本地注册信息（含 runner token，R3 红线不入库）
+.gitlab-runner/
