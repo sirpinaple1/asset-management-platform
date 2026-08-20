@@ -1,37 +1,60 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
-const router = useRouter()
 const userStore = useUserStore()
 
-/** 骨架期仅工作台一个路由；其余导航为 M02+ 模块占位 */
 const activeNav = computed(() => route.name)
-
-/** 基础数据模块导航（公司/厂商/供应商） */
-const isBasedata = computed(() => String(route.name || '').startsWith('basedata-'))
-const goBasedata = (path: string) => router.push(path)
-
 const user = computed(() => userStore.me)
+
+/** 资产管理模块（含基础数据子页面）→ 显示二级子侧边栏 */
+const isAssetModule = computed(() => String(route.name || '').startsWith('basedata-'))
+
+/** 二级侧边栏：基础设置菜单（对齐原型：厂商/供应商/分类/位置/型号 + 公司主体） */
+const basedataMenus = [
+  { path: '/basedata/companies', title: '公司主体' },
+  { path: '/basedata/manufacturers', title: '厂商管理' },
+  { path: '/basedata/suppliers', title: '供应商管理' },
+  { path: '/basedata/categories', title: '分类管理' },
+  { path: '/basedata/locations', title: '位置管理' },
+  { path: '/basedata/models', title: '型号管理' },
+]
+
+/** 分组折叠状态（localStorage 持久化，刷新不丢） */
+const COLLAPSE_KEY = 'asset.sidebar.collapsed'
+const collapsed = ref<Record<string, boolean>>({ assetFn: false, basedata: false })
+try {
+  const saved = localStorage.getItem(COLLAPSE_KEY)
+  if (saved) collapsed.value = { ...collapsed.value, ...JSON.parse(saved) }
+} catch {
+  /* 忽略损坏的本地存储 */
+}
+const toggleSection = (key: string) => {
+  collapsed.value[key] = !collapsed.value[key]
+  localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsed.value))
+}
+
+/** 占位菜单点击提示 */
+const comingSoon = () => {
+  import('element-plus').then(({ ElMessage }) => ElMessage.info('功能建设中，敬请期待'))
+}
+
+/** 顶栏图标色（active 白色） */
+const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
 </script>
 
 <template>
   <div class="app">
+    <!-- 顶部导航栏：公司信息 + 用户区 -->
     <header class="topbar">
       <div class="topbar-logo">
-        <svg width="30" height="30" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-          <rect width="32" height="32" rx="7" fill="#165DFF" />
-          <path d="M16 7.5 L25 12 L16 16.5 L7 12 Z" fill="#FFFFFF" />
-          <path
-            d="M9.5 15.5 L16 18.75 L22.5 15.5 L25 16.75 L16 21.25 L7 16.75 Z"
-            fill="#FFFFFF"
-            opacity="0.85"
-          />
-          <rect x="7" y="22" width="18" height="2.2" rx="1.1" fill="#FFFFFF" opacity="0.7" />
-        </svg>
-        <span class="logo-text">森科资产管理</span>
+        <div class="logo-image">森</div>
+        <div class="logo-texts">
+          <div class="logo-text">森科五金（深圳）有限公司</div>
+          <div class="logo-subtitle">Tritree Metal (Shenzhen) Co., Ltd</div>
+        </div>
       </div>
 
       <div class="user-area">
@@ -59,91 +82,147 @@ const user = computed(() => userStore.me)
     </header>
 
     <div class="main">
+      <!-- 全局侧边栏：模块级图标导航 -->
       <aside class="sidebar">
-        <router-link to="/dashboard" class="nav-item" :class="{ active: activeNav === 'dashboard' }" title="工作台">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="2" y="2" width="7" height="7" rx="1.5" :fill="activeNav === 'dashboard' ? 'white' : '#86909C'" />
-            <rect x="11" y="2" width="7" height="7" rx="1.5" :fill="activeNav === 'dashboard' ? 'white' : '#86909C'" />
-            <rect x="2" y="11" width="7" height="7" rx="1.5" :fill="activeNav === 'dashboard' ? 'white' : '#86909C'" />
-            <rect x="11" y="11" width="7" height="7" rx="1.5" :fill="activeNav === 'dashboard' ? 'white' : '#86909C'" />
-          </svg>
-        </router-link>
-        <el-dropdown trigger="hover" placement="right-start" @command="goBasedata">
-          <router-link to="/basedata/companies" class="nav-item" :class="{ active: isBasedata }" title="基础数据">
+        <el-tooltip content="工作台" placement="right" :show-after="300">
+          <router-link to="/dashboard" class="nav-item" :class="{ active: activeNav === 'dashboard' }">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <ellipse cx="10" cy="5" rx="6.5" ry="2.5" :stroke="isBasedata ? 'white' : '#86909C'" stroke-width="1.5" />
-              <path d="M3.5 5V15C3.5 16.38 6.26 17.5 10 17.5C13.74 17.5 16.5 16.38 16.5 15V5" :stroke="isBasedata ? 'white' : '#86909C'" stroke-width="1.5" />
-              <path d="M3.5 10C3.5 11.38 6.26 12.5 10 12.5C13.74 12.5 16.5 11.38 16.5 10" :stroke="isBasedata ? 'white' : '#86909C'" stroke-width="1.5" />
+              <rect x="2" y="8" width="4" height="9" rx="1" :stroke="navStroke(activeNav === 'dashboard')" stroke-width="1.5" />
+              <rect x="8" y="5" width="4" height="12" rx="1" :stroke="navStroke(activeNav === 'dashboard')" stroke-width="1.5" />
+              <rect x="14" y="10" width="4" height="7" rx="1" :stroke="navStroke(activeNav === 'dashboard')" stroke-width="1.5" />
             </svg>
           </router-link>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="/basedata/companies">公司主体</el-dropdown-item>
-              <el-dropdown-item command="/basedata/manufacturers">厂商管理</el-dropdown-item>
-              <el-dropdown-item command="/basedata/suppliers">供应商管理</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-        <div class="nav-item" title="消息（待接入）">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path
-              d="M3 6C3 4.34315 4.34315 3 6 3H14C15.6569 3 17 4.34315 17 6V12C17 13.6569 15.6569 15 14 15H9L6 17.5V15H6C4.34315 15 3 13.6569 3 12V6Z"
-              stroke="#86909C" stroke-width="1.5"
-            />
-          </svg>
-        </div>
-        <div class="nav-item" title="用户（待接入）">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="10" cy="6" r="3" stroke="#86909C" stroke-width="1.5" />
-            <path d="M4 16C4 13.7909 5.79086 12 8 12H12C14.2091 12 16 13.7909 16 16" stroke="#86909C" stroke-width="1.5" />
-          </svg>
-        </div>
-        <div class="nav-item" title="应用（待接入）">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="2" y="2" width="7" height="7" rx="1.5" fill="#86909C" />
-            <rect x="11" y="2" width="7" height="7" rx="1.5" fill="#86909C" />
-            <rect x="2" y="11" width="7" height="7" rx="1.5" fill="#86909C" />
-            <rect x="11" y="11" width="7" height="7" rx="1.5" fill="#86909C" />
-          </svg>
-        </div>
-        <div class="nav-item" title="资产（待接入）">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="0" y="0" width="20" height="20" rx="4" stroke="#86909C" stroke-width="1.5" />
-            <rect x="0" y="6" width="20" height="1.5" fill="#86909C" />
-            <rect x="6" y="6" width="1.5" height="14" fill="#86909C" />
-          </svg>
-        </div>
-        <div class="nav-item" title="库存（待接入）">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="2" y="4" width="16" height="12" rx="2" stroke="#86909C" stroke-width="1.5" />
-            <rect x="2" y="8" width="16" height="1.5" fill="#86909C" />
-            <circle cx="7" cy="12" r="1.5" fill="#86909C" />
-            <circle cx="13" cy="12" r="1.5" fill="#86909C" />
-          </svg>
-        </div>
+        </el-tooltip>
+
+        <el-tooltip content="审批中心（待接入）" placement="right" :show-after="300">
+          <div class="nav-item" @click="comingSoon">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M3 5L6 8L9 5" stroke="#86909C" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+              <line x1="11" y1="6.5" x2="17" y2="6.5" stroke="#86909C" stroke-width="1.5" stroke-linecap="round" />
+              <path d="M3 10L6 13L9 10" stroke="#86909C" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+              <line x1="11" y1="11.5" x2="17" y2="11.5" stroke="#86909C" stroke-width="1.5" stroke-linecap="round" />
+              <circle cx="5" cy="16" r="1.2" stroke="#86909C" stroke-width="1.5" />
+              <line x1="11" y1="16" x2="17" y2="16" stroke="#86909C" stroke-width="1.5" stroke-linecap="round" />
+            </svg>
+          </div>
+        </el-tooltip>
+
+        <el-tooltip content="资产管理" placement="right" :show-after="300">
+          <router-link to="/basedata/manufacturers" class="nav-item" :class="{ active: isAssetModule }">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="3" y="6" width="14" height="11" rx="1.5" :stroke="navStroke(isAssetModule)" stroke-width="1.5" />
+              <path d="M3 9.5L10 6L17 9.5" :stroke="navStroke(isAssetModule)" stroke-width="1.5" stroke-linejoin="round" />
+              <line x1="10" y1="6" x2="10" y2="17" :stroke="navStroke(isAssetModule)" stroke-width="1.5" />
+              <rect x="7" y="3" width="6" height="3" rx="0.5" :fill="navStroke(isAssetModule)" />
+            </svg>
+          </router-link>
+        </el-tooltip>
+
+        <el-tooltip content="库存管理（待接入）" placement="right" :show-after="300">
+          <div class="nav-item" @click="comingSoon">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="3" y="11" width="6" height="6" rx="1" stroke="#86909C" stroke-width="1.5" />
+              <rect x="11" y="11" width="6" height="6" rx="1" stroke="#86909C" stroke-width="1.5" />
+              <rect x="7" y="3" width="6" height="6" rx="1" stroke="#86909C" stroke-width="1.5" />
+            </svg>
+          </div>
+        </el-tooltip>
 
         <div class="sidebar-spacer"></div>
 
         <div class="bottom-nav">
-          <div class="bottom-nav-item" title="通知">
-            <span class="red-dot"></span>
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M10 17C11.1046 17 12 16.1046 12 15H8C8 16.1046 8.89543 17 10 17Z" fill="#86909C" />
-              <path
-                d="M15 11V7C15 4.79086 13.2091 3 11 3H9C6.79086 3 5 4.79086 5 7V11L3 13H17L15 11Z"
-                stroke="#86909C" stroke-width="1.5"
-              />
-            </svg>
+          <el-tooltip content="通知（待接入）" placement="right" :show-after="300">
+            <div class="bottom-nav-item">
+              <span class="red-dot"></span>
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M8 17C8 18.1046 8.89543 19 10 19C11.1046 19 12 18.1046 12 17" stroke="#86909C" stroke-width="1.5" />
+                <path d="M15 12V8C15 5.23858 12.7614 3 10 3C7.23858 3 5 5.23858 5 8V12L3 14H17L15 12Z" stroke="#86909C" stroke-width="1.5" stroke-linejoin="round" />
+              </svg>
+            </div>
+          </el-tooltip>
+          <el-tooltip content="帮助（待接入）" placement="right" :show-after="300">
+            <div class="bottom-nav-item">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="10" cy="10" r="7.5" stroke="#86909C" stroke-width="1.5" />
+                <path d="M8 8C8 6.89543 8.89543 6 10 6C11.1046 6 12 6.89543 12 8C12 8.73638 11.5977 9.37205 11 9.7324V11" stroke="#86909C" stroke-width="1.5" stroke-linecap="round" />
+                <circle cx="10" cy="13.5" r="0.75" fill="#86909C" />
+              </svg>
+            </div>
+          </el-tooltip>
+        </div>
+      </aside>
+
+      <!-- 二级子侧边栏：资产管理模块菜单 -->
+      <aside v-if="isAssetModule" class="sub-sidebar">
+        <div class="sidebar-header">
+          <h1 class="sidebar-title">资产管理</h1>
+        </div>
+
+        <nav class="sidebar-menu">
+          <a class="menu-item" @click="comingSoon">
+            <span class="menu-icon">
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M3 5L6 8L9 5" stroke="#4B5563" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /><line x1="11" y1="6.5" x2="17" y2="6.5" stroke="#4B5563" stroke-width="1.5" stroke-linecap="round" /><path d="M3 10L6 13L9 10" stroke="#4B5563" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /><line x1="11" y1="11.5" x2="17" y2="11.5" stroke="#4B5563" stroke-width="1.5" stroke-linecap="round" /></svg>
+            </span>
+            <span>我的待办</span>
+          </a>
+          <a class="menu-item" @click="comingSoon">
+            <span class="menu-icon">
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M6 14L10 18L14 14" stroke="#4B5563" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /><path d="M6 6L10 2L14 6" stroke="#4B5563" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </span>
+            <span>我发起的</span>
+          </a>
+          <a class="menu-item" @click="comingSoon">
+            <span class="menu-icon">
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="4" y="4" width="12" height="12" rx="2" stroke="#4B5563" stroke-width="1.5" /><path d="M7.5 10L9.5 12L12.5 8" stroke="#4B5563" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </span>
+            <span>我处理的</span>
+          </a>
+          <a class="menu-item" @click="comingSoon">
+            <span class="menu-icon">
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M3 6C3 4.34315 4.34315 3 6 3H14C15.6569 3 17 4.34315 17 6V12C17 13.6569 15.6569 15 14 15H9L6 17.5V15H6C4.34315 15 3 13.6569 3 12V6Z" stroke="#4B5563" stroke-width="1.5" /></svg>
+            </span>
+            <span>抄送我的</span>
+          </a>
+        </nav>
+
+        <div class="menu-section">
+          <div class="section-title-static">常用入口</div>
+          <a class="menu-item" @click="comingSoon"><span>待处理工单</span></a>
+          <a class="menu-item" @click="comingSoon"><span>待确认调拨单</span></a>
+          <a class="menu-item" @click="comingSoon"><span>待处理员工申请</span></a>
+        </div>
+
+        <div class="menu-section">
+          <button class="section-title" type="button" @click="toggleSection('assetFn')">
+            <span>资产功能</span>
+            <span class="collapse-icon" :class="{ collapsed: collapsed.assetFn }">▸</span>
+          </button>
+          <div v-show="!collapsed.assetFn" class="section-content">
+            <a class="menu-item" @click="comingSoon"><span>资产列表</span></a>
+            <a class="menu-item" @click="comingSoon"><span>资产调拨</span></a>
+            <a class="menu-item" @click="comingSoon"><span>领用&退库</span></a>
+            <a class="menu-item" @click="comingSoon"><span>借用&归还</span></a>
+            <a class="menu-item" @click="comingSoon"><span>实物信息变更</span></a>
+            <a class="menu-item" @click="comingSoon"><span>盘点管理</span></a>
+            <a class="menu-item" @click="comingSoon"><span>分析报表</span></a>
           </div>
-          <div class="bottom-nav-item" title="帮助">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="10" cy="10" r="8" stroke="#86909C" stroke-width="1.5" />
-              <path
-                d="M10 14V13.5C10 12.5 10.5 12 11.5 11.5C12.5 11 13 10.2 13 9C13 7.5 11.5 6.5 10 6.5C8.5 6.5 7 7.5 7 9"
-                stroke="#86909C" stroke-width="1.5" stroke-linecap="round"
-              />
-              <circle cx="10" cy="15.5" r="0.8" fill="#86909C" />
-            </svg>
+        </div>
+
+        <div class="menu-section">
+          <button class="section-title" type="button" @click="toggleSection('basedata')">
+            <span>基础设置</span>
+            <span class="collapse-icon" :class="{ collapsed: collapsed.basedata }">▸</span>
+          </button>
+          <div v-show="!collapsed.basedata" class="section-content">
+            <router-link
+              v-for="menu in basedataMenus"
+              :key="menu.path"
+              :to="menu.path"
+              class="menu-item"
+              :class="{ active: route.path === menu.path }"
+            >
+              <span>{{ menu.title }}</span>
+            </router-link>
           </div>
         </div>
       </aside>
@@ -161,31 +240,59 @@ const user = computed(() => userStore.me)
   display: flex;
   flex-direction: column;
   background: #f5f6fa;
-  min-width: 0;
+  min-width: 1200px;
 }
 
+/* 顶部导航栏 */
 .topbar {
   height: 56px;
   background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 24px 0 16px;
-  box-shadow: 0 1px 4px rgba(217, 222, 232, 0.2);
+  padding: 0 24px;
   flex-shrink: 0;
 }
 
 .topbar-logo {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+}
+
+.logo-image {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #00d4aa 0%, #00b894 100%);
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-texts {
+  display: flex;
+  flex-direction: column;
 }
 
 .logo-text {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
-  color: #1d2129;
-  letter-spacing: 1px;
+  color: #111827;
+  white-space: nowrap;
+  line-height: 22px;
+}
+
+.logo-subtitle {
+  font-size: 11px;
+  color: #6b7280;
+  font-weight: 400;
+  white-space: nowrap;
+  line-height: 16px;
 }
 
 .user-area {
@@ -205,7 +312,7 @@ const user = computed(() => userStore.me)
 .user-name {
   font-size: 14px;
   font-weight: 400;
-  color: #1d2129;
+  color: #111827;
   line-height: 22px;
 }
 
@@ -213,7 +320,7 @@ const user = computed(() => userStore.me)
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: #165dff;
+  background: #4f7ff7;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -250,12 +357,14 @@ const user = computed(() => userStore.me)
   color: #86909c;
 }
 
+/* 主区三栏布局 */
 .main {
   flex: 1;
   display: flex;
   min-height: 0;
 }
 
+/* 全局侧边栏 */
 .sidebar {
   width: 64px;
   background: #ffffff;
@@ -275,6 +384,12 @@ const user = computed(() => userStore.me)
   justify-content: center;
   cursor: pointer;
   text-decoration: none;
+  transition: background 0.15s ease;
+  border-radius: 0;
+}
+
+.nav-item:hover {
+  background: #f7f8fa;
 }
 
 .nav-item.active {
@@ -315,6 +430,129 @@ const user = computed(() => userStore.me)
   background: #f53f3f;
 }
 
+/* 二级子侧边栏 */
+.sub-sidebar {
+  width: 240px;
+  background: #ffffff;
+  box-shadow: 1px 0 3px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.sidebar-header {
+  height: 64px;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #f3f4f6;
+  flex-shrink: 0;
+}
+
+.sidebar-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.sidebar-menu {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.menu-section {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.section-title {
+  height: 28px;
+  padding: 0 8px;
+  border: none;
+  background: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 500;
+  color: #9ca3af;
+  cursor: pointer;
+  user-select: none;
+  width: 100%;
+}
+
+.section-title:hover {
+  color: #6b7280;
+}
+
+.section-title-static {
+  height: 28px;
+  padding: 0 8px 4px;
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: #9ca3af;
+  user-select: none;
+}
+
+.collapse-icon {
+  font-size: 12px;
+  transition: transform 0.2s ease;
+  color: #9ca3af;
+}
+
+.collapse-icon.collapsed {
+  transform: rotate(-90deg);
+}
+
+.section-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.menu-item {
+  height: 40px;
+  padding: 0 10px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #4b5563;
+  transition: background 0.15s ease;
+  text-decoration: none;
+}
+
+.menu-item:hover:not(.active) {
+  background: #f9fafb;
+}
+
+.menu-item.active {
+  background: #eef2ff;
+  color: #165dff;
+  font-weight: 600;
+}
+
+.menu-icon {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* 内容区 */
 .content {
   flex: 1;
   background: #f5f6fa;

@@ -36,6 +36,24 @@ const router = createRouter({
           name: 'basedata-companies',
           component: () => import('@/views/basedata/CompanyList.vue'),
           meta: { title: '公司主体' }
+        },
+        {
+          path: 'basedata/categories',
+          name: 'basedata-categories',
+          component: () => import('@/views/basedata/ComingSoon.vue'),
+          meta: { title: '分类管理' }
+        },
+        {
+          path: 'basedata/locations',
+          name: 'basedata-locations',
+          component: () => import('@/views/basedata/ComingSoon.vue'),
+          meta: { title: '位置管理' }
+        },
+        {
+          path: 'basedata/models',
+          name: 'basedata-models',
+          component: () => import('@/views/basedata/ComingSoon.vue'),
+          meta: { title: '型号管理' }
         }
       ]
     },
