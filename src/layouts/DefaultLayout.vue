@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
+const router = useRouter()
 const userStore = useUserStore()
 
 /** 骨架期仅工作台一个路由；其余导航为 M02+ 模块占位 */
 const activeNav = computed(() => route.name)
+
+/** 基础数据模块导航（公司/厂商/供应商） */
+const isBasedata = computed(() => String(route.name || '').startsWith('basedata-'))
+const goBasedata = (path: string) => router.push(path)
 
 const user = computed(() => userStore.me)
 </script>
@@ -63,6 +68,22 @@ const user = computed(() => userStore.me)
             <rect x="11" y="11" width="7" height="7" rx="1.5" :fill="activeNav === 'dashboard' ? 'white' : '#86909C'" />
           </svg>
         </router-link>
+        <el-dropdown trigger="hover" placement="right-start" @command="goBasedata">
+          <router-link to="/basedata/companies" class="nav-item" :class="{ active: isBasedata }" title="基础数据">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <ellipse cx="10" cy="5" rx="6.5" ry="2.5" :stroke="isBasedata ? 'white' : '#86909C'" stroke-width="1.5" />
+              <path d="M3.5 5V15C3.5 16.38 6.26 17.5 10 17.5C13.74 17.5 16.5 16.38 16.5 15V5" :stroke="isBasedata ? 'white' : '#86909C'" stroke-width="1.5" />
+              <path d="M3.5 10C3.5 11.38 6.26 12.5 10 12.5C13.74 12.5 16.5 11.38 16.5 10" :stroke="isBasedata ? 'white' : '#86909C'" stroke-width="1.5" />
+            </svg>
+          </router-link>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="/basedata/companies">公司主体</el-dropdown-item>
+              <el-dropdown-item command="/basedata/manufacturers">厂商管理</el-dropdown-item>
+              <el-dropdown-item command="/basedata/suppliers">供应商管理</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <div class="nav-item" title="消息（待接入）">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path
