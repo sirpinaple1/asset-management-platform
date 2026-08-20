@@ -22,6 +22,18 @@ spring:
 server:
   port: 6006
 
+# 生产可观测（Actuator）：只暴露健康端点，env/beans 等敏感端点不开（fail-closed）。
+# /actuator/health 由 SecurityConfig + TokenAuthFilter 双层放行，无 token 可探测（运维窗口）。
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true   # 暴露 /actuator/health/liveness 与 /readiness，容器/负载均衡健康检查用
+
 # MyBatis-Plus（逻辑删除约定与 produce 一致）
 mybatis-plus:
   global-config:

@@ -19,15 +19,20 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
  * M01-B 安全链（ADR-0004）：无状态 + TokenAuthFilter（HTTP 调 comm_public_basic 校验 token）。
  * <p>
  * - 所有业务请求需认证；/error 放行（容器内部错误转发，避免错误页被 401 覆盖）。<br>
+ * - 健康端点 /actuator/health 免认证（运维探活窗口，任何环境放行；只此一个，其余 actuator 端点不暴露）。<br>
  * - API 文档端点默认 fail-closed（需认证）；local 环境通过 app.security.docs-permit-all=true 放行
  *   （沿用 M01-A 的环境隔离语义：占位放行不泄漏到测试/生产）。<br>
  * - CORS 复用 M01-B 前置处理的白名单配置（asset-frontend M-FE01 联调依赖）。
+ * <p>
+ * 免认证路径需"双层放行"：TokenAuthFilter.shouldNotFilter 旁路（token 校验之前）+ 授权层 permitAll，
+ * 两者由同一份 publicPaths 派生，保证永不脱节。
  */
 @Configuration
 @EnableWebSecurity
@@ -39,17 +44,20 @@ public class SecurityConfig {
             AuthPort authPort,
             ObjectMapper objectMapper,
             @Value("${app.security.docs-permit-all:false}") boolean docsPermitAll) throws Exception {
+        // 免 token 校验的公共路径（TokenAuthFilter 旁路 + 授权层 permitAll 成对生效）
+        List<String> publicPaths = new ArrayList<>(List.of("/actuator/health", "/actuator/health/**"));
+        if (docsPermitAll) {
+            // 仅本地开发：knife4j/springdoc 文档端点免认证（非 local 默认 401）
+            publicPaths.addAll(List.of("/doc.html", "/webjars/**", "/v3/api-docs/**", "/swagger-ui/**"));
+        }
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .addFilterBefore(new TokenAuthFilter(authPort, objectMapper), UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(new TokenAuthFilter(authPort, objectMapper, publicPaths), UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> {
-                    if (docsPermitAll) {
-                        // 仅本地开发：knife4j/springdoc 文档端点免认证（非 local 默认 401）
-                        auth.requestMatchers("/doc.html", "/webjars/**", "/v3/api-docs/**", "/swagger-ui/**").permitAll();
-                    }
-                    auth.requestMatchers("/error").permitAll()
+                    auth.requestMatchers(publicPaths.toArray(String[]::new)).permitAll()
+                            .requestMatchers("/error").permitAll()
                             .anyRequest().authenticated();
                 })
                 // 兜底：TokenAuthFilter 放行但 SecurityContext 无认证的边缘场景（正常流量不会走到）

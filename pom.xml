@@ -50,6 +50,13 @@
             <version>${mybatis-plus.version}</version>
         </dependency>
 
+        <!-- 生产可观测：Actuator 健康端点（部署验证/监控探活/排障快判），
+             只暴露 health（application.yml），env/beans 等敏感端点不开（fail-closed） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- 数据库迁移：Flyway 是 schema 变更唯一合法途径（ENGINEERING R6） -->
         <dependency>
             <groupId>org.flywaydb</groupId>

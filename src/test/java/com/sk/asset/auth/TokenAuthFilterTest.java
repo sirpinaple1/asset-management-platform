@@ -11,20 +11,24 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * TokenAuthFilter 单测（mock AuthPort）：401/403/503 语义 + UserContext 生命周期。
+ * TokenAuthFilter 单测（mock AuthPort）：401/403/503 语义 + UserContext 生命周期 + 公共路径旁路。
  */
 class TokenAuthFilterTest {
 
     private final AuthPort authPort = mock(AuthPort.class);
-    private final TokenAuthFilter filter = new TokenAuthFilter(authPort, new ObjectMapper());
+    private final TokenAuthFilter filter =
+            new TokenAuthFilter(authPort, new ObjectMapper(), List.of("/actuator/health", "/actuator/health/**"));
 
     @AfterEach
     void tearDown() {
@@ -116,6 +120,7 @@ class TokenAuthFilterTest {
     @Test
     void 未预期异常_503且不外泄细节() throws Exception {
         when(authPort.authenticate(anyString())).thenThrow(new RuntimeException("boom"));
+
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("Authorization", "Bearer tok-1");
 
@@ -124,5 +129,59 @@ class TokenAuthFilterTest {
 
         assertThat(response.getStatus()).isEqualTo(503);
         assertThat(response.getContentAsString()).doesNotContain("boom");
+    }
+
+    @Test
+    void 健康端点_无token_旁路放行() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/actuator/health");
+
+        AtomicBoolean chainReached = new AtomicBoolean(false);
+        jakarta.servlet.FilterChain captureChain = (req, res) -> chainReached.set(true);
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        filter.doFilter(request, response, captureChain);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(chainReached.get()).isTrue();
+        verify(authPort, never()).authenticate(anyString());
+    }
+
+    @Test
+    void 健康子端点_无token_旁路放行() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/actuator/health/liveness");
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        verify(authPort, never()).authenticate(anyString());
+    }
+
+    @Test
+    void 业务路径不在旁路列表_仍走token校验() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/api/v1/me");
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(response.getContentAsString()).contains("缺少 Bearer token");
+    }
+
+    @Test
+    void 文档端点加入旁路后_无token放行() throws Exception {
+        TokenAuthFilter docsFilter = new TokenAuthFilter(authPort, new ObjectMapper(),
+                List.of("/doc.html", "/actuator/health"));
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/doc.html");
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        docsFilter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        verify(authPort, never()).authenticate(anyString());
     }
 }

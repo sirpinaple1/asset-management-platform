@@ -12,6 +12,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.util.AntPathMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -24,6 +25,10 @@ import java.util.List;
  * <p>
  * 失败语义：401=无 token/无效 token；403=已登录但无 asset 权限；503=comm_public_basic 不可用（fail-closed）。
  * 非 Spring Bean（由 SecurityConfig 手动构造挂链，避免 servlet 容器重复注册）。
+ * <p>
+ * 公共路径旁路：健康端点等免认证路径经 {@link #shouldNotFilter} 跳过 token 校验，
+ * 由 SecurityConfig 按环境注入（Ant 通配符）。旁路列表必须与授权层 permitAll 规则成对出现——
+ * 本过滤器 401 发生在授权规则之前，只在授权层 permitAll 不够。
  */
 @Slf4j
 @RequiredArgsConstructor
@@ -33,6 +38,15 @@ public class TokenAuthFilter extends OncePerRequestFilter {
 
     private final AuthPort authPort;
     private final ObjectMapper objectMapper;
+    private final List<String> publicPaths;
+
+    private final AntPathMatcher pathMatcher = new AntPathMatcher();
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        return publicPaths.stream().anyMatch(pattern -> pathMatcher.match(pattern, uri));
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
