@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-**Phase 1 骨架搭建中**：M01-A + M01-B + M-FE01 后端骨架/鉴权接入/前端骨架均已完成，下一步 M02 基础数据 CRUD。
+**Phase 2 完成 → Phase 3 开始**：M01 骨架 + M02 基础数据模块均已完成，下一步 M03 资产主表 CRUD + 状态机。
 
 ## 已完成
 
@@ -58,6 +58,23 @@
   - **is_visible=0, is_enabled=0**（comm_public_basic 约定：**0=显示/启用，1=隐藏/禁用**，与前端直觉相反——应用中心按 0/0 过滤展示）
   - 联调账号：assetfe（`Asset@2026`）/ SK9802（`Sk9802@2026`），均已分配 role_id=350 asset-资产管理员
 
+- [x] **M02 基础数据模块**（2026-08-20）：
+  - Company Entity/Mapper/Service/Controller（只读接口：GET list + GET detail）
+  - Manufacturer 完整 CRUD（Entity/Mapper/Service/Controller/DTO）
+  - Supplier 完整 CRUD（Entity/Mapper/Service/Controller/DTO）
+  - AssetCategory 树形结构（Entity/Mapper/Service/Controller/DTO，扁平列表）
+  - AssetLocation 树形结构（Entity/Mapper/Service/Controller/DTO，materialized path，?parentId 子树查询）
+  - DepreciationRule 骨架（Entity/Mapper/空 Service，Phase 4 实现）
+  - AssetModel 关联查询（Entity/Mapper/Service/Controller/DTO，含关联对象名称，?categoryId 筛选）
+  - 种子数据脚本 V20260820（company/asset_category/asset_location 初始数据）
+  - 测试覆盖：**71 个测试全部通过**（Service 层单元测试 24 个 + Controller 层集成测试 28 个 + M01 鉴权测试 19 个），0 失败
+  - API 端点：GET/POST/PUT/DELETE /api/v1/manufacturers、/api/v1/suppliers、/api/v1/categories、/api/v1/locations、/api/v1/models；GET /api/v1/companies（只读）
+  - **待跟进**：V20260820 种子数据脚本已写入 src/main/resources/db/migration/，按项目约定需在测试库 172.16.5.247 上手动执行
+
+## 当前阶段
+
+**Phase 2 完成 → Phase 3 开始**：M02 基础数据模块已完成，下一步 M03 资产主表 CRUD + 状态机。
+
 ## 进行中
 
 - （无）
@@ -70,7 +87,7 @@
 3. ~~**M-FE01** 前端骨架~~（已完成，2026-08-19）
 
 ### Phase 2 — 基础数据（M03+ 的外键依赖）
-6. **M02** 基础数据 CRUD：company / asset_category / asset_location(树) / manufacturer / supplier / asset_model
+6. ~~**M02** 基础数据 CRUD：company / asset_category / asset_location(树) / manufacturer / supplier / asset_model~~（已完成，2026-08-20）
 
 ### Phase 3 — 核心业务（按依赖顺序）
 7. **M03** 资产主表 CRUD + 状态机（IDLE/IN_USE/DISCARD/PENDING_CONFIRM）
@@ -120,5 +137,5 @@
 
 ---
 
-**最后更新**：2026-08-19（M-FE01 前端骨架完成 + redirectingToLogin 修复 + 懒验证设计落档 / 全链路实测 assetfe·SK9802 双账号通过）
+**最后更新**：2026-08-20（M02 基础数据模块完成；71 个测试全部通过；V20260820 种子数据脚本待手动执行至测试库 172.16.5.247）
 **当前阶段负责人**：待指派
