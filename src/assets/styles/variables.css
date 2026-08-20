@@ -1,0 +1,33 @@
+:root {
+  /* 品牌色 */
+  --color-primary: #165DFF;
+  --color-primary-hover: #4080FF;
+  --color-secondary: #14C9C9;
+
+  /* 中性色 */
+  --color-text-1: #1D2129;
+  --color-text-2: #4E5969;
+  --color-text-3: #86909C;
+  --color-border: #E5E6EB;
+  --color-bg-1: #F7F8FA;
+  --color-bg-2: #FFFFFF;
+  --color-nav-bg: #1D2129;
+  --color-nav-active: #272E3B;
+
+  /* 功能色 */
+  --color-success: #00B42A;
+  --color-warning: #FF7D00;
+  --color-error: #F53F3F;
+  --color-info: #165DFF;
+
+  /* 间距 */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+
+  /* 布局尺寸 */
+  --nav-width: 64px;
+  --header-height: 60px;
+}
