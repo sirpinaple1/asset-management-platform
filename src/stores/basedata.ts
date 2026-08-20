@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { basedataApi } from '@/api/basedata'
+import { basedataApi } from '@/api/modules/basedata'
 import type {
   Company,
   Manufacturer,
@@ -8,7 +8,7 @@ import type {
   Category,
   Location,
   AssetModel,
-} from '@/types/basedata'
+} from '@/api/interface/basedata'
 
 export const useBasedataStore = defineStore('basedata', () => {
   // 状态
