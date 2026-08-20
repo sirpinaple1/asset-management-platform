@@ -68,12 +68,13 @@
   - AssetModel 关联查询（Entity/Mapper/Service/Controller/DTO，含关联对象名称，?categoryId 筛选）
   - 种子数据脚本 V20260820（company/asset_category/asset_location 初始数据）
   - 测试覆盖：**71 个测试全部通过**（Service 层单元测试 24 个 + Controller 层集成测试 28 个 + M01 鉴权测试 19 个），0 失败
-  - API 端点：GET/POST/PUT/DELETE /api/v1/manufacturers、/api/v1/suppliers、/api/v1/categories、/api/v1/locations、/api/v1/models；GET /api/v1/companies（只读）
+  - API 端点：GET/POST/PUT/DELETE /api/v1/manufacturers、/api/v1/suppliers、/api/v1/locations、/api/v1/models；GET /api/v1/categories（只读，d40a2b5 移除写端点）；GET /api/v1/companies（只读）
   - **待跟进**：V20260820 种子数据脚本已写入 src/main/resources/db/migration/，按项目约定需在测试库 172.16.5.247 上手动执行
-
-## 当前阶段
-
-**Phase 2 完成 → Phase 3 开始**：M02 基础数据模块已完成，下一步 M03 资产主表 CRUD + 状态机。
+  - **代码质量审查**（2026-08-20，REVIEW-M02，实测 `mvn clean test` 71/71 通过）：
+    - **通过项**：分层严格遵守 R1（entity 经 toEntity/updateEntity/from DTO 三件套转换不外泄）；命名符合 N1（XxxReq/XxxResp/构造器注入版 Controller）；契约符合 P3（统一 Result + /api/v1/ + Swagger 注解齐全）；参数化查询无 SQL 注入；@TableLogic 逻辑删除 + 自动填充统一；测试 mock 边界正确（service mock mapper、controller mock service）
+    - **P1 待修（M03 前处理）**：① 注入方式不统一——Location/AssetModel 的 Controller+Service 已改构造器注入（b114b52），但 Manufacturer/Supplier/Category/Company 四组仍是 @Autowired 字段注入，且对应 4 个 Controller 测试被迫用反射注入 mock，应统一为构造器注入；② Location 树完整性无服务端保障——LocationReq.path 由客户端任意指定（materialized path 应服务端按 parentId 派生）、parentId 无存在性校验（可插悬挂节点）、移动节点不重算子树 path
+    - **P2 待修（M03 时一并处理）**：③ 删除无引用完整性检查（manufacturer/supplier/location/model 被删除时不检查是否被 asset_model/asset 引用，M03 有数据后将产生悬挂引用）；④ AssetModelReq 外键 ID（categoryId/manufacturerId/depreciationId/companyId）无存在性校验；⑤ AssetModel 详情接口不带关联名称（列表 JOIN 带、详情不带，不一致）
+    - **P3 minor**：⑥ Manufacturer/Supplier/Category Controller 测试未覆盖 404 分支（Category 仅 1 个测试，getById 未测）；⑦ email 字段缺 @Email 格式校验；⑧ CompanyServiceImpl.list() 缺排序（其余 list 均有 orderBy）；⑨ Service 单测多为转发验证型，M03 起复杂业务应测业务规则
 
 ## 进行中
 
@@ -137,5 +138,5 @@
 
 ---
 
-**最后更新**：2026-08-20（M02 基础数据模块完成；71 个测试全部通过；V20260820 种子数据脚本待手动执行至测试库 172.16.5.247）
+**最后更新**：2026-08-20（M02 基础数据模块完成 + 代码质量审查 REVIEW-M02：分层/命名/契约/测试通过，2 项 P1 待修清单见 M02 条目；71 个测试全部通过；V20260820 种子数据脚本待手动执行至测试库 172.16.5.247）
 **当前阶段负责人**：待指派
