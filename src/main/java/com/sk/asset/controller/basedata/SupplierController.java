@@ -78,4 +78,15 @@ public class SupplierController {
         supplierService.deleteById(id);
         return Result.ok();
     }
+
+    @Operation(summary = "恢复已删除的供应商（撤销删除）")
+    @SecurityRequirement(name = "BearerAuth")
+    @PutMapping("/{id}/restore")
+    public Result<Void> restore(@PathVariable Long id) {
+        int rows = supplierService.restoreById(id);
+        if (rows == 0) {
+            return Result.fail(404, "供应商不存在或未被删除");
+        }
+        return Result.ok();
+    }
 }

@@ -44,4 +44,9 @@ public class ManufacturerServiceImpl implements ManufacturerService {
     public void deleteById(Long id) {
         manufacturerMapper.deleteById(id);
     }
+
+    @Override
+    public int restoreById(Long id) {
+        return manufacturerMapper.restoreById(id);
+    }
 }

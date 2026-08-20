@@ -78,4 +78,15 @@ public class ManufacturerController {
         manufacturerService.deleteById(id);
         return Result.ok();
     }
+
+    @Operation(summary = "恢复已删除的厂商（撤销删除）")
+    @SecurityRequirement(name = "BearerAuth")
+    @PutMapping("/{id}/restore")
+    public Result<Void> restore(@PathVariable Long id) {
+        int rows = manufacturerService.restoreById(id);
+        if (rows == 0) {
+            return Result.fail(404, "厂商不存在或未被删除");
+        }
+        return Result.ok();
+    }
 }

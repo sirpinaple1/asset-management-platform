@@ -110,4 +110,29 @@ class SupplierControllerTest {
 
         verify(supplierService, times(1)).deleteById(1L);
     }
+
+    @Test
+    void restore_shouldReturn200WhenRestored() throws Exception {
+        // Given
+        when(supplierService.restoreById(1L)).thenReturn(1);
+
+        // When & Then
+        mockMvc.perform(put("/api/v1/suppliers/1/restore"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200));
+
+        verify(supplierService, times(1)).restoreById(1L);
+    }
+
+    @Test
+    void restore_shouldReturn404WhenNotDeletedOrMissing() throws Exception {
+        // Given
+        when(supplierService.restoreById(1L)).thenReturn(0);
+
+        // When & Then
+        mockMvc.perform(put("/api/v1/suppliers/1/restore"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(404))
+            .andExpect(jsonPath("$.message").value("供应商不存在或未被删除"));
+    }
 }

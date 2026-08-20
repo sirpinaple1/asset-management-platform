@@ -18,4 +18,9 @@ public interface ManufacturerService {
     void updateById(Manufacturer manufacturer);
 
     void deleteById(Long id);
+
+    /**
+     * 恢复逻辑删除的记录，返回影响行数（0 表示不存在或未被删除）
+     */
+    int restoreById(Long id);
 }

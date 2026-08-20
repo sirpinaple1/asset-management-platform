@@ -44,4 +44,9 @@ public class SupplierServiceImpl implements SupplierService {
     public void deleteById(Long id) {
         supplierMapper.deleteById(id);
     }
+
+    @Override
+    public int restoreById(Long id) {
+        return supplierMapper.restoreById(id);
+    }
 }
