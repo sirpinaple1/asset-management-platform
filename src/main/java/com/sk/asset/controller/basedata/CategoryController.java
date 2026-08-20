@@ -47,35 +47,4 @@ public class CategoryController {
         }
         return Result.ok(CategoryResp.from(category));
     }
-
-    @Operation(summary = "新增分类")
-    @SecurityRequirement(name = "BearerAuth")
-    @PostMapping
-    public Result<CategoryResp> create(@RequestBody @Valid CategoryReq req) {
-        Category entity = req.toEntity();
-        categoryService.save(entity);
-        return Result.ok(CategoryResp.from(entity));
-    }
-
-    @Operation(summary = "更新分类")
-    @SecurityRequirement(name = "BearerAuth")
-    @PutMapping("/{id}")
-    public Result<CategoryResp> update(@PathVariable Long id,
-                                       @RequestBody @Valid CategoryReq req) {
-        Category entity = categoryService.getById(id);
-        if (entity == null) {
-            return Result.fail(404, "分类不存在");
-        }
-        req.updateEntity(entity);
-        categoryService.updateById(entity);
-        return Result.ok(CategoryResp.from(entity));
-    }
-
-    @Operation(summary = "删除分类")
-    @SecurityRequirement(name = "BearerAuth")
-    @DeleteMapping("/{id}")
-    public Result<Void> delete(@PathVariable Long id) {
-        categoryService.deleteById(id);
-        return Result.ok();
-    }
 }
