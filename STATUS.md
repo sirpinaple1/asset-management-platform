@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-**Phase 1 骨架搭建中**：M01-A + M01-B 后端骨架与鉴权接入已完成，下一步 M-FE01 前端骨架（token 接收拦截器 + /dashboard 验证页）。
+**Phase 1 骨架搭建中**：M01-A + M01-B + M-FE01 后端骨架/鉴权接入/前端骨架均已完成，下一步 M02 基础数据 CRUD。
 
 ## 已完成
 
@@ -45,6 +45,19 @@
   - 测试：**单测 19 个全过**（AuthPort 11 / TokenFilter 6 / MeController 2），`mvn clean test` BUILD SUCCESS
   - **全链路实测**（本地 comm_public_basic:6002 + asset-backend:6006）：admin 登录取 token（密码 RSA 公钥加密）→ 无 token 401 / 伪造 token 401（修复后语义正确）/ 有效 token + 空 asset 角色 403"尚未分配 asset 系统角色"（admin 为默认密码用户，被 comm_public_basic"默认密码用户不得进入业务系统"策略拦截，判定语义正确）。**200 成功路径由单测覆盖**（有效token_三接口全通过_返回上下文并写缓存）；live 200 需非默认密码 + 有角色的用户，待 M-FE01 联调或正式用户就绪时补验
 
+- [x] **M-FE01 前端骨架**（2026-08-19）：
+  - `asset-frontend/`：Vue 3.5 + Vite + TypeScript + Element Plus + Pinia + Axios + Vue Router 4
+  - token 接收：路由守卫 `beforeEach` 从 URL query 取 token → 存 localStorage → `stripAuthParamsFromUrl` 清洗 URL（history 路由）
+  - axios 拦截器：请求自动附加 `Authorization: Bearer` + `systemCode: asset`；响应 401 清 token + 跳回 auth-center 登录页（防抖 `redirectingToLogin`）
+  - `/dashboard` 工作台页：调 `GET /api/v1/me` 展示用户姓名/部门/岗位/角色，全链路打通（auth-center → asset-frontend → asset-backend → comm_public_basic）
+  - **全链路实测**（assetfe / SK9802 两账号）：auth-center 登录 → 点击 asset 卡片 → 跳转 asset-frontend → 工作台正常渲染用户信息
+  - **redirectingToLogin 防抖修复**：`resetLoginRedirectFlag()` 导出 + 路由守卫 `beforeEach` 每次导航重置，防止整页跳转被中断后标志卡死、二次 401 无法再跳登录
+  - **懒验证设计落档**：路由守卫只校验 token 存在性不预验有效性（有意为之），过期 token 由页面首个 API 401 兜底驱逐；约定见 M-FE01 spec"鉴权验证策略"节 + ENGINEERING.md P5
+- [x] **asset 项目注册 comm_public_basic**（2026-08-19）：
+  - `basic_portal_project` 注册 asset（id=22，project_en=asset，web_url=localhost:5173）
+  - **is_visible=0, is_enabled=0**（comm_public_basic 约定：**0=显示/启用，1=隐藏/禁用**，与前端直觉相反——应用中心按 0/0 过滤展示）
+  - 联调账号：assetfe（`Asset@2026`）/ SK9802（`Sk9802@2026`），均已分配 role_id=350 asset-资产管理员
+
 ## 进行中
 
 - （无）
@@ -54,7 +67,7 @@
 ### Phase 1 — 骨架（所有模块的前提）
 1. ~~**M01-A** 后端骨架~~（已完成，2026-08-19）
 2. ~~**M01-B** 鉴权接入：AuthPort + TokenFilter + UserContext + `/api/v1/me` 验证接口~~（已完成，2026-08-19）
-3. **M-FE01** 前端骨架：Vue3+Vite+Element Plus+Pinia + token 接收拦截器（URL query 取参）+ /dashboard 验证页
+3. ~~**M-FE01** 前端骨架~~（已完成，2026-08-19）
 
 ### Phase 2 — 基础数据（M03+ 的外键依赖）
 6. **M02** 基础数据 CRUD：company / asset_category / asset_location(树) / manufacturer / supplier / asset_model
@@ -92,7 +105,8 @@
 - `application-local.yml`（gitignore）存连接信息 + comm_public_basic 地址（127.0.0.1:6002），模板 `application-local.yml.example`
 - comm_public_basic 本地（私改版）：端口 6002，库 `db_comm_public_basic`（127.0.0.1:3306），token TTL -1 永久；登录 `POST /login/check` 密码需 RSA 公钥加密（PKCS#1 v1.5，公钥见其 application.yml；openssl 命令：`printf '密码' | openssl pkeyutl -encrypt -pubin -inkey pub.pem | base64`，公钥包 X.509 PEM 头尾）
 - ⚠️ admin/123456 为**默认密码用户**：comm_public_basic 策略拦截其进入业务系统（userSystemAuth 返回空角色 → asset-backend 403）。联调 200 成功路径需使用改过密码或新建的用户
-- asset 已注册 `basic_portal_project`（id=22，is_visible=0 暂隐藏；M-FE01 就绪后 `UPDATE basic_portal_project SET is_visible=1, is_enabled=1 WHERE project_en='asset'`）
+- asset 已注册 `basic_portal_project`（id=22，**is_visible=0, is_enabled=0**；comm_public_basic 约定 0=显示/启用 1=隐藏/禁用，与前端直觉相反——应用中心按 0/0 过滤展示）
+- 联调账号：assetfe（`Asset@2026`）/ SK9802（`Sk9802@2026`），均分配 role_id=350 asset-资产管理员；⚠️ 重置密码会设回默认 123456 → 触发"默认密码用户不得进入业务系统"拦截 → userSystemAuth 返回空角色 → 403，改密码即可恢复
 - ⚠️ **M02 种子数据脚本版本号必须晚于 20260819**（V1 已占用 `V20260819`，M02 文档中的 `V20260819__seed_base_data.sql` 需改为实施当日版本号，否则 Flyway 撞号）
 - ⚠️ knife4j 只引入 `knife4j-openapi3-ui` 静态 webjar：其 4.5.0 增强 starter 与 springdoc 2.3+ 不兼容（`getGroupConfigs` 移除触发 NoSuchMethodError），勿改回 `knife4j-openapi3-jakarta-spring-boot-starter` + `knife4j.enable=true`
 - Flyway 对 MySQL 9.6 报"未测试版本"警告（正常，迁移已成功；如遇问题可显式升级 flyway 版本）
@@ -106,5 +120,5 @@
 
 ---
 
-**最后更新**：2026-08-19（M01-B 鉴权接入完成：阻塞项解除 / AuthPort+TokenFilter+/api/v1/me / 19 单测全过 / 全链路实测 401·403 语义正确）
+**最后更新**：2026-08-19（M-FE01 前端骨架完成 + redirectingToLogin 修复 + 懒验证设计落档 / 全链路实测 assetfe·SK9802 双账号通过）
 **当前阶段负责人**：待指派

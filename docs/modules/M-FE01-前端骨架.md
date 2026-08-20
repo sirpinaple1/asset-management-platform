@@ -24,6 +24,21 @@ auth-center-frontend 登录 → 跳转 /asset-frontend?token=xxx
 
 如 clone auth-center-frontend 后确认是 localStorage 直接共享或 postMessage，按实际调整。
 
+## 鉴权验证策略：懒验证（有意为之的设计选择，非缺陷）
+
+路由守卫**只校验本地 token 存在性，不预验有效性**（不在守卫里调 `/api/v1/me`）。
+过期 token 会放行进入页面，由该页面首个 API 调用触发 401，axios 响应拦截器统一
+清 token 并跳回 auth-center 登录页。选择理由与配套约束：
+
+- **理由**：守卫预验要在每次导航前多一次串行 HTTP 往返（asset-backend 侧还有 30s
+  回源缓存，预验结果本身滞后），换来的只是"报错提前一拍"；懒验证以首次 401 兜底，
+  换取零额外延迟与全链路最简。
+- **配套约束（对全部业务页面强制）**：每个业务页面挂载时必须至少发起一次 API 调用
+  （业务数据或 `/me`），依赖 401 兜底完成过期驱逐；无任何请求的纯静态页面视为违反约定
+  （错误页/NotFound 除外）。
+- **401 防抖标志 `redirectingToLogin`（request.ts）在路由守卫 `beforeEach` 中每次导航重置**：
+  防止整页跳转被中断后标志卡死，导致二次 token 过期时无法再次跳转登录。
+
 ## 目录结构
 
 ```
