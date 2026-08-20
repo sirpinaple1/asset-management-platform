@@ -27,6 +27,8 @@ export const basedataApi = {
     request<Manufacturer>({ url: `/v1/manufacturers/${id}`, method: 'put', data }),
   deleteManufacturer: (id: number) =>
     request<void>({ url: `/v1/manufacturers/${id}`, method: 'delete' }),
+  restoreManufacturer: (id: number) =>
+    request<void>({ url: `/v1/manufacturers/${id}/restore`, method: 'put' }),
 
   // 供应商
   getSuppliers: () => request<Supplier[]>({ url: '/v1/suppliers', method: 'get' }),
@@ -37,6 +39,8 @@ export const basedataApi = {
     request<Supplier>({ url: `/v1/suppliers/${id}`, method: 'put', data }),
   deleteSupplier: (id: number) =>
     request<void>({ url: `/v1/suppliers/${id}`, method: 'delete' }),
+  restoreSupplier: (id: number) =>
+    request<void>({ url: `/v1/suppliers/${id}/restore`, method: 'put' }),
 
   // 分类（树形结构）
   getCategories: () => request<Category[]>({ url: '/v1/categories', method: 'get' }),

@@ -3,8 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { InputInstance, TableInstance } from 'element-plus'
 import { useBasedataStore } from '@/stores/basedata'
-import { basedataApi } from '@/api/modules/basedata'
 import { useListInteractions } from '@/composables/useListInteractions'
+import { showUndoMessage } from '@/composables/useUndoMessage'
 import type { Supplier } from '@/api/interface/basedata'
 import SupplierModal from './components/SupplierModal.vue'
 import ContextMenu from '@/components/ContextMenu.vue'
@@ -50,14 +50,17 @@ const handleBatchDelete = async () => {
     return /* 用户取消 */
   }
   batchLoading.value = true
+  const ids = selectedRows.value.map((row) => row.id)
+  selectedRows.value = []
   try {
-    await Promise.all(selectedRows.value.map((row) => basedataApi.deleteSupplier(row.id)))
-    ElMessage.success(`已删除 ${count} 个供应商`)
-    selectedRows.value = []
-    loadData()
-  } catch {
-    /* 失败的删除由拦截器统一提示 */
-    loadData()
+    // 乐观删除：本地立即移除，失败项自动回滚
+    const { failedCount, okCount, snapshot } = await store.deleteSuppliersOptimistic(ids)
+    if (okCount) {
+      showUndoMessage(
+        failedCount ? `已删除 ${okCount} 个供应商，${failedCount} 个失败` : `已删除 ${okCount} 个供应商`,
+        () => store.undoDeleteSuppliers(snapshot),
+      )
+    }
   } finally {
     batchLoading.value = false
   }
@@ -99,14 +102,14 @@ const handleEdit = (record: Supplier) => {
 }
 
 const handleDelete = async (id: number) => {
-  try {
-    await basedataApi.deleteSupplier(id)
-    ElMessage.success('删除成功')
-    loadData()
-  } catch {
-    /* 错误已由拦截器统一提示 */
-  }
+  // 乐观删除：本地立即移除，失败自动回滚（拦截器提示错误）
+  const { failedCount, okCount, snapshot } = await store.deleteSuppliersOptimistic([id])
+  if (failedCount || !okCount) return
+  showUndoMessage('已删除 1 个供应商', () => store.undoDeleteSuppliers(snapshot))
 }
+
+/** 新增/编辑成功：用响应数据原地合并本地列表（免全量刷新闪烁） */
+const handleSaved = (item: Supplier) => store.upsertSupplierLocal(item)
 
 /** 空值统一显示占位符 */
 const formatText = (_row: Supplier, _column: unknown, cellValue: unknown) =>
@@ -246,7 +249,7 @@ onMounted(loadData)
       @select="onCtxMenuSelect"
     />
 
-    <SupplierModal v-model:visible="modalVisible" :data="currentRecord" @success="loadData" />
+    <SupplierModal v-model:visible="modalVisible" :data="currentRecord" @success="handleSaved" />
   </div>
 </template>
 

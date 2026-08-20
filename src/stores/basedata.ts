@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, type Ref } from 'vue'
 import { basedataApi } from '@/api/modules/basedata'
 import type {
   Company,
@@ -9,6 +9,87 @@ import type {
   Location,
   AssetModel,
 } from '@/api/interface/basedata'
+
+/** 乐观删除快照：记录被移除的行及其原始位置，用于失败回滚与撤销恢复 */
+export interface DeleteSnapshot<T> {
+  item: T
+  index: number
+}
+
+/** 乐观删除结果：failedCount>0 表示部分失败（失败项已回滚），snapshot 为成功项（供撤销） */
+export interface OptimisticDeleteResult<T> {
+  failedCount: number
+  okCount: number
+  snapshot: DeleteSnapshot<T>[]
+}
+
+/**
+ * 生成乐观删除工具集（厂商/供应商同构复用）：
+ * - optimisticDelete：本地立即移除（UI 即时反馈），并发调删除接口，失败项按原位插回
+ * - undoDelete：调恢复接口，成功项按原位插回
+ * - upsertLocal：新增/编辑成功后用响应数据原地合并，避免全量 refetch 闪烁
+ */
+function createOptimisticOps<T extends { id: number }>(
+  list: Ref<T[]>,
+  deleteApi: (id: number) => Promise<void>,
+  restoreApi: (id: number) => Promise<void>,
+) {
+  /** 按原始索引把快照插回列表（索引升序逐个插入，min 防越界） */
+  const insertBack = (snapshot: DeleteSnapshot<T>[]) => {
+    const next = [...list.value]
+    ;[...snapshot]
+      .sort((a, b) => a.index - b.index)
+      .forEach(({ item, index }) => next.splice(Math.min(index, next.length), 0, item))
+    list.value = next
+  }
+
+  const optimisticDelete = async (ids: number[]): Promise<OptimisticDeleteResult<T>> => {
+    const idSet = new Set(ids)
+    // 快照并本地移除（从后往前 splice 不影响前面的索引）
+    const snapshot: DeleteSnapshot<T>[] = []
+    const next = [...list.value]
+    for (let i = next.length - 1; i >= 0; i--) {
+      if (idSet.has(next[i].id)) {
+        snapshot.unshift({ item: next[i], index: i })
+        next.splice(i, 1)
+      }
+    }
+    list.value = next
+
+    // 并发删除，收集失败项
+    const results = await Promise.allSettled(ids.map((id) => deleteApi(id)))
+    const failedIds = new Set<number>()
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') failedIds.add(ids[i])
+    })
+    if (failedIds.size) insertBack(snapshot.filter((s) => failedIds.has(s.item.id)))
+
+    const okSnapshot = snapshot.filter((s) => !failedIds.has(s.item.id))
+    return { failedCount: failedIds.size, okCount: okSnapshot.length, snapshot: okSnapshot }
+  }
+
+  /** 撤销删除：全部恢复成功返回 true */
+  const undoDelete = async (snapshot: DeleteSnapshot<T>[]): Promise<boolean> => {
+    if (!snapshot.length) return true
+    const results = await Promise.allSettled(snapshot.map((s) => restoreApi(s.item.id)))
+    const okItems = snapshot.filter((_, i) => results[i].status === 'fulfilled')
+    insertBack(okItems)
+    return okItems.length === snapshot.length
+  }
+
+  const upsertLocal = (item: T) => {
+    const idx = list.value.findIndex((it) => it.id === item.id)
+    if (idx >= 0) {
+      const next = [...list.value]
+      next[idx] = item
+      list.value = next
+    } else {
+      list.value = [...list.value, item]
+    }
+  }
+
+  return { optimisticDelete, undoDelete, upsertLocal }
+}
 
 export const useBasedataStore = defineStore('basedata', () => {
   // 状态
@@ -84,6 +165,10 @@ export const useBasedataStore = defineStore('basedata', () => {
     }
   }
 
+  // 乐观更新与撤销（厂商/供应商）
+  const manufacturerOps = createOptimisticOps(manufacturers, basedataApi.deleteManufacturer, basedataApi.restoreManufacturer)
+  const supplierOps = createOptimisticOps(suppliers, basedataApi.deleteSupplier, basedataApi.restoreSupplier)
+
   return {
     companies,
     manufacturers,
@@ -98,5 +183,11 @@ export const useBasedataStore = defineStore('basedata', () => {
     fetchCategories,
     fetchLocations,
     fetchModels,
+    deleteManufacturersOptimistic: manufacturerOps.optimisticDelete,
+    undoDeleteManufacturers: manufacturerOps.undoDelete,
+    upsertManufacturerLocal: manufacturerOps.upsertLocal,
+    deleteSuppliersOptimistic: supplierOps.optimisticDelete,
+    undoDeleteSuppliers: supplierOps.undoDelete,
+    upsertSupplierLocal: supplierOps.upsertLocal,
   }
 })

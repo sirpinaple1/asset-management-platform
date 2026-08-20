@@ -12,7 +12,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void
-  (e: 'success'): void
+  (e: 'success', item: Manufacturer): void
 }>()
 
 const formRef = ref<FormInstance>()
@@ -61,14 +61,15 @@ const handleSubmit = async () => {
 
   loading.value = true
   try {
+    let saved: Manufacturer
     if (isEdit.value && props.data) {
-      await basedataApi.updateManufacturer(props.data.id, { ...formData })
+      saved = await basedataApi.updateManufacturer(props.data.id, { ...formData })
       ElMessage.success('更新成功')
     } else {
-      await basedataApi.createManufacturer({ ...formData })
+      saved = await basedataApi.createManufacturer({ ...formData })
       ElMessage.success('新增成功')
     }
-    emit('success')
+    emit('success', saved)
     handleClose()
   } catch {
     // 业务/网络错误已由 axios 拦截器统一提示
