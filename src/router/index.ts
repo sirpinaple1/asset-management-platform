@@ -18,6 +18,12 @@ const router = createRouter({
           name: 'dashboard',
           component: () => import('@/views/dashboard/index.vue'),
           meta: { title: '工作台' }
+        },
+        {
+          path: 'basedata/manufacturers',
+          name: 'basedata-manufacturers',
+          component: () => import('@/views/basedata/ManufacturerList.vue'),
+          meta: { title: '厂商管理' }
         }
       ]
     },
