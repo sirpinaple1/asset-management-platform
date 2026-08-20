@@ -2,6 +2,9 @@
 # 测试均为 Mockito/MockMvc 纯单测（无 Spring 上下文、无真实数据库依赖），Runner 无需额外服务。
 # Runner 为 sirpinaple 本机 shell executor，直接复用本机 Maven 仓库（~/.m2），无需 CI 缓存。
 
+stages:
+  - verify
+
 verify:
   stage: verify
   script:
