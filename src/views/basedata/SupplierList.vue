@@ -1,20 +1,31 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { InputInstance, TableInstance } from 'element-plus'
 import { useBasedataStore } from '@/stores/basedata'
+import { useTabsStore } from '@/stores/tabs'
 import { useListInteractions } from '@/composables/useListInteractions'
 import { showUndoMessage } from '@/composables/useUndoMessage'
 import type { Supplier } from '@/api/interface/basedata'
 import SupplierModal from './components/SupplierModal.vue'
 import ContextMenu from '@/components/ContextMenu.vue'
 
+/** 与路由 name 一致：多页签 keep-alive 缓存键 */
+defineOptions({ name: 'basedata-suppliers' })
+
+const route = useRoute()
+const router = useRouter()
+const tabsStore = useTabsStore()
 const store = useBasedataStore()
 const suppliers = computed(() => store.suppliers)
 const loading = computed(() => store.loading.suppliers)
 
 const modalVisible = ref(false)
 const currentRecord = ref<Supplier>()
+
+/* 弹窗打开 = 有未保存内容：关页签前需确认 */
+watch(modalVisible, (v) => tabsStore.setDirty(route.fullPath, v))
 
 /* ---------------- 搜索（防抖 300ms 前端过滤） ---------------- */
 const keyword = ref('')
@@ -82,10 +93,35 @@ const total = computed(() => filtered.value.length)
 const pageData = computed(() =>
   filtered.value.slice((currentPage.value - 1) * PAGE_SIZE, currentPage.value * PAGE_SIZE),
 )
-
+/* 过滤结果变化时纠正越界页码 */
 watch(total, () => {
   const maxPage = Math.max(1, Math.ceil(total.value / PAGE_SIZE))
   if (currentPage.value > maxPage) currentPage.value = maxPage
+})
+
+/* ---------------- 深链与刷新保持：搜索词/页码同步 URL query ---------------- */
+/* query → 状态：初始化 & 前进/后退/页签切换回本页时恢复 */
+watch(
+  () => route.query,
+  (q) => {
+    if (route.name !== 'basedata-suppliers') return
+    const kw = typeof q.q === 'string' ? q.q : ''
+    if (kw !== keyword.value) keyword.value = kw
+    const p = Number(q.page)
+    if (Number.isInteger(p) && p >= 1 && p !== currentPage.value) currentPage.value = p
+  },
+  { immediate: true },
+)
+
+/* 状态 → query：replace 不产生历史记录，刷新/分享 URL 可还原现场 */
+watch([searchKeyword, currentPage], () => {
+  if (route.name !== 'basedata-suppliers') return
+  const query: Record<string, string> = {}
+  if (searchKeyword.value) query.q = searchKeyword.value
+  if (currentPage.value > 1) query.page = String(currentPage.value)
+  const current = JSON.stringify(route.query)
+  const next = JSON.stringify(query)
+  if (current !== next) router.replace({ query })
 })
 
 /* ---------------- CRUD ---------------- */
@@ -145,7 +181,17 @@ const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown
     onBatchDelete: handleBatchDelete,
   })
 
-onMounted(loadData)
+onMounted(async () => {
+  await loadData()
+  /* 深链定位：?id=123 打开对应行编辑（用后清除，避免刷新重复弹窗） */
+  const id = Number(route.query.id)
+  if (Number.isInteger(id) && id > 0) {
+    const row = suppliers.value.find((s) => s.id === id)
+    router.replace({ query: { ...route.query, id: undefined } })
+    if (row) handleEdit(row)
+    else ElMessage.warning(`未找到 id=${id} 的供应商`)
+  }
+})
 </script>
 
 <template>

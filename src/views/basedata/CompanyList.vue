@@ -3,6 +3,9 @@ import { computed, onMounted } from 'vue'
 import { useBasedataStore } from '@/stores/basedata'
 import type { Company } from '@/api/interface/basedata'
 
+/** 与路由 name 一致：多页签 keep-alive 缓存键 */
+defineOptions({ name: 'basedata-companies' })
+
 const store = useBasedataStore()
 const companies = computed(() => store.companies)
 const loading = computed(() => store.loading.companies)

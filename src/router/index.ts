@@ -1,3 +1,4 @@
+import { nextTick } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import { resetLoginRedirectFlag } from '@/api/config/request'
 import { clearToken, extractTokenFromUrl, getToken, redirectToAuthCenter, setToken, stripAuthParamsFromUrl } from '@/utils/token'
@@ -66,10 +67,16 @@ const router = createRouter({
   ]
 })
 
-router.beforeEach((to) => {
+router.beforeEach((to, from) => {
   // 0. 重置 401 跳登录防抖标志：新导航 = 新会话周期（含从 auth-center 携新 token 返回），
   //    防止上一次 401 置位后卡死，二次 token 过期时无法再次跳转登录
   resetLoginRedirectFlag()
+
+  // 滚动恢复：离开页面前记录内容区滚动位置（SPA 内容滚动在 .content-scroll，非 window）
+  if (from.fullPath) {
+    const scrollEl = document.querySelector('.content-scroll')
+    if (scrollEl) scrollMap.set(from.fullPath, scrollEl.scrollTop)
+  }
 
   // 1. 接收 auth-center 跳转携带的 token：存 localStorage 后清洗 URL，以干净路径重新导航
   const urlToken = extractTokenFromUrl(to.query.token)
@@ -91,6 +98,15 @@ router.beforeEach((to) => {
 
 router.afterEach((to) => {
   document.title = to.meta.title ? `${to.meta.title} - 资产管理系统` : '资产管理系统'
+
+  // 滚动恢复：回到访问过的页面时滚回上次离开的位置，新页面回顶部
+  nextTick(() => {
+    const scrollEl = document.querySelector('.content-scroll')
+    if (scrollEl) scrollEl.scrollTop = scrollMap.get(to.fullPath) ?? 0
+  })
 })
+
+/** 各页面内容区滚动位置记忆（fullPath → scrollTop） */
+const scrollMap = new Map<string, number>()
 
 export default router

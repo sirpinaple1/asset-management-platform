@@ -1,10 +1,32 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { useTabsStore } from '@/stores/tabs'
+import TabBar from '@/components/TabBar.vue'
 
 const route = useRoute()
 const userStore = useUserStore()
+const tabsStore = useTabsStore()
+
+/* 多页签工作台：路由变化登记页签（fullPath 含 query），keep-alive 缓存已打开页签 */
+watch(
+  () => route.fullPath,
+  () => {
+    if (route.name && route.meta.title) {
+      tabsStore.addTab({
+        fullPath: route.fullPath,
+        path: route.path,
+        name: String(route.name),
+        title: String(route.meta.title),
+      })
+    }
+  },
+  { immediate: true },
+)
+
+/** keep-alive 缓存集合：已打开页签的组件 name（组件 defineOptions name 与路由 name 一致） */
+const cachedViews = computed(() => tabsStore.tabs.map((t) => t.name))
 
 const activeNav = computed(() => route.name)
 const user = computed(() => userStore.me)
@@ -228,9 +250,17 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
       </aside>
 
       <div class="content">
-        <router-view />
+        <!-- 多页签工作台 + 面包屑 -->
+        <TabBar />
+        <div class="content-scroll">
+          <router-view v-slot="{ Component }">
+            <keep-alive :include="cachedViews">
+              <component :is="Component" />
+            </keep-alive>
+          </router-view>
+        </div>
         <!-- 滚轮回顶部 -->
-        <el-backtop target=".content" :right="32" :bottom="32" />
+        <el-backtop target=".content-scroll" :right="32" :bottom="32" />
       </div>
     </div>
   </div>
@@ -554,13 +584,20 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
   flex-shrink: 0;
 }
 
-/* 内容区 */
+/* 内容区：页签栏 + 滚动容器 */
 .content {
   flex: 1;
-  background: #f5f6fa;
-  padding: 24px;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  background: #f5f6fa;
+}
+
+.content-scroll {
+  flex: 1;
+  overflow: auto;
+  padding: 24px;
   min-height: 0;
 }
 </style>
