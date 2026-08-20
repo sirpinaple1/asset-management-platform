@@ -229,6 +229,8 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
 
       <div class="content">
         <router-view />
+        <!-- 滚轮回顶部 -->
+        <el-backtop target=".content" :right="32" :bottom="32" />
       </div>
     </div>
   </div>

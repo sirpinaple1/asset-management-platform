@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { nextTick, reactive, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import type { FormInstance, FormRules } from 'element-plus'
+import type { FormInstance, FormRules, InputInstance } from 'element-plus'
 import { basedataApi } from '@/api/modules/basedata'
 import type { Supplier, SupplierForm } from '@/api/interface/basedata'
 
@@ -16,6 +16,7 @@ const emit = defineEmits<{
 }>()
 
 const formRef = ref<FormInstance>()
+const nameInputRef = ref<InputInstance>()
 const loading = ref(false)
 const isEdit = ref(false)
 
@@ -54,6 +55,7 @@ watch(
 const handleClose = () => emit('update:visible', false)
 
 const handleSubmit = async () => {
+  if (loading.value) return /* 防重复提交 */
   const valid = await formRef.value?.validate().then(() => true).catch(() => false)
   if (!valid) return
 
@@ -74,6 +76,17 @@ const handleSubmit = async () => {
     loading.value = false
   }
 }
+
+/** Ctrl/Cmd+S 保存（Enter 由表单 submit.prevent 处理，Esc 由对话框默认行为关闭） */
+const onWindowKeydown = (e: KeyboardEvent) => {
+  if (!props.visible) return
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+    e.preventDefault()
+    if (!loading.value) handleSubmit()
+  }
+}
+onMounted(() => window.addEventListener('keydown', onWindowKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
 </script>
 
 <template>
@@ -83,10 +96,11 @@ const handleSubmit = async () => {
     width="520px"
     :close-on-click-modal="false"
     @update:model-value="handleClose"
+    @opened="nameInputRef?.focus()"
   >
-    <el-form ref="formRef" :model="formData" :rules="rules" label-width="90px">
+    <el-form ref="formRef" :model="formData" :rules="rules" label-width="90px" @submit.prevent="handleSubmit">
       <el-form-item label="供应商名称" prop="name">
-        <el-input v-model="formData.name" placeholder="请输入供应商名称" :maxlength="100" />
+        <el-input ref="nameInputRef" v-model="formData.name" placeholder="请输入供应商名称" :maxlength="100" />
       </el-form-item>
       <el-form-item label="联系人" prop="contact">
         <el-input v-model="formData.contact" placeholder="请输入联系人" :maxlength="50" />

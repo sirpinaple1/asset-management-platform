@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import type { InputInstance, TableInstance } from 'element-plus'
 import { useBasedataStore } from '@/stores/basedata'
 import { basedataApi } from '@/api/modules/basedata'
+import { useListInteractions } from '@/composables/useListInteractions'
 import type { Supplier } from '@/api/interface/basedata'
 import SupplierModal from './components/SupplierModal.vue'
+import ContextMenu from '@/components/ContextMenu.vue'
 
 const store = useBasedataStore()
 const suppliers = computed(() => store.suppliers)
@@ -109,6 +112,36 @@ const handleDelete = async (id: number) => {
 const formatText = (_row: Supplier, _column: unknown, cellValue: unknown) =>
   cellValue === undefined || cellValue === null || cellValue === '' ? '—' : cellValue
 
+/* ---------------- 输入与触发：右键菜单 / 键盘导航 / 快捷键 ---------------- */
+const tableRef = ref<TableInstance>()
+const searchInputRef = ref<InputInstance>()
+
+/** 复制行信息为 TSV（可直接粘贴进 Excel） */
+const handleCopyRow = async (row: Supplier) => {
+  const text = [row.name, row.contact, row.phone, row.email, row.address, row.remark]
+    .map((v) => v ?? '')
+    .join('\t')
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('已复制到剪贴板')
+  } catch {
+    ElMessage.warning('复制失败，请手动选择复制')
+  }
+}
+
+const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown, onCurrentChange } =
+  useListInteractions<Supplier>({
+    pageRows: pageData,
+    selectedRows,
+    isModalOpen: modalVisible,
+    tableRef,
+    searchInputRef,
+    onEditRow: handleEdit,
+    onCopyRow: handleCopyRow,
+    onDeleteRow: (row) => handleDelete(row.id),
+    onBatchDelete: handleBatchDelete,
+  })
+
 onMounted(loadData)
 </script>
 
@@ -142,9 +175,10 @@ onMounted(loadData)
           </el-tooltip>
         </div>
         <el-input
+          ref="searchInputRef"
           v-model="keyword"
           class="search-box"
-          placeholder="搜索供应商名称 / 联系人 / 电话"
+          placeholder="搜索名称 / 联系人 / 电话（Ctrl+F）"
           clearable
         >
           <template #prefix>
@@ -156,13 +190,21 @@ onMounted(loadData)
         </el-input>
       </div>
 
-      <!-- 表格 -->
+      <!-- 表格：双击行编辑 / 右键菜单 / 方向键导航 / 列宽可拖拽 -->
       <el-table
+        ref="tableRef"
         v-loading="loading"
         :data="pageData"
         row-key="id"
+        border
+        tabindex="0"
+        highlight-current-row
         empty-text="暂无供应商数据"
         @selection-change="onSelectionChange"
+        @row-dblclick="handleEdit"
+        @row-contextmenu="onRowContextmenu"
+        @current-change="onCurrentChange"
+        @keydown="onTableKeydown"
       >
         <el-table-column type="selection" width="50" />
         <el-table-column prop="name" label="供应商名称" min-width="180" show-overflow-tooltip />
@@ -194,6 +236,15 @@ onMounted(loadData)
         />
       </div>
     </div>
+
+    <!-- 行右键菜单 -->
+    <ContextMenu
+      :visible="ctxMenu.visible"
+      :x="ctxMenu.x"
+      :y="ctxMenu.y"
+      :items="ctxMenuItems"
+      @select="onCtxMenuSelect"
+    />
 
     <SupplierModal v-model:visible="modalVisible" :data="currentRecord" @success="loadData" />
   </div>
@@ -283,5 +334,16 @@ onMounted(loadData)
 .pagination-info {
   font-size: 13px;
   color: #6b7280;
+}
+
+/* 双击行可编辑：指针光标提示可交互 */
+:deep(.el-table__row) {
+  cursor: pointer;
+}
+
+/* 表格键盘导航时焦点可见 */
+:deep(.el-table):focus-visible {
+  outline: 2px solid #165dff;
+  outline-offset: -2px;
 }
 </style>

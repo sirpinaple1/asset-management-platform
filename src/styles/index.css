@@ -42,3 +42,14 @@ body {
   --el-color-error: #f53f3f;
   --el-color-info: #86909c;
 }
+
+/* 键盘可达性：Tab 遍历时焦点可见 */
+:focus-visible {
+  outline: 2px solid rgba(22, 93, 255, 0.7);
+  outline-offset: 1px;
+}
+
+/* 请求进行中：等待光标 */
+.el-button.is-loading {
+  cursor: wait;
+}
