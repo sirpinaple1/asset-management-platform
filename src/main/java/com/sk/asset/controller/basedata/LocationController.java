@@ -10,7 +10,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,10 +22,10 @@ import java.util.stream.Collectors;
 @Tag(name = "区域位置管理")
 @RestController
 @RequestMapping("/api/v1/locations")
+@RequiredArgsConstructor
 public class LocationController {
 
-    @Autowired
-    private LocationService locationService;
+    private final LocationService locationService;
 
     @Operation(summary = "位置列表（扁平，含 parentId + path）")
     @SecurityRequirement(name = "BearerAuth")

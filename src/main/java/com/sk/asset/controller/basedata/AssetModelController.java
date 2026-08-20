@@ -10,7 +10,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,10 +22,10 @@ import java.util.stream.Collectors;
 @Tag(name = "资产型号管理")
 @RestController
 @RequestMapping("/api/v1/models")
+@RequiredArgsConstructor
 public class AssetModelController {
 
-    @Autowired
-    private AssetModelService assetModelService;
+    private final AssetModelService assetModelService;
 
     @Operation(summary = "型号列表（含关联名称，支持按分类筛选）")
     @SecurityRequirement(name = "BearerAuth")

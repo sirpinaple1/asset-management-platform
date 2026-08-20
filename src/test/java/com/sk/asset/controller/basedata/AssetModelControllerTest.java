@@ -10,7 +10,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.List;
 
@@ -25,11 +24,8 @@ class AssetModelControllerTest {
     private final MockMvc mockMvc;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    AssetModelControllerTest() throws Exception {
-        AssetModelController controller = new AssetModelController();
-        Field field = AssetModelController.class.getDeclaredField("assetModelService");
-        field.setAccessible(true);
-        field.set(controller, assetModelService);
+    AssetModelControllerTest() {
+        AssetModelController controller = new AssetModelController(assetModelService);
 
         this.mockMvc = MockMvcBuilders
                 .standaloneSetup(controller)
