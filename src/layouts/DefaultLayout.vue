@@ -31,9 +31,11 @@ const cachedViews = computed(() => tabsStore.tabs.map((t) => t.name))
 const activeNav = computed(() => route.name)
 const user = computed(() => userStore.me)
 
-/** 资产管理模块（资产列表 + 基础数据 + 领用借用单据子页面）→ 显示二级子侧边栏 */
+/** 资产管理模块（资产列表 + 基础数据 + 领用借用/调拨单据子页面）→ 显示二级子侧边栏 */
 const isAssetModule = computed(() =>
-  ['assets-', 'basedata-', 'receipts-'].some((p) => String(route.name || '').startsWith(p)),
+  ['assets-', 'basedata-', 'receipts-', 'transfers-'].some((p) =>
+    String(route.name || '').startsWith(p),
+  ),
 )
 
 /** 二级侧边栏：基础设置菜单（对齐原型：厂商/供应商/分类/位置/型号 + 公司主体） */
@@ -212,7 +214,9 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
         <div class="menu-section">
           <div class="section-title-static">常用入口</div>
           <a class="menu-item" @click="comingSoon"><span>待处理工单</span></a>
-          <a class="menu-item" @click="comingSoon"><span>待确认调拨单</span></a>
+          <router-link to="/transfers?tab=PENDING" class="menu-item" :class="{ active: route.path === '/transfers' && route.query.tab === 'PENDING' }">
+            <span>待确认调拨单</span>
+          </router-link>
           <a class="menu-item" @click="comingSoon"><span>待处理员工申请</span></a>
         </div>
 
@@ -225,7 +229,9 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
             <router-link to="/assets" class="menu-item" :class="{ active: route.path === '/assets' }">
               <span>资产列表</span>
             </router-link>
-            <a class="menu-item" @click="comingSoon"><span>资产调拨</span></a>
+            <router-link to="/transfers" class="menu-item" :class="{ active: route.path === '/transfers' }">
+              <span>资产调拨</span>
+            </router-link>
             <router-link to="/receipts/receive" class="menu-item" :class="{ active: route.path === '/receipts/receive' }">
               <span>领用&退库</span>
             </router-link>

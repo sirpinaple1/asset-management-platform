@@ -30,6 +30,8 @@ src/
 ├── stores/user.ts          # useUserStore：token 登录态 + /me 信息
 ├── stores/basedata.ts      # M02 基础数据（公司/厂商/供应商等）状态管理
 ├── stores/asset.ts         # M03 资产列表（服务端分页/筛选）状态管理
+├── stores/receipt.ts       # M04 领用/借用单 + 持有关系状态管理
+├── stores/transfer.ts      # M05 调拨单状态管理
 ├── composables/            # useListInteractions（列表交互）/ useUndoMessage（撤销提示）
 ├── utils/tree.ts           # 扁平列表 → 树形结构（分类/位置下拉）
 ├── router/index.ts         # 路由守卫：接收 token → 清洗 URL → 未登录跳 auth-center
@@ -38,7 +40,9 @@ src/
 └── views/
     ├── dashboard/          # 工作台（鉴权全链路验证页）
     ├── basedata/           # M02 基础数据：公司（只读）/厂商/供应商 CRUD
-    └── asset/              # M03 资产：列表/新增编辑弹窗/详情抽屉（含操作日志）
+    ├── asset/              # M03 资产：列表/新增编辑弹窗/详情抽屉（含操作日志）
+    ├── receipt/            # M04 领用/借用单：单据流 + 持有中资产退库归还
+    └── transfer/           # M05 调拨单：列表/发起调拨弹窗/详情抽屉（确认/拒绝/撤销）
 ```
 
 ## 鉴权链路（ADR-0004）
@@ -55,5 +59,6 @@ token 失效（HTTP 401）自动清除并跳回 auth-center 登录页（带 retu
 - [x] M02.5-Frontend: 厂商/供应商切换服务端分页契约（tabs/搜索/分页）
 - [x] M03-Frontend: 资产主表（列表筛选分页/新增编辑弹窗/详情抽屉含操作日志/报废/导出，验收清单见 `docs/M03-前端验收清单.md`）
 - [x] M04-Frontend: 领用/借用单页面（领用&退库 / 借用&归还 两菜单共用单据流：状态 tabs/搜索/分页/发起申请弹窗含闲置资产选择器/详情抽屉含审批操作/持有中资产退库归还；已对齐后端 29bd8a6 M04 契约——statusLabel/typeLabel 回填、GET /v1/allocations 持有列表、POST /v1/allocations/{id}/return 退库归还、申请 department/reason 必填）
+- [x] M05-Frontend: 调拨单（ATR）页面（状态 tabs/搜索/分页/发起调拨弹窗含闲置·在用资产选择器与调入位置树/详情抽屉含调入方确认·拒绝与发起人撤销；契约依据后端 docs/modules/M05-调拨单.md——后端 M05 未实现，联调时按实际 DTO 核对）
 - [ ] M02-Frontend-Tree: 分类/位置树形结构
 - [ ] M02-Frontend-Model: 型号管理（关联分类+厂商）

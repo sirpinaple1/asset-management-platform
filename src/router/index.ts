@@ -73,6 +73,12 @@ const router = createRouter({
           name: 'receipts-borrow',
           component: () => import('@/views/receipt/BorrowList.vue'),
           meta: { title: '借用&归还' }
+        },
+        {
+          path: 'transfers',
+          name: 'transfers-list',
+          component: () => import('@/views/transfer/TransferList.vue'),
+          meta: { title: '资产调拨' }
         }
       ]
     },
