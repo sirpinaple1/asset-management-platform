@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-**Phase 2 完成 → Phase 3 开始**：M01 骨架 + M02 基础数据模块均已完成，下一步 M03 资产主表 CRUD + 状态机。
+**Phase 3 进行中**：M03 资产主表 CRUD + 状态机已完成，下一步 M04 领用/借用单（ARE/BOR）审批流。
 
 ## 已完成
 
@@ -83,6 +83,23 @@
   - **修复存量 bug**：docs-permit-all 失效——TokenAuthFilter 的 401 先于授权层发生，local 下 `/doc.html` 实测无法免 token 访问（401）。引入公共路径旁路机制：`shouldNotFilter` 旁路 + 授权层 permitAll 由 SecurityConfig 同一份 publicPaths 派生，永不脱节
   - 测试 75/75（TokenAuthFilterTest 新增 4 个旁路用例：健康端点/子端点/业务路径不旁路/文档端点旁路）
 
+- [x] **M02.5 原型对齐 + REVIEW-M02 修复**（2026-08-22，前端原型 asset-system-preview.html 对齐）：
+  - 迁移脚本 `V20260822__align_prototype_adjustments.sql`：manufacturer/supplier 加 status（1-启用 0-停用）；receive_receipt/asset_allocation 加 type（RECEIVE-领用 BORROW-借用，M04 共用单据流）
+  - 厂商/供应商：分页（`PageResp` 统一契约 + MybatisPlusConfig 分页拦截器 + mybatis-plus-jsqlparser 依赖）+ keyword 模糊 + status 筛选 + 批量删除（引用检查任一被引用整体 409 拒绝）+ EasyExcel 导出端点（`/export`）
+  - REVIEW-M02 P1①：Manufacturer/Supplier/Category/Company 全部统一构造器注入（测试去反射）
+  - REVIEW-M02 P1②：Location path 服务端按 parentId 派生（物化路径不可客户端指定）+ 父节点存在性校验
+  - REVIEW-M02 P2④⑤：AssetModel 外键存在性校验（category/manufacturer/depreciation/company）+ 详情 JOIN 关联名称（与列表一致）
+  - GlobalExceptionHandler 补 `MethodArgumentNotValidException`→400（此前参数校验失败落入兜底 500）与 `IllegalArgumentException`→400（非法枚举参数）
+  - 测试 111/111（厂商/供应商分页+导出+批量删除+409 引用链路全覆盖）
+
+- [x] **M03 资产主表 CRUD + 状态机**（2026-08-22）：
+  - `enums/asset/AssetStatus`：IDLE/IN_USE/PENDING_CONFIRM/DISCARD + `canTransitionTo` 状态机（DISCARD 为终态；非法流转 409）
+  - Asset/AssetLog Entity + AssetMapper（详情 JOIN 六关联名称）/AssetLogMapper
+  - `AssetServiceImpl`：save（barcode 唯一 409 + 六外键存在性 400 + 状态强制 IDLE + 写"新增"日志）、updateById（状态不随编辑变更）、`changeStatus(assetId, newStatus, operatorId, note)`（M04/M05 统一流转入口，写"【状态】由【旧值】变更为【新值】"格式日志）、discard、page/listBy（7 维筛选 + 批量名称回填）、listLogs
+  - `AssetController`：GET 分页 / GET /export / GET 详情 / POST 新增 / PUT 编辑 / POST /{id}/discard / GET /{id}/logs（状态无编辑端点，只能业务流转）
+  - DTO：AssetReq/AssetResp（含 statusLabel）/AssetQuery/AssetLogResp/AssetExportRow/AssetDiscardReq
+  - 测试 147/147（AssetStatusTest 状态机全路径 7 + AssetServiceImplTest 15 + AssetControllerTest 13）；`POST /api/v1/assets/import` 批量导入留待 M08 历史迁移一并实现
+
 ## 进行中
 
 - （无）
@@ -98,8 +115,8 @@
 6. ~~**M02** 基础数据 CRUD：company / asset_category / asset_location(树) / manufacturer / supplier / asset_model~~（已完成，2026-08-20）
 
 ### Phase 3 — 核心业务（按依赖顺序）
-7. **M03** 资产主表 CRUD + 状态机（IDLE/IN_USE/DISCARD/PENDING_CONFIRM）
-8. **M04** 领用单（ARE）审批流：申请→审批→资产状态联动
+7. ~~**M03** 资产主表 CRUD + 状态机（IDLE/IN_USE/DISCARD/PENDING_CONFIRM）~~（已完成，2026-08-22）
+8. **M04** 领用/借用单（ARE/BOR）审批流：申请→审批→资产状态联动（`receive_receipt.type` 区分领用/借用，共用单据流）
 9. **M05** 调拨单（ATR）审批流：调出→调入确认→归属更新
 10. **M06** 实物信息变更单（AOC）：变更前/后记录 + 确认执行
 11. **M08-A/B** 历史数据迁移：563条资产 + 346条领用单 + 56条调拨单 + 1775条日志
@@ -145,5 +162,5 @@
 
 ---
 
-**最后更新**：2026-08-20（DevOps 基建：GitLab 远端 + CI 流水线 + Actuator 健康端点 + docs-permit-all 存量 bug 修复，测试 75/75；此前同日完成 M02 + REVIEW-M02 审查）
+**最后更新**：2026-08-22（M03 资产主表 CRUD + 状态机完成，测试 147/147；同日完成 M02.5 原型对齐 + REVIEW-M02 P1/P2 修复）
 **当前阶段负责人**：待指派
