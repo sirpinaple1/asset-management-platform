@@ -53,8 +53,11 @@ export interface Asset {
 
 /** 资产新增/编辑表单（契约：AssetReq。状态不开放编辑——新增固定 IDLE，流转走业务端点） */
 export interface AssetForm {
-  /** 资产编码（必填，唯一） */
-  barcode: string
+  /**
+   * 资产编码（唯一）。新增可不传——由服务端自动生成（分类前缀-日期-序号），传入即忽略；
+   * 编辑可传（改码场景），不传保持原编码不变。
+   */
+  barcode?: string
   /** 资产名称（必填） */
   name: string
   sn?: string

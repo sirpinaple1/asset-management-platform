@@ -22,6 +22,7 @@ const basedataStore = useBasedataStore()
 
 const formRef = ref<FormInstance>()
 const barcodeInputRef = ref<InputInstance>()
+const nameInputRef = ref<InputInstance>()
 const loading = ref(false)
 const isEdit = ref(false)
 
@@ -45,12 +46,14 @@ const formData = reactive<AssetForm>({
   remark: '',
 })
 
-/** 校验规则（对齐后端 AssetReq 注解约束） */
-const rules: FormRules = {
-  barcode: [
-    { required: true, message: '请输入资产编码', trigger: 'blur' },
-    { max: 100, message: '资产编码长度不能超过 100', trigger: 'blur' },
-  ],
+/** 校验规则（对齐后端 AssetReq 注解约束；barcode 仅编辑（改码场景）时必填，新增由服务端生成） */
+const rules = computed<FormRules>(() => ({
+  barcode: isEdit.value
+    ? [
+        { required: true, message: '请输入资产编码', trigger: 'blur' },
+        { max: 100, message: '资产编码长度不能超过 100', trigger: 'blur' },
+      ]
+    : [],
   name: [
     { required: true, message: '请输入资产名称', trigger: 'blur' },
     { max: 200, message: '资产名称长度不能超过 200', trigger: 'blur' },
@@ -59,7 +62,7 @@ const rules: FormRules = {
   locationDetail: [{ max: 200, message: '存放位置明细长度不能超过 200', trigger: 'blur' }],
   userDepartment: [{ max: 100, message: '使用人部门长度不能超过 100', trigger: 'blur' }],
   remark: [{ max: 500, message: '备注长度不能超过 500', trigger: 'blur' }],
-}
+}))
 
 /* ---------------- 基础数据选项 ---------------- */
 const categoryTree = computed(() => buildTree<Category>(basedataStore.categories))
@@ -120,9 +123,9 @@ watch(
 
 const handleClose = () => emit('update:visible', false)
 
-/** 组装提交载荷：文本 trim，空值归一为 undefined（不发空串/0 金额） */
+/** 组装提交载荷：文本 trim，空值归一为 undefined（不发空串/0 金额）；新增不发 barcode（服务端生成） */
 const buildPayload = (): AssetForm => ({
-  barcode: formData.barcode.trim(),
+  barcode: isEdit.value ? formData.barcode?.trim() : undefined,
   name: formData.name.trim(),
   sn: formData.sn?.trim() || undefined,
   categoryId: formData.categoryId || undefined,
@@ -153,7 +156,8 @@ const handleSubmit = async () => {
       ElMessage.success('更新成功')
     } else {
       saved = await assetApi.createAsset(buildPayload())
-      ElMessage.success('新增成功')
+      /* 编码由服务端生成（分类前缀-日期-序号），回显告知用户 */
+      ElMessage.success(`新增成功，资产编码：${saved.barcode}`)
     }
     emit('success', saved)
     handleClose()
@@ -183,7 +187,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
     width="680px"
     :close-on-click-modal="false"
     @update:model-value="handleClose"
-    @opened="barcodeInputRef?.focus()"
+    @opened="(isEdit ? barcodeInputRef : nameInputRef)?.focus()"
   >
     <el-form
       ref="formRef"
@@ -194,7 +198,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
     >
       <div class="form-grid">
         <!-- 基本信息 -->
-        <el-form-item label="资产编码" prop="barcode">
+        <!-- 新增：编码由服务端自动生成（分类前缀-日期-序号），不开放录入；编辑：可改码 -->
+        <el-form-item v-if="isEdit" label="资产编码" prop="barcode">
           <el-input
             ref="barcodeInputRef"
             v-model="formData.barcode"
@@ -202,8 +207,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
             :maxlength="100"
           />
         </el-form-item>
+        <el-form-item v-else label="资产编码">
+          <el-input model-value="" disabled placeholder="提交后系统自动生成" />
+        </el-form-item>
         <el-form-item label="资产名称" prop="name">
-          <el-input v-model="formData.name" placeholder="请输入资产名称" :maxlength="200" />
+          <el-input ref="nameInputRef" v-model="formData.name" placeholder="请输入资产名称" :maxlength="200" />
         </el-form-item>
         <el-form-item label="序列号" prop="sn">
           <el-input v-model="formData.sn" placeholder="请输入序列号" :maxlength="100" />
