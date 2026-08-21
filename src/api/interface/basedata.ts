@@ -81,6 +81,8 @@ export interface Category {
   id: number
   name: string
   code?: string
+  /** 资产编码前缀（新增资产服务端自动生成编码用，空则回退 SK） */
+  barcodePrefix?: string
   parentId?: number
   sortOrder: number
   remark?: string

@@ -61,6 +61,18 @@ const router = createRouter({
           name: 'basedata-models',
           component: () => import('@/views/basedata/ComingSoon.vue'),
           meta: { title: '型号管理' }
+        },
+        {
+          path: 'receipts/receive',
+          name: 'receipts-receive',
+          component: () => import('@/views/receipt/ReceiveList.vue'),
+          meta: { title: '领用&退库' }
+        },
+        {
+          path: 'receipts/borrow',
+          name: 'receipts-borrow',
+          component: () => import('@/views/receipt/BorrowList.vue'),
+          meta: { title: '借用&归还' }
         }
       ]
     },

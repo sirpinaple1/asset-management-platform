@@ -54,5 +54,6 @@ token 失效（HTTP 401）自动清除并跳回 auth-center 登录页（带 retu
 - [x] M02-Frontend: 基础数据 CRUD（公司/厂商/供应商，验收清单见 `docs/M02-前端验收清单.md`）
 - [x] M02.5-Frontend: 厂商/供应商切换服务端分页契约（tabs/搜索/分页）
 - [x] M03-Frontend: 资产主表（列表筛选分页/新增编辑弹窗/详情抽屉含操作日志/报废/导出，验收清单见 `docs/M03-前端验收清单.md`）
+- [x] M04-Frontend: 领用/借用单页面（领用&退库 / 借用&归还 两菜单共用单据流：状态 tabs/搜索/分页/发起申请弹窗含闲置资产选择器/详情抽屉含审批操作/持有中资产退库归还；已对齐后端 29bd8a6 M04 契约——statusLabel/typeLabel 回填、GET /v1/allocations 持有列表、POST /v1/allocations/{id}/return 退库归还、申请 department/reason 必填）
 - [ ] M02-Frontend-Tree: 分类/位置树形结构
 - [ ] M02-Frontend-Model: 型号管理（关联分类+厂商）
