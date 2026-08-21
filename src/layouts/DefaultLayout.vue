@@ -31,9 +31,9 @@ const cachedViews = computed(() => tabsStore.tabs.map((t) => t.name))
 const activeNav = computed(() => route.name)
 const user = computed(() => userStore.me)
 
-/** 资产管理模块（资产列表 + 基础数据 + 领用借用/调拨单据子页面）→ 显示二级子侧边栏 */
+/** 资产管理模块（资产列表 + 基础数据 + 领用借用/调拨/变更单据子页面）→ 显示二级子侧边栏 */
 const isAssetModule = computed(() =>
-  ['assets-', 'basedata-', 'receipts-', 'transfers-'].some((p) =>
+  ['assets-', 'basedata-', 'receipts-', 'transfers-', 'changes-'].some((p) =>
     String(route.name || '').startsWith(p),
   ),
 )
@@ -238,7 +238,9 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
             <router-link to="/receipts/borrow" class="menu-item" :class="{ active: route.path === '/receipts/borrow' }">
               <span>借用&归还</span>
             </router-link>
-            <a class="menu-item" @click="comingSoon"><span>实物信息变更</span></a>
+            <router-link to="/changes" class="menu-item" :class="{ active: route.path === '/changes' }">
+              <span>实物信息变更</span>
+            </router-link>
             <a class="menu-item" @click="comingSoon"><span>盘点管理</span></a>
             <a class="menu-item" @click="comingSoon"><span>分析报表</span></a>
           </div>

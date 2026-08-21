@@ -79,6 +79,12 @@ const router = createRouter({
           name: 'transfers-list',
           component: () => import('@/views/transfer/TransferList.vue'),
           meta: { title: '资产调拨' }
+        },
+        {
+          path: 'changes',
+          name: 'changes-list',
+          component: () => import('@/views/change/ChangeList.vue'),
+          meta: { title: '实物信息变更' }
         }
       ]
     },
