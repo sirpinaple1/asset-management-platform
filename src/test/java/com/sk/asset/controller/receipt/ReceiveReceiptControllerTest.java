@@ -159,6 +159,7 @@ class ReceiveReceiptControllerTest {
         ReceiptApplyReq req = new ReceiptApplyReq();
         req.setType("RECEIVE");
         req.setAssetIds(List.of(1L, 2L));
+        req.setLocationId(1L);
         req.setDepartment("PMC部");
         req.setReason("产线使用");
 
@@ -176,6 +177,7 @@ class ReceiveReceiptControllerTest {
         ReceiptApplyReq req = new ReceiptApplyReq();
         req.setType("RECEIVE");
         req.setAssetIds(List.of(1L));
+        req.setLocationId(1L);
         req.setDepartment("PMC部");
         req.setReason("产线使用");
 
@@ -189,11 +191,32 @@ class ReceiveReceiptControllerTest {
     }
 
     @Test
+    void create_shouldReturn400WhenLocationMissing() throws Exception {
+        // 领用区域必填：缺失时 400（审批通过后资产位置更新至此，盘点依据）
+        loginUser();
+        ReceiptApplyReq req = new ReceiptApplyReq();
+        req.setType("RECEIVE");
+        req.setAssetIds(List.of(1L));
+        req.setDepartment("PMC部");
+        req.setReason("产线使用");
+
+        mockMvc.perform(post("/api/v1/receipts")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(400))
+            .andExpect(jsonPath("$.message").value("领用区域不能为空"));
+
+        verify(receiptService, never()).create(any(), any(), any());
+    }
+
+    @Test
     void create_shouldReturn400WhenAssetIdsEmpty() throws Exception {
         loginUser();
         ReceiptApplyReq req = new ReceiptApplyReq();
         req.setType("RECEIVE");
         req.setAssetIds(List.of());
+        req.setLocationId(1L);
         req.setDepartment("PMC部");
         req.setReason("产线使用");
 

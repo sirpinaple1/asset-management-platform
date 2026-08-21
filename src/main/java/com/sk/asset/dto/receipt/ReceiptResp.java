@@ -35,6 +35,12 @@ public class ReceiptResp {
 
     private String department;
 
+    /** 领用区域 ID（审批通过后资产位置更新至此） */
+    private Long locationId;
+
+    /** 领用区域名称（列表/详情回填） */
+    private String locationName;
+
     private String reason;
 
     private Long approverUserId;
@@ -67,6 +73,8 @@ public class ReceiptResp {
         resp.setApplicantUserId(entity.getApplicantUserId());
         resp.setApplicantName(entity.getApplicantName());
         resp.setDepartment(entity.getDepartment());
+        resp.setLocationId(entity.getLocationId());
+        resp.setLocationName(entity.getLocationName());
         resp.setReason(entity.getReason());
         resp.setApproverUserId(entity.getApproverUserId());
         resp.setApproverName(entity.getApproverName());

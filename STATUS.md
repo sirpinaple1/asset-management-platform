@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-**Phase 3 进行中**：M05 调拨单（ATR）审批流已完成，下一步 M06 实物信息变更单（AOC）。
+**Phase 3 进行中**：M06 实物信息变更单（AOC）已完成，下一步 M08-A/B 历史数据迁移。
 
 ## 已完成
 
@@ -134,6 +134,22 @@
   - 测试 229/229（新增 39：TransferOrderServiceImplTest 22 + TransferOrderControllerTest 14 + M04 反向占用 1 + writeLog 2）；前端 M05 调拨页面（菜单已预留 comingSoon）可按此契约开发
   - **待跟进**：V20260825 需在测试库 172.16.5.247 手动执行；前端持有关系列表（领用&退库/借用&归还按 type 过滤）不显示 TRANSFER 持有记录，需前端"全部"视图或后端 type 参数扩展（M05 持有经调拨产生的用户退库场景）
 
+- [x] **M06 实物信息变更单（AOC）**（2026-08-21）：
+  - 迁移 `V20260826__change_order_target_values.sql`：change_order 加姓名快照列（applicant_name/confirmer_name，对齐 M04/M05 快照模式）+ 变更后目标值列（new_user_id/new_user_name/new_user_department/new_location_id/new_location_detail/new_company_id，**null = 不变更**，清空类操作走资产编辑）；asset_allocation.type 枚举扩至 CHANGE（已本地库实测应用，flyway 至 v20260826）
+  - `enums/change`：ChangeStatus（PENDING/CONFIRMED/CANCELLED）+ ChangeField（变更字段白名单：user_id/user_department/location_id/location_detail/company_id，不含编码/分类等固有属性）
+  - `entity/mapper/service/controller/dto` 的 change 上下文：ChangeOrder（主表，一单 = N 台资产 + 一组统一新值）+ ChangeOrderItem（明细，**每台资产的每个实际变化字段一行**，value_before/value_after 存展示值——位置/公司存名称、使用人存姓名，供变更前/后对比与 AOC 打印格式）
+  - `ChangeOrderServiceImpl`：create（至少一项变更字段 400 + 资产存在 404 + 报废 409 + 待审批领用/借用占用 409 + 待确认调拨占用 409 + 待确认变更单自身互斥 409 + 变更后位置/公司存在性 400 + AOC 单号锁定读串行取号 + 明细行仅记实际变化字段、指定字段与当前值一致 400"无变更内容"）；confirm（更新 asset 归属字段 + **使用人变化时同步持有关系**：闭环旧 allocation + 新建 type=CHANGE 持有（避免"在用报废悬死持有"同类脱节）+ 写"实物信息变更"日志（明细行 before/after 拼装，与单据严格一致）+ 待确认期间资产报废 409 拦截；**信息修正单据允许发起人自己确认**——区别于 M04/M05 审批流，制单与执行常为同一资产管理员）；cancel（仅发起人可撤 403，资产不变）；全部 @Transactional
+  - **M04/M05 反向占用校验**：领用/借用与调拨的 create 均增加待确认变更单占用检查（三向互斥闭环，防止单据同时操作同一资产）
+  - 端点：POST/GET /api/v1/change-orders、GET /api/v1/change-orders/{id}、POST /{id}/confirm、POST /{id}/cancel（列表支持 status/userId/assetId/date 筛选，**assetId 按明细行反查该资产的变更历史**）
+  - 测试 267/267（新增 40：ChangeOrderServiceImplTest 24 + ChangeOrderControllerTest 12 + M04/M05 反向占用 2）；`Map.of()` 空集 NPE 坑：不可 null-key 查询，名称批量查询空集返回 HashMap
+  - **待跟进**：V20260826 需在测试库 172.16.5.247 手动执行；旧系统 AOC 打印格式（Excel File 5）前端打印预览待 M-FE 对接；本地 6006 端口若跑着 M06 之前的旧实例需重启后才含变更单端点
+
+- [x] **M04 补充：领用区域必填 + 审批更新资产位置**（2026-08-21，用户验收反馈"领用后位置不变，盘点会错"）：
+  - 迁移 `V20260827__receipt_location.sql`：receive_receipt 加 location_id（存量单 NULL，审批跳过位置更新兼容过渡）
+  - 申请契约：`locationId` @NotNull 必填（缺省 400"领用区域不能为空"）+ create 校验位置存在性（400）
+  - 审批联动：approve 时资产 `location_id` 更新为领用区域（与持有人同一 update），日志追加"领用区域：XX"；列表/详情回填 `locationName`；home_location_id（归属位置）不动，归还/盘亏可追溯"家"位置
+  - 测试 270/270（新增 3：位置缺失 400 ×2 + 存量单跳过位置更新 + 位置 SET 断言）；前端待适配：申请弹窗加"领用区域"必选下拉（GET /api/v1/locations 取数）
+
 ## 进行中
 
 - （无）
@@ -152,7 +168,7 @@
 7. ~~**M03** 资产主表 CRUD + 状态机（IDLE/IN_USE/DISCARD/PENDING_CONFIRM）~~（已完成，2026-08-22）
 8. ~~**M04** 领用/借用单（ARE/BOR）审批流：申请→审批→资产状态联动（`receive_receipt.type` 区分领用/借用，共用单据流）~~（已完成，2026-08-21）
 9. ~~**M05** 调拨单（ATR）审批流：调出→调入确认→归属更新~~（已完成，2026-08-21）
-10. **M06** 实物信息变更单（AOC）：变更前/后记录 + 确认执行
+10. ~~**M06** 实物信息变更单（AOC）：变更前/后记录 + 确认执行~~（已完成，2026-08-21）
 11. **M08-A/B** 历史数据迁移：563条资产 + 346条领用单 + 56条调拨单 + 1775条日志
 
 ### Phase 4 — 支撑功能（Phase 3 完成后）
@@ -196,5 +212,5 @@
 
 ---
 
-**最后更新**：2026-08-21（M05 调拨单审批流完成，测试 229/229；同日完成在用报废悬死持有关系修复、资产编码自动生成、M04 审批流）
+**最后更新**：2026-08-21（M06 实物信息变更单完成，测试 267/267；同日完成 M05 调拨单审批流、在用报废悬死持有关系修复、资产编码自动生成、M04 审批流）
 **当前阶段负责人**：待指派

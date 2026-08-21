@@ -6,16 +6,23 @@ import com.sk.asset.common.BusinessException;
 import com.sk.asset.dto.receipt.ReceiptApplyReq;
 import com.sk.asset.dto.receipt.ReceiptQuery;
 import com.sk.asset.entity.asset.Asset;
+import com.sk.asset.entity.basedata.Location;
+import com.sk.asset.entity.change.ChangeOrder;
+import com.sk.asset.entity.change.ChangeOrderItem;
 import com.sk.asset.entity.receipt.AssetAllocation;
 import com.sk.asset.entity.receipt.ReceiveReceipt;
 import com.sk.asset.entity.receipt.ReceiveReceiptItem;
 import com.sk.asset.entity.transfer.TransferOrder;
 import com.sk.asset.entity.transfer.TransferOrderItem;
 import com.sk.asset.enums.asset.AssetStatus;
+import com.sk.asset.enums.change.ChangeStatus;
 import com.sk.asset.enums.receipt.ReceiptStatus;
 import com.sk.asset.enums.receipt.ReceiptType;
 import com.sk.asset.enums.transfer.TransferStatus;
 import com.sk.asset.mapper.asset.AssetMapper;
+import com.sk.asset.mapper.basedata.LocationMapper;
+import com.sk.asset.mapper.change.ChangeOrderItemMapper;
+import com.sk.asset.mapper.change.ChangeOrderMapper;
 import com.sk.asset.mapper.receipt.AssetAllocationMapper;
 import com.sk.asset.mapper.receipt.ReceiveReceiptItemMapper;
 import com.sk.asset.mapper.receipt.ReceiveReceiptMapper;
@@ -53,8 +60,11 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
     private final ReceiveReceiptItemMapper itemMapper;
     private final AssetAllocationMapper allocationMapper;
     private final AssetMapper assetMapper;
+    private final LocationMapper locationMapper;
     private final TransferOrderMapper transferOrderMapper;
     private final TransferOrderItemMapper transferOrderItemMapper;
+    private final ChangeOrderMapper changeOrderMapper;
+    private final ChangeOrderItemMapper changeOrderItemMapper;
     private final AssetService assetService;
 
     @Override
@@ -68,6 +78,12 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
                 .collect(Collectors.toList());
         if (assetIds.isEmpty()) {
             throw new BusinessException(400, "请至少选择一台资产");
+        }
+
+        // 0. 领用区域存在性校验（必填：审批通过后资产位置更新至此，盘点按位置扫资产的依据）
+        Location location = locationMapper.selectById(req.getLocationId());
+        if (location == null) {
+            throw new BusinessException(400, "领用区域不存在（id=" + req.getLocationId() + "）");
         }
 
         // 1. 资产存在性校验
@@ -115,6 +131,26 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
             }
         }
 
+        // 2c. 待确认变更单占用校验（M06）：资产在 PENDING 变更单中不可发起领用/借用（互斥占用）
+        List<ChangeOrderItem> changeOccupied = changeOrderItemMapper.selectList(
+                new LambdaQueryWrapper<ChangeOrderItem>()
+                        .in(ChangeOrderItem::getAssetId, assetIds));
+        if (!changeOccupied.isEmpty()) {
+            Set<Long> changeIds = changeOccupied.stream()
+                    .map(ChangeOrderItem::getOrderId)
+                    .collect(Collectors.toSet());
+            List<ChangeOrder> pendingChanges = changeOrderMapper.selectList(
+                    new LambdaQueryWrapper<ChangeOrder>()
+                            .in(ChangeOrder::getId, changeIds)
+                            .eq(ChangeOrder::getStatus, ChangeStatus.PENDING.name()));
+            if (!pendingChanges.isEmpty()) {
+                throw new BusinessException(409, "资产已有待确认的变更单（单号："
+                        + pendingChanges.stream().map(ChangeOrder::getSerialNo)
+                                .collect(Collectors.joining("、"))
+                        + "），不可发起领用/借用");
+            }
+        }
+
         // 3. 生成单号（锁定读串行取号，见 generateSerialNo）
         String serialNo = generateSerialNo(type);
 
@@ -126,6 +162,7 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
         receipt.setApplicantUserId(applicantUserId);
         receipt.setApplicantName(applicantName);
         receipt.setDepartment(req.getDepartment());
+        receipt.setLocationId(req.getLocationId());
         receipt.setReason(req.getReason());
         receiptMapper.insert(receipt);
         for (Long assetId : assetIds) {
@@ -189,16 +226,27 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
         String applicantDisplay = displayName(receipt.getApplicantUserId(), receipt.getApplicantName());
         String note = ReceiptType.of(receipt.getType()).getLabel() + "单 " + receipt.getSerialNo()
                 + " 审批通过，使用人：" + applicantDisplay;
+        // 领用区域：审批通过后资产位置更新至此（盘点按位置扫资产的依据）。
+        // 存量单（加列前的 PENDING 单）location_id 为 NULL，跳过位置更新。
+        Location receiveLocation = receipt.getLocationId() != null
+                ? locationMapper.selectById(receipt.getLocationId()) : null;
+        if (receipt.getLocationId() != null) {
+            note += "，领用区域：" + (receiveLocation != null ? receiveLocation.getName() : receipt.getLocationId());
+        }
         for (ReceiveReceiptItem item : items) {
             Asset asset = assetMapper.selectById(item.getAssetId());
             // 资产状态 PENDING_CONFIRM → IN_USE（写日志）
             assetService.changeStatus(item.getAssetId(), AssetStatus.IN_USE, approverUserId,
                     ReceiptType.of(receipt.getType()).getLabel(), note);
-            // 更新资产持有人（使用人/部门快照）
-            assetMapper.update(null, new LambdaUpdateWrapper<Asset>()
+            // 更新资产持有人（使用人/部门快照）+ 位置（领用区域）
+            LambdaUpdateWrapper<Asset> assetUpdate = new LambdaUpdateWrapper<Asset>()
                     .eq(Asset::getId, item.getAssetId())
                     .set(Asset::getUserId, receipt.getApplicantUserId())
-                    .set(Asset::getUserDepartment, receipt.getDepartment()));
+                    .set(Asset::getUserDepartment, receipt.getDepartment());
+            if (receipt.getLocationId() != null) {
+                assetUpdate.set(Asset::getLocationId, receipt.getLocationId());
+            }
+            assetMapper.update(null, assetUpdate);
             // 写持有关系（"查现在在谁手里"）
             AssetAllocation allocation = new AssetAllocation();
             allocation.setAssetId(item.getAssetId());
@@ -297,6 +345,7 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
         List<ReceiveReceiptItem> items = itemMapper.selectList(new LambdaQueryWrapper<ReceiveReceiptItem>()
                 .in(ReceiveReceiptItem::getReceiptId, receiptIds)
                 .orderByAsc(ReceiveReceiptItem::getId));
+        fillLocationNames(receipts);
         if (items.isEmpty()) {
             receipts.forEach(receipt -> receipt.setItems(List.of()));
             return;
@@ -323,5 +372,23 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
 
     private String displayName(Long userId, String name) {
         return (name != null && !name.isBlank()) ? name : String.valueOf(userId);
+    }
+
+    /** 批量回填领用区域名称（存量单 location_id 为 NULL 时不回填） */
+    private void fillLocationNames(List<ReceiveReceipt> receipts) {
+        Set<Long> locationIds = receipts.stream()
+                .map(ReceiveReceipt::getLocationId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (locationIds.isEmpty()) {
+            return;
+        }
+        Map<Long, String> names = locationMapper.selectBatchIds(locationIds).stream()
+                .collect(Collectors.toMap(Location::getId, Location::getName));
+        for (ReceiveReceipt receipt : receipts) {
+            if (receipt.getLocationId() != null) {
+                receipt.setLocationName(names.get(receipt.getLocationId()));
+            }
+        }
     }
 }

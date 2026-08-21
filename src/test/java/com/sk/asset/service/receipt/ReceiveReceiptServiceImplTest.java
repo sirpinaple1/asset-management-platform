@@ -6,6 +6,7 @@ import com.sk.asset.common.BusinessException;
 import com.sk.asset.dto.receipt.ReceiptApplyReq;
 import com.sk.asset.dto.receipt.ReceiptQuery;
 import com.sk.asset.entity.asset.Asset;
+import com.sk.asset.entity.basedata.Location;
 import com.sk.asset.entity.receipt.AssetAllocation;
 import com.sk.asset.entity.receipt.ReceiveReceipt;
 import com.sk.asset.entity.receipt.ReceiveReceiptItem;
@@ -13,6 +14,7 @@ import com.sk.asset.entity.transfer.TransferOrder;
 import com.sk.asset.entity.transfer.TransferOrderItem;
 import com.sk.asset.enums.asset.AssetStatus;
 import com.sk.asset.mapper.asset.AssetMapper;
+import com.sk.asset.mapper.basedata.LocationMapper;
 import com.sk.asset.mapper.receipt.AssetAllocationMapper;
 import com.sk.asset.mapper.receipt.ReceiveReceiptItemMapper;
 import com.sk.asset.mapper.receipt.ReceiveReceiptMapper;
@@ -65,10 +67,19 @@ class ReceiveReceiptServiceImplTest {
     private AssetMapper assetMapper;
 
     @Mock
+    private LocationMapper locationMapper;
+
+    @Mock
     private TransferOrderMapper transferOrderMapper;
 
     @Mock
     private TransferOrderItemMapper transferOrderItemMapper;
+
+    @Mock
+    private com.sk.asset.mapper.change.ChangeOrderMapper changeOrderMapper;
+
+    @Mock
+    private com.sk.asset.mapper.change.ChangeOrderItemMapper changeOrderItemMapper;
 
     @Mock
     private AssetService assetService;
@@ -94,9 +105,27 @@ class ReceiveReceiptServiceImplTest {
         ReceiptApplyReq req = new ReceiptApplyReq();
         req.setType(type);
         req.setAssetIds(assetIds);
+        req.setLocationId(1L);
         req.setDepartment("PMC部");
         req.setReason("产线使用");
         return req;
+    }
+
+    private Location location() {
+        Location location = new Location();
+        location.setId(1L);
+        location.setName("一号车间");
+        return location;
+    }
+
+    /** create 路径位置存在性校验 stub（仅 selectById） */
+    private void stubLocationExists() {
+        when(locationMapper.selectById(1L)).thenReturn(location());
+    }
+
+    /** getById/list 回填区域名称 stub（仅 selectBatchIds） */
+    private void stubLocationNames() {
+        when(locationMapper.selectBatchIds(any())).thenReturn(List.of(location()));
     }
 
     private ReceiveReceipt pendingReceipt() {
@@ -108,6 +137,7 @@ class ReceiveReceiptServiceImplTest {
         receipt.setApplicantUserId(100L);
         receipt.setApplicantName("张三");
         receipt.setDepartment("PMC部");
+        receipt.setLocationId(1L);
         receipt.setReason("产线使用");
         return receipt;
     }
@@ -125,6 +155,8 @@ class ReceiveReceiptServiceImplTest {
     @Test
     void create_shouldInsertReceiptItemsAndLockAssets() {
         AtomicReference<ReceiveReceipt> inserted = new AtomicReference<>();
+        stubLocationExists();
+        stubLocationNames();
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L), idleAsset(2L)));
         when(itemMapper.selectList(any())).thenReturn(List.of());
         when(receiptMapper.selectOne(any())).thenReturn(null);
@@ -144,6 +176,8 @@ class ReceiveReceiptServiceImplTest {
         assertEquals("RECEIVE", created.getType());
         assertEquals(100L, created.getApplicantUserId());
         assertEquals("张三", created.getApplicantName());
+        assertEquals(1L, created.getLocationId());
+        assertEquals("一号车间", created.getLocationName());
         verify(itemMapper, times(2)).insert(any(ReceiveReceiptItem.class));
         verify(assetService, times(2)).changeStatus(anyLong(), eq(AssetStatus.PENDING_CONFIRM),
                 eq(100L), eq("领用"), contains("发起申请，待审批"));
@@ -152,6 +186,8 @@ class ReceiveReceiptServiceImplTest {
     @Test
     void create_borrowShouldUseBorPrefixAndBorrowLogType() {
         AtomicReference<ReceiveReceipt> inserted = new AtomicReference<>();
+        stubLocationExists();
+        stubLocationNames();
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
         when(itemMapper.selectList(any())).thenReturn(List.of());
         when(receiptMapper.selectOne(any())).thenReturn(null);
@@ -175,6 +211,7 @@ class ReceiveReceiptServiceImplTest {
     void create_shouldGenerateNextSerialFromMax() {
         ReceiveReceipt latest = new ReceiveReceipt();
         latest.setSerialNo("ARE" + today() + "0005");
+        stubLocationExists();
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
         when(itemMapper.selectList(any())).thenReturn(List.of());
         when(receiptMapper.selectOne(any())).thenReturn(latest);
@@ -192,7 +229,20 @@ class ReceiveReceiptServiceImplTest {
     }
 
     @Test
+    void create_shouldRejectWhenLocationMissing() {
+        when(locationMapper.selectById(1L)).thenReturn(null);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> receiptService.create(applyReq("RECEIVE", List.of(1L)), 100L, "张三"));
+
+        assertEquals(400, exception.getCode());
+        assertTrue(exception.getMessage().contains("领用区域不存在"));
+        verify(receiptMapper, never()).insert(any(ReceiveReceipt.class));
+    }
+
+    @Test
     void create_shouldRejectWhenAssetMissing() {
+        stubLocationExists();
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
 
         BusinessException exception = assertThrows(BusinessException.class,
@@ -204,6 +254,7 @@ class ReceiveReceiptServiceImplTest {
 
     @Test
     void create_shouldRejectWhenAssetOccupiedByPendingReceipt() {
+        stubLocationExists();
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
         when(itemMapper.selectList(any())).thenReturn(List.of(item(5L, 1L)));
         ReceiveReceipt pending = pendingReceipt();
@@ -220,6 +271,7 @@ class ReceiveReceiptServiceImplTest {
 
     @Test
     void create_shouldRejectWhenAssetOccupiedByPendingTransfer() {
+        stubLocationExists();
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
         TransferOrderItem transferItem = new TransferOrderItem();
         transferItem.setOrderId(7L);
@@ -240,6 +292,28 @@ class ReceiveReceiptServiceImplTest {
     }
 
     @Test
+    void create_shouldRejectWhenAssetOccupiedByPendingChangeOrder() {
+        stubLocationExists();
+        when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
+        com.sk.asset.entity.change.ChangeOrderItem changeItem = new com.sk.asset.entity.change.ChangeOrderItem();
+        changeItem.setOrderId(9L);
+        changeItem.setAssetId(1L);
+        when(changeOrderItemMapper.selectList(any())).thenReturn(List.of(changeItem));
+        com.sk.asset.entity.change.ChangeOrder pendingChange = new com.sk.asset.entity.change.ChangeOrder();
+        pendingChange.setId(9L);
+        pendingChange.setSerialNo("AOC" + today() + "0001");
+        pendingChange.setStatus("PENDING");
+        when(changeOrderMapper.selectList(any())).thenReturn(List.of(pendingChange));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> receiptService.create(applyReq("RECEIVE", List.of(1L)), 100L, "张三"));
+
+        assertEquals(409, exception.getCode());
+        assertTrue(exception.getMessage().contains("变更单"));
+        verify(receiptMapper, never()).insert(any(ReceiveReceipt.class));
+    }
+
+    @Test
     void create_shouldRejectInvalidType() {
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
                 () -> receiptService.create(applyReq("BAD", List.of(1L)), 100L, "张三"));
@@ -248,6 +322,7 @@ class ReceiveReceiptServiceImplTest {
 
     @Test
     void create_shouldPropagateIllegalStatusTransition() {
+        stubLocationExists();
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
         when(itemMapper.selectList(any())).thenReturn(List.of());
         when(receiptMapper.selectOne(any())).thenReturn(null);
@@ -275,6 +350,8 @@ class ReceiveReceiptServiceImplTest {
         when(assetMapper.selectById(1L)).thenReturn(asset);
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(asset));
         when(receiptMapper.updateById(any(ReceiveReceipt.class))).thenReturn(1);
+        stubLocationExists();
+        stubLocationNames();
 
         ReceiveReceipt approved = receiptService.approve(1L, 200L, "李四");
 
@@ -284,6 +361,9 @@ class ReceiveReceiptServiceImplTest {
         assertNotNull(approved.getApproveTime());
         verify(assetService).changeStatus(eq(1L), eq(AssetStatus.IN_USE), eq(200L),
                 eq("领用"), contains("使用人：张三"));
+        // 日志包含领用区域（盘点追溯依据）
+        verify(assetService).changeStatus(eq(1L), eq(AssetStatus.IN_USE), eq(200L),
+                eq("领用"), contains("领用区域：一号车间"));
         ArgumentCaptor<AssetAllocation> allocationCaptor = ArgumentCaptor.forClass(AssetAllocation.class);
         verify(allocationMapper).insert(allocationCaptor.capture());
         AssetAllocation allocation = allocationCaptor.getValue();
@@ -295,9 +375,33 @@ class ReceiveReceiptServiceImplTest {
         assertEquals(3L, allocation.getCompanyId());
         assertNotNull(allocation.getAllocatedAt());
         assertNull(allocation.getReturnedAt());
-        // 资产持有人更新为申请人
-        verify(assetMapper).update(any(), any());
+        // 资产持有人 + 位置（领用区域）更新为申请人申请的值
+        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Asset>> updateCaptor =
+                ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper.class);
+        verify(assetMapper).update(any(), updateCaptor.capture());
+        assertTrue(updateCaptor.getValue().getSqlSet().contains("location_id"),
+                "审批应更新资产位置（location_id），实际 SET：" + updateCaptor.getValue().getSqlSet());
         verify(receiptMapper).updateById(any(ReceiveReceipt.class));
+    }
+
+    @Test
+    void approve_shouldSkipLocationUpdateForLegacyReceiptWithoutLocation() {
+        // 存量单（加列前创建）location_id 为 NULL：审批跳过位置更新，仅写持有人
+        ReceiveReceipt legacy = pendingReceipt();
+        legacy.setLocationId(null);
+        when(receiptMapper.selectById(1L)).thenReturn(legacy);
+        when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
+        when(assetMapper.selectById(1L)).thenReturn(idleAsset(1L));
+        when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
+        when(receiptMapper.updateById(any(ReceiveReceipt.class))).thenReturn(1);
+
+        receiptService.approve(1L, 200L, "李四");
+
+        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Asset>> updateCaptor =
+                ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper.class);
+        verify(assetMapper).update(any(), updateCaptor.capture());
+        assertFalse(updateCaptor.getValue().getSqlSet().contains("location_id"),
+                "存量单无领用区域，不应更新位置，实际 SET：" + updateCaptor.getValue().getSqlSet());
     }
 
     @Test
@@ -343,6 +447,7 @@ class ReceiveReceiptServiceImplTest {
         when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
         when(receiptMapper.updateById(any(ReceiveReceipt.class))).thenReturn(1);
+        stubLocationNames();
 
         ReceiveReceipt rejected = receiptService.reject(1L, "不需要", 200L, "李四");
 
@@ -386,6 +491,7 @@ class ReceiveReceiptServiceImplTest {
         ReceiveReceiptItem detail = item(1L, 1L);
         when(itemMapper.selectList(any())).thenReturn(List.of(detail));
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
+        stubLocationNames();
 
         List<ReceiveReceipt> result = receiptService.list(new ReceiptQuery());
 
@@ -393,6 +499,7 @@ class ReceiveReceiptServiceImplTest {
         assertEquals(1, result.get(0).getItems().size());
         assertEquals("SKSCDM-0001", result.get(0).getItems().get(0).getAssetBarcode());
         assertEquals("测试资产1", result.get(0).getItems().get(0).getAssetName());
+        assertEquals("一号车间", result.get(0).getLocationName());
     }
 
     @Test

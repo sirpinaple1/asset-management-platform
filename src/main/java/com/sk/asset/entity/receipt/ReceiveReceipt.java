@@ -39,6 +39,9 @@ public class ReceiveReceipt {
     /** 领用/借用部门 */
     private String department;
 
+    /** 领用区域（审批通过后资产位置更新至此；存量单为 NULL，审批时跳过位置更新） */
+    private Long locationId;
+
     /** 事由 */
     private String reason;
 
@@ -67,4 +70,8 @@ public class ReceiveReceipt {
     /** 明细行（列表/详情查询时批量回填，含资产编码/名称/序列号） */
     @TableField(exist = false)
     private List<ReceiveReceiptItem> items;
+
+    /** 领用区域名称（列表/详情查询时回填，展示用） */
+    @TableField(exist = false)
+    private String locationName;
 }
