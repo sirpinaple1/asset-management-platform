@@ -15,6 +15,7 @@ import com.sk.asset.enums.asset.AssetStatus;
 import com.sk.asset.service.asset.AssetService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -22,6 +23,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.util.Arrays;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -199,18 +201,29 @@ class AssetControllerTest {
     }
 
     @Test
-    void create_shouldReturn400WhenBarcodeMissing() throws Exception {
+    void create_shouldWorkWithoutBarcode() throws Exception {
+        // 新增编码由服务端自动生成，请求不传 barcode 也能通过校验
+        loginUser();
         AssetReq req = new AssetReq();
         req.setName("镀膜机");
+
+        doAnswer(invocation -> {
+            ((Asset) invocation.getArgument(0)).setId(1L);
+            return null;
+        }).when(assetService).save(any(Asset.class), eq(100L));
+        when(assetService.getById(1L)).thenReturn(sampleAsset());
 
         mockMvc.perform(post("/api/v1/assets")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(req)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.code").value(400))
-            .andExpect(jsonPath("$.message").value("资产编码不能为空"));
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.barcode").value("SKSCDM-0001"));
 
-        verify(assetService, never()).save(any(), any());
+        // toEntity 不拷贝 barcode，交由服务层生成
+        ArgumentCaptor<Asset> captor = ArgumentCaptor.forClass(Asset.class);
+        verify(assetService).save(captor.capture(), eq(100L));
+        assertNull(captor.getValue().getBarcode());
     }
 
     @Test

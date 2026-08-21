@@ -17,6 +17,10 @@ public class Category {
 
     private String name;
     private String code;
+
+    /** 资产编码前缀（新增资产自动生成编码用，空则回退 SK） */
+    private String barcodePrefix;
+
     private Long parentId;
     private Integer sortOrder;
     private String remark;

@@ -26,6 +26,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -107,10 +109,10 @@ public class AssetServiceImpl implements AssetService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void save(Asset asset, Long operatorUserId) {
-        validateBarcodeUnique(asset.getBarcode(), null);
         validateRefs(asset);
         asset.setId(null);
         asset.setStatus(AssetStatus.IDLE.name());
+        asset.setBarcode(generateBarcode(asset.getCategoryId()));
         assetMapper.insert(asset);
         assetLogMapper.insert(buildLog(asset.getId(), "新增", operatorUserId,
                 "新增资产「" + asset.getName() + "」（编码 " + asset.getBarcode() + "）"));
@@ -122,7 +124,12 @@ public class AssetServiceImpl implements AssetService {
         if (existing == null) {
             throw new BusinessException(404, "资产不存在（id=" + asset.getId() + "）");
         }
-        validateBarcodeUnique(asset.getBarcode(), asset.getId());
+        // barcode 可空：编辑未传编码时保持原编码（MP updateById 跳过 null 列）
+        if (asset.getBarcode() != null && !asset.getBarcode().isBlank()) {
+            validateBarcodeUnique(asset.getBarcode(), asset.getId());
+        } else {
+            asset.setBarcode(null);
+        }
         validateRefs(asset);
         // 状态不随编辑变更（M03 约定：状态只能通过业务接口流转）
         asset.setStatus(existing.getStatus());
@@ -193,6 +200,36 @@ public class AssetServiceImpl implements AssetService {
         log.setOperatorUserId(operatorUserId);
         log.setContent(content);
         return log;
+    }
+
+    /**
+     * 生成资产编码：分类前缀-yyyyMMdd-4位序号（如 SKSCDM-20260821-0001）。
+     * 前缀取 asset_category.barcode_prefix（沿用旧系统编码约定，见 M08 迁移文档），
+     * 分类未配置前缀或未选分类时回退 SK；日期段与旧资产编码（前缀-序号）命名空间隔离，
+     * M08 历史迁移 upsert 不冲突。序号取号与 ARE/BOR 单号同模式：
+     * likeRight + orderByDesc + LIMIT 1 FOR UPDATE 锁定读串行，uk_asset_barcode 兜底。
+     */
+    private String generateBarcode(Long categoryId) {
+        String prefix = "SK";
+        if (categoryId != null) {
+            Category category = categoryMapper.selectById(categoryId);
+            if (category != null && category.getBarcodePrefix() != null
+                    && !category.getBarcodePrefix().isBlank()) {
+                prefix = category.getBarcodePrefix();
+            }
+        }
+        String datePart = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String scope = prefix + "-" + datePart + "-";
+        Asset latest = assetMapper.selectOne(new LambdaQueryWrapper<Asset>()
+                .likeRight(Asset::getBarcode, scope)
+                .orderByDesc(Asset::getBarcode)
+                .last("LIMIT 1 FOR UPDATE"));
+        int next = 1;
+        if (latest != null && latest.getBarcode() != null
+                && latest.getBarcode().length() > scope.length()) {
+            next = Integer.parseInt(latest.getBarcode().substring(scope.length())) + 1;
+        }
+        return scope + String.format("%04d", next);
     }
 
     private void validateBarcodeUnique(String barcode, Long excludeId) {

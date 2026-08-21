@@ -14,6 +14,10 @@ public class CategoryResp {
     private Long id;
     private String name;
     private String code;
+
+    /** 资产编码前缀（新增资产自动生成编码用，空则回退 SK） */
+    private String barcodePrefix;
+
     private Long parentId;
     private Integer sortOrder;
     private String remark;
@@ -25,6 +29,7 @@ public class CategoryResp {
         resp.setId(entity.getId());
         resp.setName(entity.getName());
         resp.setCode(entity.getCode());
+        resp.setBarcodePrefix(entity.getBarcodePrefix());
         resp.setParentId(entity.getParentId());
         resp.setSortOrder(entity.getSortOrder());
         resp.setRemark(entity.getRemark());

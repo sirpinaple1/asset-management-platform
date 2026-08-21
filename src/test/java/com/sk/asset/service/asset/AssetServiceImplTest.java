@@ -86,11 +86,16 @@ class AssetServiceImplTest {
     void save_shouldInsertWithIdleStatusAndWriteCreateLog() {
         // Given
         Asset asset = new Asset();
-        asset.setBarcode("SKSCDM-0001");
+        asset.setBarcode("USER-INPUT"); // 客户端传入编码应被忽略，由服务端生成
         asset.setName("镀膜机");
         asset.setStatus(AssetStatus.IN_USE.name()); // 客户端传入的状态应被强制覆盖
+        asset.setCategoryId(1L);
 
-        when(assetMapper.selectCount(any())).thenReturn(0L);
+        Category coating = new Category();
+        coating.setId(1L);
+        coating.setBarcodePrefix("SKSCDM");
+        when(categoryMapper.selectById(1L)).thenReturn(coating);
+        when(assetMapper.selectOne(any())).thenReturn(null); // 当日该前缀无既有编码，序号从 0001 起
         doAnswer(invocation -> {
             ((Asset) invocation.getArgument(0)).setId(1L);
             return 1;
@@ -101,6 +106,7 @@ class AssetServiceImplTest {
 
         // Then
         assertEquals(AssetStatus.IDLE.name(), asset.getStatus());
+        assertTrue(asset.getBarcode().matches("SKSCDM-\\d{8}-0001"), "编码应为 分类前缀-日期-序号，实际：" + asset.getBarcode());
         ArgumentCaptor<AssetLog> logCaptor = ArgumentCaptor.forClass(AssetLog.class);
         verify(assetLogMapper, times(1)).insert(logCaptor.capture());
         AssetLog log = logCaptor.getValue();
@@ -108,32 +114,72 @@ class AssetServiceImplTest {
         assertEquals("新增", log.getOperationType());
         assertEquals(100L, log.getOperatorUserId());
         assertTrue(log.getContent().contains("镀膜机"));
-        assertTrue(log.getContent().contains("SKSCDM-0001"));
+        assertTrue(log.getContent().contains(asset.getBarcode()));
     }
 
     @Test
-    void save_shouldRejectDuplicateBarcode() {
+    void save_shouldContinueSequenceFromLatest() {
         Asset asset = new Asset();
-        asset.setBarcode("SKSCDM-0001");
+        asset.setName("镀膜机");
+        asset.setCategoryId(1L);
+
+        Category coating = new Category();
+        coating.setId(1L);
+        coating.setBarcodePrefix("SKSCDM");
+        when(categoryMapper.selectById(1L)).thenReturn(coating);
+        when(assetMapper.selectOne(any())).thenReturn(idleAsset(9L, "SKSCDM-20200101-0005"));
+        doAnswer(invocation -> {
+            ((Asset) invocation.getArgument(0)).setId(2L);
+            return 1;
+        }).when(assetMapper).insert(any(Asset.class));
+
+        assetService.save(asset, 100L);
+
+        assertTrue(asset.getBarcode().endsWith("-0006"), "序号应在当日最大值上递增，实际：" + asset.getBarcode());
+    }
+
+    @Test
+    void save_shouldFallbackToSkPrefixWhenCategoryPrefixMissing() {
+        Asset asset = new Asset();
+        asset.setName("镀膜机");
+        asset.setCategoryId(2L); // 分类存在但未配置 barcode_prefix
+
+        Category noPrefix = new Category();
+        noPrefix.setId(2L);
+        when(categoryMapper.selectById(2L)).thenReturn(noPrefix);
+        when(assetMapper.selectOne(any())).thenReturn(null);
+        doAnswer(invocation -> {
+            ((Asset) invocation.getArgument(0)).setId(3L);
+            return 1;
+        }).when(assetMapper).insert(any(Asset.class));
+
+        assetService.save(asset, 100L);
+
+        assertTrue(asset.getBarcode().matches("SK-\\d{8}-0001"), "无前缀配置应回退 SK，实际：" + asset.getBarcode());
+    }
+
+    @Test
+    void save_shouldFallbackToSkPrefixWhenCategoryAbsent() {
+        Asset asset = new Asset(); // 未选分类
         asset.setName("镀膜机");
 
-        when(assetMapper.selectCount(any())).thenReturn(1L);
+        when(assetMapper.selectOne(any())).thenReturn(null);
+        doAnswer(invocation -> {
+            ((Asset) invocation.getArgument(0)).setId(4L);
+            return 1;
+        }).when(assetMapper).insert(any(Asset.class));
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> assetService.save(asset, 100L));
-        assertEquals(409, ex.getCode());
-        assertTrue(ex.getMessage().contains("已存在"));
-        verify(assetMapper, never()).insert(any(Asset.class));
+        assetService.save(asset, 100L);
+
+        assertTrue(asset.getBarcode().matches("SK-\\d{8}-0001"), "未选分类应回退 SK，实际：" + asset.getBarcode());
     }
 
     @Test
     void save_shouldRejectWhenCategoryNotExists() {
         Asset asset = new Asset();
-        asset.setBarcode("SKSCDM-0001");
         asset.setName("镀膜机");
         asset.setCategoryId(99L);
 
-        when(assetMapper.selectCount(any())).thenReturn(0L);
         when(categoryMapper.selectById(99L)).thenReturn(null);
 
         BusinessException ex = assertThrows(BusinessException.class,
@@ -146,11 +192,9 @@ class AssetServiceImplTest {
     @Test
     void save_shouldRejectWhenLocationNotExists() {
         Asset asset = new Asset();
-        asset.setBarcode("SKSCDM-0001");
         asset.setName("镀膜机");
         asset.setLocationId(99L);
 
-        when(assetMapper.selectCount(any())).thenReturn(0L);
         when(locationMapper.selectById(99L)).thenReturn(null);
 
         BusinessException ex = assertThrows(BusinessException.class,
@@ -210,6 +254,24 @@ class AssetServiceImplTest {
 
         assetService.updateById(update);
 
+        verify(assetMapper, times(1)).updateById(update);
+    }
+
+    @Test
+    void updateById_shouldKeepBarcodeWhenBlank() {
+        // 编辑未传编码：跳过唯一校验，barcode 置 null（MP updateById 跳过该列，保持原编码）
+        Asset existing = idleAsset(1L, "SKSCDM-0001");
+        Asset update = new Asset();
+        update.setId(1L);
+        update.setName("镀膜机-改名");
+
+        when(assetMapper.selectById(1L)).thenReturn(existing);
+        when(assetMapper.updateById(update)).thenReturn(1);
+
+        assetService.updateById(update);
+
+        assertNull(update.getBarcode());
+        verify(assetMapper, never()).selectCount(any());
         verify(assetMapper, times(1)).updateById(update);
     }
 

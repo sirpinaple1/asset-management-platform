@@ -111,6 +111,13 @@
   - 端点：POST/GET /api/v1/receipts、GET /api/v1/receipts/{id}、POST /{id}/approve、POST /{id}/reject、GET /api/v1/allocations、POST /api/v1/allocations/{id}/return
   - 测试 185/185（新增 38：ReceiveReceiptServiceImplTest 16 + AllocationServiceImplTest 4 + ReceiveReceiptControllerTest 13 + AllocationControllerTest 5）；前端 M04 页面（worktree stash）可按此契约联调
 
+- [x] **M03 补充：资产编码改为系统自动生成**（2026-08-21，用户验收反馈）：
+  - 迁移 `V20260824__asset_barcode_auto_generate.sql`：asset_category 加 barcode_prefix（种子对齐旧系统前缀：SKSCDM 镀膜/SKSCFZ 辅助/SKSCJC 检测/SKBGDN IT数码，见 M08 迁移文档）
+  - 生成规则：`{分类前缀}-{yyyyMMdd}-{4位序号}`（如 SKSCDM-20260821-0001）；前缀缺省回退 SK；取号复用 ARE/BOR 单号模式（likeRight + orderByDesc + LIMIT 1 FOR UPDATE，uk_asset_barcode 兜底）
+  - 日期段与旧系统编码（前缀-序号）命名空间隔离 → M08 历史 563 条 upsert 不冲突
+  - API 契约：POST /assets 传 barcode 即忽略（兼容旧前端）；PUT 不传 barcode 保持原编码、传则改码（唯一校验照旧）
+  - 前端待适配：新增弹窗隐藏资产编码输入框，保存后从响应取生成编码展示
+
 ## 进行中
 
 - （无）
@@ -173,5 +180,5 @@
 
 ---
 
-**最后更新**：2026-08-21（M04 领用/借用单审批流完成，测试 178/178；M02.5 + M03 已于同日收尾提交推送 82163d0/384449f）
+**最后更新**：2026-08-21（M03 补充：资产编码系统自动生成，测试 188/188；同日 M04 审批流完成、M02.5+M03 收尾推送）
 **当前阶段负责人**：待指派

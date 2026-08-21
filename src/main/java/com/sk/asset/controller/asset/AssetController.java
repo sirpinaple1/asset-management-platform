@@ -114,7 +114,7 @@ public class AssetController {
         return Result.ok(AssetResp.from(asset));
     }
 
-    @Operation(summary = "新增资产（状态自动设为闲置）")
+    @Operation(summary = "新增资产（编码由服务端自动生成：分类前缀-日期-序号；状态自动设为闲置）")
     @SecurityRequirement(name = "BearerAuth")
     @PostMapping
     public Result<AssetResp> create(@RequestBody @Valid AssetReq req) {

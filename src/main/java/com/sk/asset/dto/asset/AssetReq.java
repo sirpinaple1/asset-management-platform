@@ -10,11 +10,12 @@ import java.time.LocalDate;
 
 /**
  * 资产请求 DTO。状态不开放编辑：新增固定 IDLE，变更走 changeStatus 业务方法。
+ * 新增时编码由服务端自动生成（分类前缀-日期-序号），barcode 传入即忽略；
+ * 编辑时 barcode 可传（改码场景），不传则保持原编码不变。
  */
 @Data
 public class AssetReq {
 
-    @NotBlank(message = "资产编码不能为空")
     @Size(max = 100, message = "资产编码长度不能超过 100")
     private String barcode;
 
@@ -57,7 +58,7 @@ public class AssetReq {
 
     public Asset toEntity() {
         Asset entity = new Asset();
-        entity.setBarcode(this.barcode);
+        // barcode 不拷贝：新增编码由 AssetServiceImpl.save 生成，客户端传入即忽略
         entity.setName(this.name);
         entity.setSn(this.sn);
         entity.setCategoryId(this.categoryId);

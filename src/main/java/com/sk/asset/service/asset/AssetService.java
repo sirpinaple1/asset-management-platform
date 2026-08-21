@@ -23,7 +23,7 @@ public interface AssetService {
     /** 详情（JOIN 一次取齐关联名称） */
     Asset getById(Long id);
 
-    /** 新增（barcode 唯一 + 外键校验，状态固定 IDLE，写"新增"日志） */
+    /** 新增（编码服务端自动生成：分类前缀-日期-序号；外键校验，状态固定 IDLE，写"新增"日志） */
     void save(Asset asset, Long operatorUserId);
 
     /** 编辑基础信息（不含状态变更，barcode 唯一 + 外键校验） */
