@@ -37,6 +37,7 @@ public interface AssetService {
 
     /**
      * 状态机流转（M04/M05 调用入口）：校验合法流转 → 更新状态 → 写 asset_log。
+     * 操作类型按目标状态推导（IN_USE/PENDING_CONFIRM→领用，IDLE→归还，DISCARD→报废）。
      *
      * @param assetId     资产 ID
      * @param newStatus   目标状态
@@ -44,4 +45,13 @@ public interface AssetService {
      * @param note        备注（拼入日志内容）
      */
     void changeStatus(Long assetId, AssetStatus newStatus, Long operatorUserId, String note);
+
+    /**
+     * 状态机流转（显式操作类型）：M04 单据流需区分「领用/借用」语义时使用，
+     * 其余与 {@link #changeStatus(Long, AssetStatus, Long, String)} 一致。
+     *
+     * @param operationType 日志操作类型（如 领用/借用/归还，asset_log.operation_type）
+     */
+    void changeStatus(Long assetId, AssetStatus newStatus, Long operatorUserId,
+                      String operationType, String note);
 }

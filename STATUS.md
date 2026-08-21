@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-**Phase 3 进行中**：M03 资产主表 CRUD + 状态机已完成，下一步 M04 领用/借用单（ARE/BOR）审批流。
+**Phase 3 进行中**：M04 领用/借用单（ARE/BOR）审批流已完成，下一步 M05 调拨单（ATR）审批流。
 
 ## 已完成
 
@@ -100,6 +100,17 @@
   - DTO：AssetReq/AssetResp（含 statusLabel）/AssetQuery/AssetLogResp/AssetExportRow/AssetDiscardReq
   - 测试 147/147（AssetStatusTest 状态机全路径 7 + AssetServiceImplTest 15 + AssetControllerTest 13）；`POST /api/v1/assets/import` 批量导入留待 M08 历史迁移一并实现
 
+- [x] **M04 领用/借用单（ARE/BOR）审批流**（2026-08-21，前端契约对齐）：
+  - 迁移 `V20260823__receipt_user_name_snapshot.sql`：receive_receipt 加 applicant_name/approver_name、asset_allocation 加 user_name（ADR-0004 asset 库不存用户主数据 → 姓名业务时点快照，对齐 department/operator_label 快照模式）
+  - `enums/receipt`：ReceiptType（RECEIVE/BORROW + 单号前缀 ARE/BOR）/ ReceiptStatus（PENDING/APPROVED/REJECTED）
+  - `entity/mapper/service/controller/dto` 的 receipt 上下文：ReceiveReceipt（主表）+ ReceiveReceiptItem（明细，回填资产编码/名称/序列号）+ AssetAllocation（持有关系）
+  - `ReceiveReceiptServiceImpl`：create（资产存在性 404 + 待审批占用 409 领用借用互斥 + serial_no 锁定读取号 + 明细写入 + 资产→PENDING_CONFIRM）、approve（PENDING 校验 409 + 审批人≠申请人 403 + 资产→IN_USE + asset 持有人更新 + asset_allocation 写入）、reject（资产→IDLE + approveRemark 记录原因）、list/getById（明细批量回填）；全部 @Transactional，任一资产流转失败整体回滚
+  - serial_no 生成：`likeRight + orderByDesc + LIMIT 1 FOR UPDATE` 锁定读串行取号（当天按前缀分别自增），uk_receipt_serial_no 兜底
+  - `AllocationServiceImpl`：list（assetId/userId/type/active 筛选 + 资产名称回填，为前端"退库/归还"提供 allocation id 查询渠道）+ returnAllocation（持有关系闭环 + 资产→IDLE + 持有人仍为本记录持有人时清空）
+  - `AssetService.changeStatus` 增加显式操作类型重载（M04 日志区分「领用/借用/归还」；原签名行为不变）
+  - 端点：POST/GET /api/v1/receipts、GET /api/v1/receipts/{id}、POST /{id}/approve、POST /{id}/reject、GET /api/v1/allocations、POST /api/v1/allocations/{id}/return
+  - 测试 185/185（新增 38：ReceiveReceiptServiceImplTest 16 + AllocationServiceImplTest 4 + ReceiveReceiptControllerTest 13 + AllocationControllerTest 5）；前端 M04 页面（worktree stash）可按此契约联调
+
 ## 进行中
 
 - （无）
@@ -116,7 +127,7 @@
 
 ### Phase 3 — 核心业务（按依赖顺序）
 7. ~~**M03** 资产主表 CRUD + 状态机（IDLE/IN_USE/DISCARD/PENDING_CONFIRM）~~（已完成，2026-08-22）
-8. **M04** 领用/借用单（ARE/BOR）审批流：申请→审批→资产状态联动（`receive_receipt.type` 区分领用/借用，共用单据流）
+8. ~~**M04** 领用/借用单（ARE/BOR）审批流：申请→审批→资产状态联动（`receive_receipt.type` 区分领用/借用，共用单据流）~~（已完成，2026-08-21）
 9. **M05** 调拨单（ATR）审批流：调出→调入确认→归属更新
 10. **M06** 实物信息变更单（AOC）：变更前/后记录 + 确认执行
 11. **M08-A/B** 历史数据迁移：563条资产 + 346条领用单 + 56条调拨单 + 1775条日志
@@ -162,5 +173,5 @@
 
 ---
 
-**最后更新**：2026-08-22（M03 资产主表 CRUD + 状态机完成，测试 147/147；同日完成 M02.5 原型对齐 + REVIEW-M02 P1/P2 修复）
+**最后更新**：2026-08-21（M04 领用/借用单审批流完成，测试 178/178；M02.5 + M03 已于同日收尾提交推送 82163d0/384449f）
 **当前阶段负责人**：待指派

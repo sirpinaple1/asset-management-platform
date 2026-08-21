@@ -145,6 +145,13 @@ public class AssetServiceImpl implements AssetService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void changeStatus(Long assetId, AssetStatus newStatus, Long operatorUserId, String note) {
+        changeStatus(assetId, newStatus, operatorUserId, operationTypeOf(newStatus), note);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void changeStatus(Long assetId, AssetStatus newStatus, Long operatorUserId,
+                             String operationType, String note) {
         Asset asset = assetMapper.selectById(assetId);
         if (asset == null) {
             throw new BusinessException(404, "资产不存在（id=" + assetId + "）");
@@ -161,10 +168,10 @@ public class AssetServiceImpl implements AssetService {
         if (note != null && !note.isBlank()) {
             content += "：" + note.trim();
         }
-        assetLogMapper.insert(buildLog(assetId, operationTypeOf(newStatus), operatorUserId, content));
+        assetLogMapper.insert(buildLog(assetId, operationType, operatorUserId, content));
     }
 
-    /** 按目标状态推导日志操作类型（M04 落地时如需区分申请/审批语义再细化） */
+    /** 按目标状态推导日志操作类型（默认入口；M04 单据流显式传操作类型区分领用/借用） */
     private String operationTypeOf(AssetStatus newStatus) {
         switch (newStatus) {
             case IN_USE:
