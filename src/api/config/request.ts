@@ -32,6 +32,8 @@ service.interceptors.request.use((config) => {
 
 service.interceptors.response.use(
   (response: AxiosResponse<Result>) => {
+    // 二进制响应（Excel 导出等）：无 Result 包装，直接透传给调用方处理
+    if (response.config.responseType === 'blob') return response
     const body = response.data
     // 业务失败：HTTP 200 但 code != 200（asset-backend 常规业务错误）
     if (body.code !== 200) {

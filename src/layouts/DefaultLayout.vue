@@ -31,8 +31,10 @@ const cachedViews = computed(() => tabsStore.tabs.map((t) => t.name))
 const activeNav = computed(() => route.name)
 const user = computed(() => userStore.me)
 
-/** 资产管理模块（含基础数据子页面）→ 显示二级子侧边栏 */
-const isAssetModule = computed(() => String(route.name || '').startsWith('basedata-'))
+/** 资产管理模块（资产列表 + 基础数据子页面）→ 显示二级子侧边栏 */
+const isAssetModule = computed(() =>
+  ['assets-', 'basedata-'].some((p) => String(route.name || '').startsWith(p)),
+)
 
 /** 二级侧边栏：基础设置菜单（对齐原型：厂商/供应商/分类/位置/型号 + 公司主体） */
 const basedataMenus = [
@@ -130,7 +132,7 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
         </el-tooltip>
 
         <el-tooltip content="资产管理" placement="right" :show-after="300">
-          <router-link to="/basedata/manufacturers" class="nav-item" :class="{ active: isAssetModule }">
+          <router-link to="/assets" class="nav-item" :class="{ active: isAssetModule }">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
               <rect x="3" y="6" width="14" height="11" rx="1.5" :stroke="navStroke(isAssetModule)" stroke-width="1.5" />
               <path d="M3 9.5L10 6L17 9.5" :stroke="navStroke(isAssetModule)" stroke-width="1.5" stroke-linejoin="round" />
@@ -220,7 +222,9 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
             <span class="collapse-icon" :class="{ collapsed: collapsed.assetFn }">▸</span>
           </button>
           <div v-show="!collapsed.assetFn" class="section-content">
-            <a class="menu-item" @click="comingSoon"><span>资产列表</span></a>
+            <router-link to="/assets" class="menu-item" :class="{ active: route.path === '/assets' }">
+              <span>资产列表</span>
+            </router-link>
             <a class="menu-item" @click="comingSoon"><span>资产调拨</span></a>
             <a class="menu-item" @click="comingSoon"><span>领用&退库</span></a>
             <a class="menu-item" @click="comingSoon"><span>借用&归还</span></a>

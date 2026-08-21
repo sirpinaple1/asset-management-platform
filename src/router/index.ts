@@ -21,6 +21,12 @@ const router = createRouter({
           meta: { title: '工作台' }
         },
         {
+          path: 'assets',
+          name: 'assets-list',
+          component: () => import('@/views/asset/AssetList.vue'),
+          meta: { title: '资产列表' }
+        },
+        {
           path: 'basedata/manufacturers',
           name: 'basedata-manufacturers',
           component: () => import('@/views/basedata/ManufacturerList.vue'),

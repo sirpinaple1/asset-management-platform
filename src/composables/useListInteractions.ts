@@ -34,6 +34,10 @@ interface Options<T extends { id: number }> {
   onCopyRow: (row: T) => void
   onDeleteRow: (row: T) => void
   onBatchDelete: () => void
+  /** 自定义右键菜单项（缺省：编辑/复制信息/删除） */
+  ctxMenuItems?: ContextMenuItem[]
+  /** 内置 key（edit/copy/delete）之外的自定义菜单项回调 */
+  onCtxAction?: (key: string, row: T) => void
 }
 
 /**
@@ -55,9 +59,10 @@ export function useListInteractions<T extends { id: number }>(options: Options<T
   const onRowContextmenu = (row: T, _column: unknown, e: MouseEvent) => {
     e.preventDefault()
     ctxRow.value = row
+    const items = options.ctxMenuItems ?? ROW_CTX_MENU_ITEMS
     // 靠近视口边缘时回退，避免菜单溢出屏幕
     ctxMenu.x = Math.min(e.clientX, window.innerWidth - 180)
-    ctxMenu.y = Math.min(e.clientY, window.innerHeight - ROW_CTX_MENU_ITEMS.length * 32 - 16)
+    ctxMenu.y = Math.min(e.clientY, window.innerHeight - items.length * 32 - 16)
     ctxMenu.visible = true
   }
 
@@ -68,6 +73,7 @@ export function useListInteractions<T extends { id: number }>(options: Options<T
     if (key === 'edit') options.onEditRow(row)
     else if (key === 'copy') options.onCopyRow(row)
     else if (key === 'delete') options.onDeleteRow(row)
+    else options.onCtxAction?.(key, row)
   }
 
   /* ---------------- 表格键盘导航（方向键 + Enter） ---------------- */
@@ -149,7 +155,7 @@ export function useListInteractions<T extends { id: number }>(options: Options<T
 
   return {
     ctxMenu,
-    ctxMenuItems: ROW_CTX_MENU_ITEMS,
+    ctxMenuItems: options.ctxMenuItems ?? ROW_CTX_MENU_ITEMS,
     onRowContextmenu,
     onCtxMenuSelect,
     onTableKeydown,
