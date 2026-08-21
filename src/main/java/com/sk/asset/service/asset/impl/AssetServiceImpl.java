@@ -13,6 +13,7 @@ import com.sk.asset.entity.basedata.Category;
 import com.sk.asset.entity.basedata.Company;
 import com.sk.asset.entity.basedata.Location;
 import com.sk.asset.entity.basedata.Supplier;
+import com.sk.asset.entity.receipt.AssetAllocation;
 import com.sk.asset.enums.asset.AssetStatus;
 import com.sk.asset.mapper.asset.AssetLogMapper;
 import com.sk.asset.mapper.asset.AssetMapper;
@@ -21,12 +22,14 @@ import com.sk.asset.mapper.basedata.CategoryMapper;
 import com.sk.asset.mapper.basedata.CompanyMapper;
 import com.sk.asset.mapper.basedata.LocationMapper;
 import com.sk.asset.mapper.basedata.SupplierMapper;
+import com.sk.asset.mapper.receipt.AssetAllocationMapper;
 import com.sk.asset.service.asset.AssetService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Collection;
 import java.util.Collections;
@@ -49,6 +52,7 @@ public class AssetServiceImpl implements AssetService {
 
     private final AssetMapper assetMapper;
     private final AssetLogMapper assetLogMapper;
+    private final AssetAllocationMapper allocationMapper;
     private final CategoryMapper categoryMapper;
     private final AssetModelMapper assetModelMapper;
     private final SupplierMapper supplierMapper;
@@ -175,7 +179,49 @@ public class AssetServiceImpl implements AssetService {
         if (note != null && !note.isBlank()) {
             content += "：" + note.trim();
         }
+        // 报废联动：闭环持有中的 asset_allocation 并清空资产持有人，
+        // 避免在用报废后持有关系悬死（退库入口因 DISCARD→IDLE 非法被 409 卡死，前端永远显示持有中）
+        if (newStatus == AssetStatus.DISCARD) {
+            content += closeActiveAllocationsOnDiscard(assetId, note);
+        }
         assetLogMapper.insert(buildLog(assetId, operationType, operatorUserId, content));
+    }
+
+    /**
+     * 报废联动闭环：将该资产持有中（returned_at 为空）的 asset_allocation 全部终结
+     * （returned_at=now，note 记报废原因），并清空资产 user_id/user_department。
+     * PENDING_CONFIRM→DISCARD 已被状态机阻止，待审批单据不经过此路径。
+     *
+     * @return 追加到报废日志的内容（无持有关系时为空串）
+     */
+    private String closeActiveAllocationsOnDiscard(Long assetId, String note) {
+        List<AssetAllocation> active = allocationMapper.selectList(new LambdaQueryWrapper<AssetAllocation>()
+                .eq(AssetAllocation::getAssetId, assetId)
+                .isNull(AssetAllocation::getReturnedAt));
+        if (active.isEmpty()) {
+            return "";
+        }
+        String closureNote = "资产报废，持有关系随报废终结";
+        if (note != null && !note.isBlank()) {
+            closureNote += "：" + note.trim();
+        }
+        for (AssetAllocation allocation : active) {
+            allocationMapper.update(null, new LambdaUpdateWrapper<AssetAllocation>()
+                    .eq(AssetAllocation::getId, allocation.getId())
+                    .set(AssetAllocation::getReturnedAt, LocalDateTime.now())
+                    .set(AssetAllocation::getNote, closureNote));
+        }
+        // 报废为终态，清空资产持有人（持有人随持有关系一并终结）
+        assetMapper.update(null, new LambdaUpdateWrapper<Asset>()
+                .eq(Asset::getId, assetId)
+                .set(Asset::getUserId, null)
+                .set(Asset::getUserDepartment, null));
+        String holders = active.stream()
+                .map(a -> a.getUserName() != null && !a.getUserName().isBlank()
+                        ? a.getUserName() : String.valueOf(a.getUserId()))
+                .distinct()
+                .collect(Collectors.joining("、"));
+        return "；持有人【" + holders + "】的持有关系随报废终结";
     }
 
     /** 按目标状态推导日志操作类型（默认入口；M04 单据流显式传操作类型区分领用/借用） */

@@ -29,7 +29,7 @@ public interface AssetService {
     /** 编辑基础信息（不含状态变更，barcode 唯一 + 外键校验） */
     void updateById(Asset asset);
 
-    /** 报废（IDLE/IN_USE → DISCARD，写"报废"日志） */
+    /** 报废（IDLE/IN_USE → DISCARD，写"报废"日志；在用报废自动闭环持有关系并清空持有人） */
     void discard(Long id, String reason, Long operatorUserId);
 
     /** 该资产的操作日志（时间倒序） */

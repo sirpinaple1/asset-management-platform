@@ -2,6 +2,7 @@ package com.sk.asset.service.asset;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -13,6 +14,7 @@ import com.sk.asset.entity.basedata.Category;
 import com.sk.asset.entity.basedata.Company;
 import com.sk.asset.entity.basedata.Location;
 import com.sk.asset.entity.basedata.Supplier;
+import com.sk.asset.entity.receipt.AssetAllocation;
 import com.sk.asset.enums.asset.AssetStatus;
 import com.sk.asset.mapper.asset.AssetLogMapper;
 import com.sk.asset.mapper.asset.AssetMapper;
@@ -21,6 +23,7 @@ import com.sk.asset.mapper.basedata.CategoryMapper;
 import com.sk.asset.mapper.basedata.CompanyMapper;
 import com.sk.asset.mapper.basedata.LocationMapper;
 import com.sk.asset.mapper.basedata.SupplierMapper;
+import com.sk.asset.mapper.receipt.AssetAllocationMapper;
 import com.sk.asset.service.asset.impl.AssetServiceImpl;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.Test;
@@ -45,6 +48,7 @@ class AssetServiceImplTest {
     static {
         // 纯单测无 MyBatis 启动流程，LambdaUpdateWrapper.set 需要 TableInfo 缓存，手动初始化
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Asset.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), AssetAllocation.class);
     }
 
     @Mock
@@ -52,6 +56,9 @@ class AssetServiceImplTest {
 
     @Mock
     private AssetLogMapper assetLogMapper;
+
+    @Mock
+    private AssetAllocationMapper allocationMapper;
 
     @Mock
     private CategoryMapper categoryMapper;
@@ -340,9 +347,55 @@ class AssetServiceImplTest {
         Asset inUse = idleAsset(1L, "SKSCDM-0001");
         inUse.setStatus(AssetStatus.IN_USE.name());
         when(assetMapper.selectById(1L)).thenReturn(inUse);
+        when(allocationMapper.selectList(any())).thenReturn(List.of()); // 无持有中记录
 
         assetService.discard(1L, null, 100L);
 
+        verify(assetMapper, times(1)).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void discard_shouldCloseActiveAllocationsWhenInUse() {
+        // 在用报废：持有关系必须联动闭环（回归 SFBGIT2528 悬死 bug），持有人清空
+        Asset inUse = idleAsset(1L, "SKSCDM-0001");
+        inUse.setStatus(AssetStatus.IN_USE.name());
+        inUse.setUserId(100L);
+        when(assetMapper.selectById(1L)).thenReturn(inUse);
+
+        AssetAllocation active = new AssetAllocation();
+        active.setId(12L);
+        active.setAssetId(1L);
+        active.setUserId(100L);
+        active.setUserName("张三");
+        when(allocationMapper.selectList(any())).thenReturn(List.of(active));
+
+        assetService.discard(1L, "设备老化", 100L);
+
+        // allocation 闭环：SET 子句含 returned_at
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        ArgumentCaptor<LambdaUpdateWrapper<AssetAllocation>> wrapperCaptor =
+                ArgumentCaptor.forClass((Class) LambdaUpdateWrapper.class);
+        verify(allocationMapper, times(1)).update(isNull(), wrapperCaptor.capture());
+        assertTrue(wrapperCaptor.getValue().getSqlSet().contains("returned_at"),
+                "报废应闭环持有关系（returned_at），实际 SET：" + wrapperCaptor.getValue().getSqlSet());
+        // 资产两次 update：状态置 DISCARD + 清空持有人
+        verify(assetMapper, times(2)).update(isNull(), any(Wrapper.class));
+        // 报废日志追加持有关系终结说明与原持有人
+        ArgumentCaptor<AssetLog> logCaptor = ArgumentCaptor.forClass(AssetLog.class);
+        verify(assetLogMapper, times(1)).insert(logCaptor.capture());
+        assertTrue(logCaptor.getValue().getContent().contains("持有关系随报废终结"));
+        assertTrue(logCaptor.getValue().getContent().contains("张三"));
+    }
+
+    @Test
+    void discard_shouldSkipAllocationClosureWhenIdle() {
+        // 闲置报废（无持有关系）：不触碰 allocation，也无持有人清空的额外 update
+        when(assetMapper.selectById(1L)).thenReturn(idleAsset(1L, "SKSCDM-0001"));
+        when(allocationMapper.selectList(any())).thenReturn(List.of());
+
+        assetService.discard(1L, "设备老化", 100L);
+
+        verify(allocationMapper, never()).update(any(), any());
         verify(assetMapper, times(1)).update(isNull(), any(Wrapper.class));
     }
 
