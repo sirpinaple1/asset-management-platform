@@ -25,6 +25,7 @@ const formData = reactive<SupplierForm>({
   contact: '',
   phone: '',
   address: '',
+  status: 1,
   remark: '',
 })
 
@@ -45,6 +46,7 @@ watch(
         contact: props.data?.contact ?? '',
         phone: props.data?.phone ?? '',
         address: props.data?.address ?? '',
+        status: props.data?.status ?? 1,
         remark: props.data?.remark ?? '',
       })
       nextTick(() => formRef.value?.clearValidate())
@@ -111,6 +113,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
       </el-form-item>
       <el-form-item label="地址" prop="address">
         <el-input v-model="formData.address" placeholder="请输入地址" :maxlength="200" />
+      </el-form-item>
+      <el-form-item label="状态" prop="status">
+        <el-radio-group v-model="formData.status">
+          <el-radio :value="1">启用</el-radio>
+          <el-radio :value="0">停用</el-radio>
+        </el-radio-group>
       </el-form-item>
       <el-form-item label="备注" prop="remark">
         <el-input

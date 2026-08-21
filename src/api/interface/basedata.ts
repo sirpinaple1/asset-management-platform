@@ -37,13 +37,15 @@ export interface Manufacturer {
   updatedAt: string
 }
 
-/** 厂商新增/编辑表单 */
+/** 厂商新增/编辑表单（status 后端无默认值，新增/编辑都必须显式携带） */
 export interface ManufacturerForm {
   name: string
   contact?: string
   phone?: string
   email?: string
   address?: string
+  /** 1-启用 0-停用（新增默认 1） */
+  status: number
   remark?: string
 }
 
@@ -69,6 +71,8 @@ export interface SupplierForm {
   phone?: string
   email?: string
   address?: string
+  /** 1-启用 0-停用（新增默认 1） */
+  status: number
   remark?: string
 }
 
