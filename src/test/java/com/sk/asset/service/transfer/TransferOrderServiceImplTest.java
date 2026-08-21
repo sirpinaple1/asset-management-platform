@@ -372,7 +372,8 @@ class TransferOrderServiceImplTest {
     }
 
     @Test
-    void confirm_shouldNotInsertAllocationWhenNoResponsibleUser() {
+    void confirm_shouldInsertDeptHolderWhenOnlyDepartmentGiven() {
+        // 只填部门（没填人）：应建"部门持有"（user_id=null）→ IN_USE，不漏持有
         TransferOrder order = pendingOrder();
         order.setToUserId(null);
         order.setToUserName(null);
@@ -387,10 +388,71 @@ class TransferOrderServiceImplTest {
         TransferOrder confirmed = transferService.confirm(1L, 400L, "赵六");
 
         assertEquals("COMPLETED", confirmed.getStatus());
-        // 未指定负责人：不新建持有记录，仅闭环旧持有 + 更新资产
-        verify(allocationMapper, never()).insert(any(AssetAllocation.class));
+        // 部门持有：user_id=null + department=新部门 + type=TRANSFER
+        ArgumentCaptor<AssetAllocation> allocationCaptor = ArgumentCaptor.forClass(AssetAllocation.class);
+        verify(allocationMapper).insert(allocationCaptor.capture());
+        AssetAllocation deptHolder = allocationCaptor.getValue();
+        assertNull(deptHolder.getUserId());
+        assertNull(deptHolder.getUserName());
+        assertEquals("品质部", deptHolder.getDepartment());
+        assertEquals("TRANSFER", deptHolder.getType());
+        // 资产已 IN_USE，同态跳过状态流转
+        verify(assetService, never()).changeStatus(anyLong(), any(), anyLong(), any(), any());
         verify(assetService).writeLog(eq(1L), eq("调拨"), eq(400L),
-                contains("【使用人】由【未设置】变更为【未设置】"));
+                contains("【使用人】由【未设置】变更为【品质部（部门持有）】"));
+    }
+
+    @Test
+    void confirm_shouldReturnAssetToWarehouseWhenOnlyLocationGiven() {
+        // 只填区域（没人没部门）：视为调拨回库——闭环旧持有 + 持有人归零 + IN_USE→IDLE
+        TransferOrder order = pendingOrder();
+        order.setToUserId(null);
+        order.setToUserName(null);
+        order.setToDepartment(null);
+        when(orderMapper.selectById(1L)).thenReturn(order);
+        when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
+        when(assetMapper.selectBatchIds(any())).thenReturn(List.of(inUseAsset(1L)));
+        when(allocationMapper.selectList(any()))
+                .thenReturn(List.of(activeAllocation(1L, 250L, "王五")));
+        when(locationMapper.selectBatchIds(any()))
+                .thenReturn(List.of(location(10L, "A区"), location(20L, "B区")));
+        when(orderMapper.updateById(any(TransferOrder.class))).thenReturn(1);
+
+        TransferOrder confirmed = transferService.confirm(1L, 400L, "赵六");
+
+        assertEquals("COMPLETED", confirmed.getStatus());
+        // 回库：闭环旧持有 + 状态流转 IDLE，不新建持有
+        verify(allocationMapper, never()).insert(any(AssetAllocation.class));
+        verify(assetService).changeStatus(eq(1L), eq(AssetStatus.IDLE), eq(400L),
+                eq("调拨"), contains("回库"));
+        verify(assetService).writeLog(eq(1L), eq("调拨"), eq(400L),
+                contains("确认调拨（回库）"));
+        verify(assetService).writeLog(eq(1L), eq("调拨"), eq(400L),
+                contains("【使用人】由【王五】变更为【未设置】"));
+    }
+
+    @Test
+    void confirm_shouldFlipIdleToInUseWhenHolderAssigned() {
+        // 闲置资产调拨给人/部门：IDLE→IN_USE 状态联动（有新持有必为在用）
+        TransferOrder order = pendingOrder();
+        when(orderMapper.selectById(1L)).thenReturn(order);
+        when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
+        Asset idle = inUseAsset(1L);
+        idle.setStatus(AssetStatus.IDLE.name());
+        idle.setUserId(null);
+        idle.setUserDepartment(null);
+        when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idle));
+        when(allocationMapper.selectList(any())).thenReturn(List.of());
+        when(locationMapper.selectBatchIds(any()))
+                .thenReturn(List.of(location(10L, "A区"), location(20L, "B区")));
+        when(orderMapper.updateById(any(TransferOrder.class))).thenReturn(1);
+
+        TransferOrder confirmed = transferService.confirm(1L, 400L, "赵六");
+
+        assertEquals("COMPLETED", confirmed.getStatus());
+        verify(assetService).changeStatus(eq(1L), eq(AssetStatus.IN_USE), eq(400L),
+                eq("调拨"), contains("调入"));
+        verify(allocationMapper).insert(any(AssetAllocation.class));
     }
 
     @Test

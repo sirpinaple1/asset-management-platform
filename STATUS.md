@@ -132,7 +132,14 @@
   - M04 反向占用校验：领用/借用 create 增加待确认调拨单占用检查（双向互斥，防止两单据同时操作同一资产）
   - 端点：POST/GET /api/v1/transfers、GET /api/v1/transfers/{id}、POST /{id}/confirm、POST /{id}/reject、POST /{id}/cancel（列表支持 status/source/userId/dept/date 筛选）
   - 测试 229/229（新增 39：TransferOrderServiceImplTest 22 + TransferOrderControllerTest 14 + M04 反向占用 1 + writeLog 2）；前端 M05 调拨页面（菜单已预留 comingSoon）可按此契约开发
-  - **待跟进**：V20260825 需在测试库 172.16.5.247 手动执行；前端持有关系列表（领用&退库/借用&归还按 type 过滤）不显示 TRANSFER 持有记录，需前端"全部"视图或后端 type 参数扩展（M05 持有经调拨产生的用户退库场景）
+  - **待跟进**：V20260825/V20260828 需在测试库 172.16.5.247 手动执行；前端持有关系列表（领用&退库/借用&归还按 type 过滤）不显示 TRANSFER 持有记录，需前端"全部"视图或后端 type 参数扩展（M05 持有经调拨产生的用户退库场景）
+
+- [x] **修复：调拨持有一致性**（2026-08-21，用户验收反馈"在用却无人持有"矛盾）：
+  - 根因：confirm 原逻辑只在指定负责人时建持有，且只填区域时旧持有闭环后持有人字段不清零——终态既非"有持有"也非"无持有"
+  - 修复（终态二选一）：填使用人 → 人持有（TRANSFER）→ IN_USE；只填部门 → 部门持有（user_id=NULL, department=新部门）→ IN_USE；只填区域 → 调拨回库（闭环旧持有 + user_id/user_department 归零）→ IDLE；状态联动走 changeStatus 状态机（同态跳过，DISCARD 前置拦截不受影响）
+  - 迁移 `V20260828__allocation_user_id_nullable.sql`：asset_allocation.user_id 改可空（NULL=部门持有，M04 人持有不受影响），已本地库实测应用
+  - E2E 三场景实测通过（部门持有 IDLE→IN_USE / 部门持有回库闭环归零 IDLE / 人持有回库闭环归零 IDLE），持有记录零悬死；日志含"（回库）"标记与【状态】联动条目
+  - 测试 272/272（surefire 全量口径，新增 3：部门持有 + 回库 + IDLE→IN_USE 联动）
 
 - [x] **M06 实物信息变更单（AOC）**（2026-08-21）：
   - 迁移 `V20260826__change_order_target_values.sql`：change_order 加姓名快照列（applicant_name/confirmer_name，对齐 M04/M05 快照模式）+ 变更后目标值列（new_user_id/new_user_name/new_user_department/new_location_id/new_location_detail/new_company_id，**null = 不变更**，清空类操作走资产编辑）；asset_allocation.type 枚举扩至 CHANGE（已本地库实测应用，flyway 至 v20260826）

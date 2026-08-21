@@ -8,10 +8,12 @@ import java.util.List;
 
 /**
  * 调拨单服务（M05，ATR 单）。
- * 状态机：PENDING → COMPLETED（调入方确认，更新资产归属 + 持有关系转移 + 写日志）
+ * 状态机：PENDING → COMPLETED（调入方确认，更新资产归属 + 持有关系转移 + 状态联动 + 写日志）
  *                    / CANCELLED（发起方撤销，资产不变）
  *                    / REJECTED（调入方拒绝，资产不变）。
- * 调拨不流转资产状态（闲置/在用资产均可调拨），只更新归属字段。
+ * 确认终态一致性（避免"在用却无人持有"矛盾）：
+ * 填使用人 → 人持有（TRANSFER）→ IN_USE；只填部门 → 部门持有（user_id=null）→ IN_USE；
+ * 只填区域 → 调拨回库（闭环旧持有 + 持有人归零）→ IDLE。
  */
 public interface TransferOrderService {
 
@@ -30,9 +32,10 @@ public interface TransferOrderService {
 
     /**
      * 调入方确认收到：更新资产 location_id/user_id/user_department、
-     * 闭环旧持有记录并新建调入方持有记录（asset_allocation.type=TRANSFER）、
-     * 写 asset_log（operation_type=调拨），状态 → COMPLETED。
-     * 确认人不能是发起人。
+     * 闭环旧持有记录并新建调入方持有记录（asset_allocation.type=TRANSFER，
+     * 只填部门时为 user_id=null 的部门持有）、资产状态联动
+     * （有新持有 → IN_USE；只填区域回库 → IDLE）、写 asset_log（operation_type=调拨），
+     * 状态 → COMPLETED。确认人不能是发起人。
      */
     TransferOrder confirm(Long id, Long confirmerUserId, String confirmerName);
 

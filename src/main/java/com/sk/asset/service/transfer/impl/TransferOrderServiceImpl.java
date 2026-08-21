@@ -47,8 +47,9 @@ import java.util.stream.Collectors;
 
 /**
  * 调拨单服务实现（M05，ATR 单）。
- * 调拨不流转资产状态（闲置/在用均可调拨，撤销/拒绝资产不变），
- * 确认时事务内更新资产归属 + 持有关系转移 + 写 asset_log，任一步失败整体回滚。
+ * 发起不锁定资产状态（撤销/拒绝资产不变）；确认时事务内做状态联动 + 归属更新 +
+ * 持有关系闭环/新建 + 写 asset_log，任一步失败整体回滚。
+ * 持有终态一致性：填使用人/部门 → TRANSFER 持有 + IN_USE；只填区域 → 回库（持有人归零）+ IDLE。
  */
 @Service
 @RequiredArgsConstructor
@@ -314,16 +315,30 @@ public class TransferOrderServiceImpl implements TransferOrderService {
     // ---- 私有方法 ----
 
     /**
-     * 单台资产确认调拨：更新归属字段 + 闭环旧持有 + 新建调入方持有 + 写日志。
-     * 持有人字段（user_id/user_department）更新规则：调入部门或负责人任一填写即更新，
-     * 未填的一方置空（负责人未指定 = 调入后无人持有）。
+     * 单台资产确认调拨：状态联动 + 闭环旧持有 + 更新归属字段 + 新建调入方持有 + 写日志。
+     *
+     * 持有一致性（终态二选一，避免"在用却无人持有"矛盾）：
+     * - 填使用人：新建 type=TRANSFER 持有（user_id=负责人）→ IN_USE
+     * - 只填部门：新建"部门持有"（user_id=null, department=新部门）→ IN_USE
+     * - 只填区域：视为"调拨回库"，闭环旧持有 + 清空 user_id/user_department → IDLE
      */
     private void confirmAsset(TransferOrder order, Asset asset, Long confirmerUserId) {
         Long assetId = asset.getId();
-        boolean holderChange = order.getToUserId() != null
-                || (order.getToDepartment() != null && !order.getToDepartment().isBlank());
+        boolean hasToLocation = order.getToLocationId() != null;
+        boolean hasDept = order.getToDepartment() != null && !order.getToDepartment().isBlank();
+        boolean hasUser = order.getToUserId() != null;
+        boolean holderTransfer = hasUser || hasDept;
 
-        // 1. 闭环旧持有记录（持有人随调出终结）
+        // 1. 状态联动（走状态机校验，同态跳过）：有新持有 → IN_USE；回库 → IDLE
+        AssetStatus targetStatus = holderTransfer ? AssetStatus.IN_USE : AssetStatus.IDLE;
+        if (!targetStatus.name().equals(asset.getStatus())) {
+            assetService.changeStatus(assetId, targetStatus, confirmerUserId, "调拨",
+                    holderTransfer
+                            ? "调拨单 " + order.getSerialNo() + " 调入"
+                            : "调拨单 " + order.getSerialNo() + " 调拨回库");
+        }
+
+        // 2. 闭环旧持有记录（持有人随调出终结）
         List<AssetAllocation> activeAllocations = allocationMapper.selectList(
                 new LambdaQueryWrapper<AssetAllocation>()
                         .eq(AssetAllocation::getAssetId, assetId)
@@ -336,20 +351,24 @@ public class TransferOrderServiceImpl implements TransferOrderService {
                     .set(AssetAllocation::getNote, closureNote));
         }
 
-        // 2. 更新资产归属字段（位置必更（若填），持有人按 holderChange 规则）
+        // 3. 更新资产归属字段：位置（若填）；持有人按终态写入或清零（回库）
         LambdaUpdateWrapper<Asset> assetUpdate = new LambdaUpdateWrapper<Asset>()
                 .eq(Asset::getId, assetId);
-        if (order.getToLocationId() != null) {
+        if (hasToLocation) {
             assetUpdate.set(Asset::getLocationId, order.getToLocationId());
         }
-        if (holderChange) {
+        if (holderTransfer) {
             assetUpdate.set(Asset::getUserId, order.getToUserId())
                     .set(Asset::getUserDepartment, order.getToDepartment());
+        } else {
+            // 调拨回库：持有人归零（与 IDLE 终态对齐，不留悬死归属）
+            assetUpdate.set(Asset::getUserId, null)
+                    .set(Asset::getUserDepartment, null);
         }
         assetMapper.update(null, assetUpdate);
 
-        // 3. 新建调入方持有记录（指定负责人时；type=TRANSFER）
-        if (order.getToUserId() != null) {
+        // 4. 新建调入方持有记录（type=TRANSFER）：填使用人 → 人持有；只填部门 → 部门持有（user_id=null）
+        if (holderTransfer) {
             AssetAllocation allocation = new AssetAllocation();
             allocation.setAssetId(assetId);
             allocation.setUserId(order.getToUserId());
@@ -362,28 +381,40 @@ public class TransferOrderServiceImpl implements TransferOrderService {
             allocationMapper.insert(allocation);
         }
 
-        // 4. 写调拨日志（不改资产状态）：【字段】由【旧值】变更为【新值】
+        // 5. 写调拨明细日志（状态日志由 changeStatus 另行记录）：【字段】由【旧值】变更为【新值】
         assetService.writeLog(assetId, "调拨", confirmerUserId,
-                buildConfirmLogContent(order, asset, activeAllocations));
+                buildConfirmLogContent(order, asset, activeAllocations, holderTransfer));
     }
 
     /** 拼装确认日志内容：调拨单单号 + 归属字段变更明细（位置/部门/使用人） */
     private String buildConfirmLogContent(TransferOrder order, Asset asset,
-                                          List<AssetAllocation> activeAllocations) {
+                                          List<AssetAllocation> activeAllocations,
+                                          boolean holderTransfer) {
         Map<Long, String> locationNames = locationNamesOf(
                 asset.getLocationId(), order.getToLocationId());
         String oldLocation = displayValue(asset.getLocationId(), locationNames);
         String newLocation = displayValue(order.getToLocationId(), locationNames);
+        // 旧持有展示：人持有 → 人名/ID；部门持有（user_id=null）→ 部门名（部门持有）
         String oldHolder = activeAllocations.stream()
-                .map(a -> a.getUserName() != null && !a.getUserName().isBlank()
-                        ? a.getUserName() : String.valueOf(a.getUserId()))
+                .map(a -> {
+                    if (a.getUserName() != null && !a.getUserName().isBlank()) {
+                        return a.getUserName();
+                    }
+                    if (a.getUserId() != null) {
+                        return String.valueOf(a.getUserId());
+                    }
+                    return a.getDepartment() != null && !a.getDepartment().isBlank()
+                            ? a.getDepartment() + "（部门持有）" : "";
+                })
+                .filter(s -> !s.isBlank())
                 .distinct()
                 .collect(Collectors.joining("、"));
-        String newHolder = order.getToUserId() == null ? null
-                : (order.getToUserName() != null && !order.getToUserName().isBlank()
-                        ? order.getToUserName() : String.valueOf(order.getToUserId()));
+        String newHolder = holderDisplay(order);
 
         StringBuilder content = new StringBuilder("调拨单 " + order.getSerialNo() + " 确认调拨");
+        if (!holderTransfer) {
+            content.append("（回库）");
+        }
         if (order.getToLocationId() != null) {
             content.append("；【位置】由【").append(oldLocation).append("】变更为【")
                     .append(newLocation).append("】");
@@ -393,11 +424,21 @@ public class TransferOrderServiceImpl implements TransferOrderService {
                             ? "未设置" : asset.getUserDepartment())
                     .append("】变更为【").append(order.getToDepartment()).append("】");
         }
-        if (order.getToUserId() != null || order.getToDepartment() != null) {
-            content.append("；【使用人】由【").append(oldHolder.isEmpty() ? "未设置" : oldHolder)
-                    .append("】变更为【").append(newHolder == null ? "未设置" : newHolder).append("】");
-        }
+        content.append("；【使用人】由【").append(oldHolder.isEmpty() ? "未设置" : oldHolder)
+                .append("】变更为【").append(newHolder).append("】");
         return content.toString();
+    }
+
+    /** 持有终态展示：填使用人 → 人名/ID；只填部门 → 部门持有；回库 → 未设置 */
+    private String holderDisplay(TransferOrder order) {
+        if (order.getToUserId() != null) {
+            return order.getToUserName() != null && !order.getToUserName().isBlank()
+                    ? order.getToUserName() : String.valueOf(order.getToUserId());
+        }
+        if (order.getToDepartment() != null && !order.getToDepartment().isBlank()) {
+            return order.getToDepartment() + "（部门持有）";
+        }
+        return "未设置";
     }
 
     /** 批量取位置名称（旧/新位置一次查齐），查不到回退 ID 展示 */
