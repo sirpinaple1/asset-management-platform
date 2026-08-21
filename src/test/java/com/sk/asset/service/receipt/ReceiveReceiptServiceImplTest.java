@@ -9,11 +9,15 @@ import com.sk.asset.entity.asset.Asset;
 import com.sk.asset.entity.receipt.AssetAllocation;
 import com.sk.asset.entity.receipt.ReceiveReceipt;
 import com.sk.asset.entity.receipt.ReceiveReceiptItem;
+import com.sk.asset.entity.transfer.TransferOrder;
+import com.sk.asset.entity.transfer.TransferOrderItem;
 import com.sk.asset.enums.asset.AssetStatus;
 import com.sk.asset.mapper.asset.AssetMapper;
 import com.sk.asset.mapper.receipt.AssetAllocationMapper;
 import com.sk.asset.mapper.receipt.ReceiveReceiptItemMapper;
 import com.sk.asset.mapper.receipt.ReceiveReceiptMapper;
+import com.sk.asset.mapper.transfer.TransferOrderItemMapper;
+import com.sk.asset.mapper.transfer.TransferOrderMapper;
 import com.sk.asset.service.asset.AssetService;
 import com.sk.asset.service.receipt.impl.ReceiveReceiptServiceImpl;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -44,6 +48,8 @@ class ReceiveReceiptServiceImplTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), ReceiveReceipt.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), ReceiveReceiptItem.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), AssetAllocation.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), TransferOrder.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), TransferOrderItem.class);
     }
 
     @Mock
@@ -57,6 +63,12 @@ class ReceiveReceiptServiceImplTest {
 
     @Mock
     private AssetMapper assetMapper;
+
+    @Mock
+    private TransferOrderMapper transferOrderMapper;
+
+    @Mock
+    private TransferOrderItemMapper transferOrderItemMapper;
 
     @Mock
     private AssetService assetService;
@@ -203,6 +215,27 @@ class ReceiveReceiptServiceImplTest {
 
         assertEquals(409, exception.getCode());
         assertTrue(exception.getMessage().contains("待审批"));
+        verify(receiptMapper, never()).insert(any(ReceiveReceipt.class));
+    }
+
+    @Test
+    void create_shouldRejectWhenAssetOccupiedByPendingTransfer() {
+        when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
+        TransferOrderItem transferItem = new TransferOrderItem();
+        transferItem.setOrderId(7L);
+        transferItem.setAssetId(1L);
+        when(transferOrderItemMapper.selectList(any())).thenReturn(List.of(transferItem));
+        TransferOrder pendingTransfer = new TransferOrder();
+        pendingTransfer.setId(7L);
+        pendingTransfer.setSerialNo("ATR" + today() + "0001");
+        pendingTransfer.setStatus("PENDING");
+        when(transferOrderMapper.selectList(any())).thenReturn(List.of(pendingTransfer));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> receiptService.create(applyReq("RECEIVE", List.of(1L)), 100L, "张三"));
+
+        assertEquals(409, exception.getCode());
+        assertTrue(exception.getMessage().contains("调拨单"));
         verify(receiptMapper, never()).insert(any(ReceiveReceipt.class));
     }
 

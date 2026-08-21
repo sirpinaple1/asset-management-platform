@@ -54,4 +54,15 @@ public interface AssetService {
      */
     void changeStatus(Long assetId, AssetStatus newStatus, Long operatorUserId,
                       String operationType, String note);
+
+    /**
+     * 写资产操作日志（不改状态）：调拨（M05 确认只更新归属，不流转状态）、
+     * 实物信息变更（M06）等无状态流转的操作使用。
+     *
+     * @param assetId        资产 ID（不存在抛 404）
+     * @param operationType  日志操作类型（如 调拨，asset_log.operation_type）
+     * @param operatorUserId 操作人（comm_public_basic 用户 ID）
+     * @param content        日志内容（对齐"【字段】由【旧值】变更为【新值】"格式，由调用方拼装）
+     */
+    void writeLog(Long assetId, String operationType, Long operatorUserId, String content);
 }

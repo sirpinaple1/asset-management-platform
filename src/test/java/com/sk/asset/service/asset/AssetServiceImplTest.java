@@ -330,6 +330,34 @@ class AssetServiceImplTest {
         assertEquals("【状态】由【闲置】变更为【在用】：生产领用", log.getContent());
     }
 
+    // ---- writeLog（M05 调拨：不改状态、只写日志） ----
+
+    @Test
+    void writeLog_shouldInsertLogWithoutTouchingAsset() {
+        when(assetMapper.selectById(1L)).thenReturn(idleAsset(1L, "SKSCDM-0001"));
+
+        assetService.writeLog(1L, "调拨", 100L, "调拨单 ATR202608210001 确认调拨");
+
+        verify(assetMapper, never()).update(any(), any(Wrapper.class));
+        ArgumentCaptor<AssetLog> logCaptor = ArgumentCaptor.forClass(AssetLog.class);
+        verify(assetLogMapper, times(1)).insert(logCaptor.capture());
+        AssetLog log = logCaptor.getValue();
+        assertEquals(1L, log.getAssetId());
+        assertEquals("调拨", log.getOperationType());
+        assertEquals(100L, log.getOperatorUserId());
+        assertEquals("调拨单 ATR202608210001 确认调拨", log.getContent());
+    }
+
+    @Test
+    void writeLog_shouldRejectWhenAssetNotExists() {
+        when(assetMapper.selectById(99L)).thenReturn(null);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> assetService.writeLog(99L, "调拨", 100L, "内容"));
+        assertEquals(404, ex.getCode());
+        verify(assetLogMapper, never()).insert(any(AssetLog.class));
+    }
+
     @Test
     void discard_shouldWriteScrapLogWithReason() {
         when(assetMapper.selectById(1L)).thenReturn(idleAsset(1L, "SKSCDM-0001"));

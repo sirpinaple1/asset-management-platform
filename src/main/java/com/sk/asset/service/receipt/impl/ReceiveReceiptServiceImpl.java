@@ -9,13 +9,18 @@ import com.sk.asset.entity.asset.Asset;
 import com.sk.asset.entity.receipt.AssetAllocation;
 import com.sk.asset.entity.receipt.ReceiveReceipt;
 import com.sk.asset.entity.receipt.ReceiveReceiptItem;
+import com.sk.asset.entity.transfer.TransferOrder;
+import com.sk.asset.entity.transfer.TransferOrderItem;
 import com.sk.asset.enums.asset.AssetStatus;
 import com.sk.asset.enums.receipt.ReceiptStatus;
 import com.sk.asset.enums.receipt.ReceiptType;
+import com.sk.asset.enums.transfer.TransferStatus;
 import com.sk.asset.mapper.asset.AssetMapper;
 import com.sk.asset.mapper.receipt.AssetAllocationMapper;
 import com.sk.asset.mapper.receipt.ReceiveReceiptItemMapper;
 import com.sk.asset.mapper.receipt.ReceiveReceiptMapper;
+import com.sk.asset.mapper.transfer.TransferOrderItemMapper;
+import com.sk.asset.mapper.transfer.TransferOrderMapper;
 import com.sk.asset.service.asset.AssetService;
 import com.sk.asset.service.receipt.ReceiveReceiptService;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +53,8 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
     private final ReceiveReceiptItemMapper itemMapper;
     private final AssetAllocationMapper allocationMapper;
     private final AssetMapper assetMapper;
+    private final TransferOrderMapper transferOrderMapper;
+    private final TransferOrderItemMapper transferOrderItemMapper;
     private final AssetService assetService;
 
     @Override
@@ -85,6 +92,26 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
                 throw new BusinessException(409, "资产已有待审批的领用/借用单（单号："
                         + pending.stream().map(ReceiveReceipt::getSerialNo).collect(Collectors.joining("、"))
                         + "），领用与借用不可同时申请");
+            }
+        }
+
+        // 2b. 待确认调拨占用校验（M05）：资产在 PENDING 调拨单中不可发起领用/借用（互斥占用）
+        List<TransferOrderItem> transferOccupied = transferOrderItemMapper.selectList(
+                new LambdaQueryWrapper<TransferOrderItem>()
+                        .in(TransferOrderItem::getAssetId, assetIds));
+        if (!transferOccupied.isEmpty()) {
+            Set<Long> orderIds = transferOccupied.stream()
+                    .map(TransferOrderItem::getOrderId)
+                    .collect(Collectors.toSet());
+            List<TransferOrder> pendingTransfers = transferOrderMapper.selectList(
+                    new LambdaQueryWrapper<TransferOrder>()
+                            .in(TransferOrder::getId, orderIds)
+                            .eq(TransferOrder::getStatus, TransferStatus.PENDING.name()));
+            if (!pendingTransfers.isEmpty()) {
+                throw new BusinessException(409, "资产已有待确认的调拨单（单号："
+                        + pendingTransfers.stream().map(TransferOrder::getSerialNo)
+                                .collect(Collectors.joining("、"))
+                        + "），不可发起领用/借用");
             }
         }
 

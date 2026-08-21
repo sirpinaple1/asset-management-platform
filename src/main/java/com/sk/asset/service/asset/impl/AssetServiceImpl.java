@@ -224,6 +224,15 @@ public class AssetServiceImpl implements AssetService {
         return "；持有人【" + holders + "】的持有关系随报废终结";
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void writeLog(Long assetId, String operationType, Long operatorUserId, String content) {
+        if (assetMapper.selectById(assetId) == null) {
+            throw new BusinessException(404, "资产不存在（id=" + assetId + "）");
+        }
+        assetLogMapper.insert(buildLog(assetId, operationType, operatorUserId, content));
+    }
+
     /** 按目标状态推导日志操作类型（默认入口；M04 单据流显式传操作类型区分领用/借用） */
     private String operationTypeOf(AssetStatus newStatus) {
         switch (newStatus) {

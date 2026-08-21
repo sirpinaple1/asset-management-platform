@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-**Phase 3 进行中**：M04 领用/借用单（ARE/BOR）审批流已完成，下一步 M05 调拨单（ATR）审批流。
+**Phase 3 进行中**：M05 调拨单（ATR）审批流已完成，下一步 M06 实物信息变更单（AOC）。
 
 ## 已完成
 
@@ -123,6 +123,17 @@
   - 修复：changeStatus 落 DISCARD 联动闭环持有中 allocation（returned_at=now + note 记报废原因）+ 清空资产持有人 + 报废日志追加原持有人；PENDING_CONFIRM→DISCARD 本就被状态机阻止，待审批单据不受影响
   - 测试 190/190（新增 3：在用报废闭环回归 + 闲置报废跳过 + InUse 无持有更新计数）
 
+- [x] **M05 调拨单（ATR）审批流**（2026-08-21）：
+  - 迁移 `V20260825__transfer_order_name_snapshot.sql`：transfer_order 加姓名快照列（applicant_name/from_user_name/to_user_name/confirmer_name，对齐 V20260823 M04 快照模式）+ reject_reason（拒绝原因）；asset_allocation.type 枚举扩至 TRANSFER（已本地库实测应用）
+  - `enums/transfer`：TransferStatus（PENDING/COMPLETED/CANCELLED/REJECTED）+ TransferSource（MANUAL/INVENTORY_TRIGGERED，M07 盘点触发预留）
+  - `entity/mapper/service/controller/dto` 的 transfer 上下文：TransferOrder（主表）+ TransferOrderItem（明细，回填资产编码/名称/序列号 + 调出/调入位置名称）
+  - `TransferOrderServiceImpl`：create（调入区域/部门至少一项 400 + 资产存在 404 + 报废资产 409 + 待确认调拨占用 409 + 待审批领用/借用占用 409（与 M04 互斥）+ 调入位置存在性 400 + ATR 单号锁定读串行取号；**调拨不锁定资产状态**，调出位置取首台资产当前位置）、confirm（调入方确认：资产 location/user_id/user_department 更新 + 旧持有关系闭环 + 新建调入方持有记录 type=TRANSFER + 写"调拨"日志（【位置】/【部门】/【使用人】变更明细，不改状态）+ 待确认期间资产报废 409 拦截；确认人≠发起人 403）、reject（资产不变，记录拒绝原因）、cancel（仅发起人可撤 403，资产不变）；全部 @Transactional
+  - `AssetService` 新增 `writeLog`（不改状态写日志，M06 实物信息变更复用）
+  - M04 反向占用校验：领用/借用 create 增加待确认调拨单占用检查（双向互斥，防止两单据同时操作同一资产）
+  - 端点：POST/GET /api/v1/transfers、GET /api/v1/transfers/{id}、POST /{id}/confirm、POST /{id}/reject、POST /{id}/cancel（列表支持 status/source/userId/dept/date 筛选）
+  - 测试 229/229（新增 39：TransferOrderServiceImplTest 22 + TransferOrderControllerTest 14 + M04 反向占用 1 + writeLog 2）；前端 M05 调拨页面（菜单已预留 comingSoon）可按此契约开发
+  - **待跟进**：V20260825 需在测试库 172.16.5.247 手动执行；前端持有关系列表（领用&退库/借用&归还按 type 过滤）不显示 TRANSFER 持有记录，需前端"全部"视图或后端 type 参数扩展（M05 持有经调拨产生的用户退库场景）
+
 ## 进行中
 
 - （无）
@@ -140,7 +151,7 @@
 ### Phase 3 — 核心业务（按依赖顺序）
 7. ~~**M03** 资产主表 CRUD + 状态机（IDLE/IN_USE/DISCARD/PENDING_CONFIRM）~~（已完成，2026-08-22）
 8. ~~**M04** 领用/借用单（ARE/BOR）审批流：申请→审批→资产状态联动（`receive_receipt.type` 区分领用/借用，共用单据流）~~（已完成，2026-08-21）
-9. **M05** 调拨单（ATR）审批流：调出→调入确认→归属更新
+9. ~~**M05** 调拨单（ATR）审批流：调出→调入确认→归属更新~~（已完成，2026-08-21）
 10. **M06** 实物信息变更单（AOC）：变更前/后记录 + 确认执行
 11. **M08-A/B** 历史数据迁移：563条资产 + 346条领用单 + 56条调拨单 + 1775条日志
 
@@ -185,5 +196,5 @@
 
 ---
 
-**最后更新**：2026-08-21（修复在用报废悬死持有关系，测试 190/190；同日完成资产编码自动生成、M04 审批流）
+**最后更新**：2026-08-21（M05 调拨单审批流完成，测试 229/229；同日完成在用报废悬死持有关系修复、资产编码自动生成、M04 审批流）
 **当前阶段负责人**：待指派
