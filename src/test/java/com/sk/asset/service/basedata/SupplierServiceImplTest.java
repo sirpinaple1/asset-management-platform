@@ -1,6 +1,9 @@
 package com.sk.asset.service.basedata;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.sk.asset.common.BusinessException;
 import com.sk.asset.entity.basedata.Supplier;
 import com.sk.asset.mapper.basedata.SupplierMapper;
 import com.sk.asset.service.basedata.impl.SupplierServiceImpl;
@@ -27,7 +30,7 @@ class SupplierServiceImplTest {
     private SupplierServiceImpl supplierService;
 
     @Test
-    void list_shouldReturnAllSuppliers() {
+    void listBy_shouldReturnFilteredSuppliers() {
         // Given
         Supplier s1 = new Supplier();
         s1.setId(1L);
@@ -37,11 +40,29 @@ class SupplierServiceImplTest {
             .thenReturn(Arrays.asList(s1));
 
         // When
-        List<Supplier> result = supplierService.list();
+        List<Supplier> result = supplierService.listBy("供应商", 1);
 
         // Then
         assertEquals(1, result.size());
         verify(supplierMapper, times(1)).selectList(any(LambdaQueryWrapper.class));
+    }
+
+    @Test
+    void page_shouldReturnPagedResult() {
+        // Given
+        Page<Supplier> pageResult = new Page<>(1, 20);
+        pageResult.setRecords(Arrays.asList());
+        pageResult.setTotal(0);
+
+        when(supplierMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
+            .thenReturn(pageResult);
+
+        // When
+        IPage<Supplier> result = supplierService.page(1, 20, null, null);
+
+        // Then
+        assertSame(pageResult, result);
+        verify(supplierMapper, times(1)).selectPage(any(Page.class), any(LambdaQueryWrapper.class));
     }
 
     @Test
@@ -76,15 +97,95 @@ class SupplierServiceImplTest {
     }
 
     @Test
-    void deleteById_shouldCallMapperDelete() {
+    void deleteById_shouldDeleteWhenNotReferenced() {
         // Given
-        Long id = 1L;
-        when(supplierMapper.deleteById(id)).thenReturn(1);
+        Supplier s1 = new Supplier();
+        s1.setId(1L);
+        s1.setName("供应商A");
+
+        when(supplierMapper.selectBatchIds(List.of(1L))).thenReturn(List.of(s1));
+        when(supplierMapper.countAssetRefs(1L)).thenReturn(0L);
+        when(supplierMapper.deleteById(1L)).thenReturn(1);
 
         // When
-        supplierService.deleteById(id);
+        supplierService.deleteById(1L);
 
         // Then
-        verify(supplierMapper, times(1)).deleteById(id);
+        verify(supplierMapper, times(1)).deleteById(1L);
+    }
+
+    @Test
+    void deleteById_shouldThrow409WhenReferencedByAsset() {
+        // Given
+        Supplier s1 = new Supplier();
+        s1.setId(1L);
+        s1.setName("供应商A");
+
+        when(supplierMapper.selectBatchIds(List.of(1L))).thenReturn(List.of(s1));
+        when(supplierMapper.countAssetRefs(1L)).thenReturn(2L);
+
+        // When & Then
+        BusinessException ex = assertThrows(BusinessException.class,
+            () -> supplierService.deleteById(1L));
+        assertEquals(409, ex.getCode());
+        assertTrue(ex.getMessage().contains("供应商A"));
+        verify(supplierMapper, never()).deleteById(anyLong());
+    }
+
+    @Test
+    void deleteByIds_shouldDeleteAllWhenNoneReferenced() {
+        // Given
+        Supplier s1 = new Supplier();
+        s1.setId(1L);
+        s1.setName("供应商A");
+        Supplier s2 = new Supplier();
+        s2.setId(2L);
+        s2.setName("供应商B");
+
+        when(supplierMapper.selectBatchIds(List.of(1L, 2L))).thenReturn(Arrays.asList(s1, s2));
+        when(supplierMapper.countAssetRefs(1L)).thenReturn(0L);
+        when(supplierMapper.countAssetRefs(2L)).thenReturn(0L);
+
+        // When
+        supplierService.deleteByIds(Arrays.asList(1L, 2L));
+
+        // Then
+        verify(supplierMapper, times(1)).deleteById(1L);
+        verify(supplierMapper, times(1)).deleteById(2L);
+    }
+
+    @Test
+    void deleteByIds_shouldRejectAllWhenAnyReferenced() {
+        // Given：id=2 被引用 → 整体拒绝，id=1 也不得删除
+        Supplier s1 = new Supplier();
+        s1.setId(1L);
+        s1.setName("供应商A");
+        Supplier s2 = new Supplier();
+        s2.setId(2L);
+        s2.setName("供应商B");
+
+        when(supplierMapper.selectBatchIds(List.of(1L, 2L))).thenReturn(Arrays.asList(s1, s2));
+        when(supplierMapper.countAssetRefs(1L)).thenReturn(0L);
+        when(supplierMapper.countAssetRefs(2L)).thenReturn(3L);
+
+        // When & Then
+        BusinessException ex = assertThrows(BusinessException.class,
+            () -> supplierService.deleteByIds(Arrays.asList(1L, 2L)));
+        assertEquals(409, ex.getCode());
+        assertTrue(ex.getMessage().contains("供应商B"));
+        verify(supplierMapper, never()).deleteById(anyLong());
+    }
+
+    @Test
+    void restoreById_shouldReturnMapperResult() {
+        // Given
+        when(supplierMapper.restoreById(1L)).thenReturn(1);
+
+        // When
+        int rows = supplierService.restoreById(1L);
+
+        // Then
+        assertEquals(1, rows);
+        verify(supplierMapper, times(1)).restoreById(1L);
     }
 }

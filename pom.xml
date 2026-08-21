@@ -49,6 +49,12 @@
             <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
             <version>${mybatis-plus.version}</version>
         </dependency>
+        <!-- MP 3.5.9+ 分页拦截器拆分到独立模块（不引入时 PaginationInnerInterceptor 不存在） -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-jsqlparser</artifactId>
+            <version>${mybatis-plus.version}</version>
+        </dependency>
 
         <!-- 生产可观测：Actuator 健康端点（部署验证/监控探活/排障快判），
              只暴露 health（application.yml），env/beans 等敏感端点不开（fail-closed） -->
@@ -100,6 +106,13 @@
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
+        </dependency>
+
+        <!-- Excel 导出（EasyExcel 3.3.4，Apache-2.0，注解式流式写，对齐原型"导出"按钮） -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>easyexcel</artifactId>
+            <version>3.3.4</version>
         </dependency>
 
         <!-- 测试：JUnit5 + Mockito + MockMvc -->

@@ -59,4 +59,25 @@ public interface AssetModelMapper extends BaseMapper<AssetModel> {
             "ORDER BY m.id")
     @ResultMap("assetModelWithRelations")
     List<AssetModel> selectByCategoryIdWithRelations(@Param("categoryId") Long categoryId);
+
+    /**
+     * 按 ID 查询型号，JOIN 返回关联名称（详情接口与列表对齐，P2⑤）
+     */
+    @Select("SELECT m.*, " +
+            "c.name AS category_name, " +
+            "mf.name AS manufacturer_name, " +
+            "dr.name AS depreciation_rule_name " +
+            "FROM asset_model m " +
+            "LEFT JOIN asset_category c ON m.category_id = c.id AND c.deleted = 0 " +
+            "LEFT JOIN manufacturer mf ON m.manufacturer_id = mf.id AND mf.deleted = 0 " +
+            "LEFT JOIN depreciation_rule dr ON m.depreciation_id = dr.id AND dr.deleted = 0 " +
+            "WHERE m.deleted = 0 AND m.id = #{id}")
+    @ResultMap("assetModelWithRelations")
+    AssetModel selectByIdWithRelations(@Param("id") Long id);
+
+    /**
+     * 统计被 asset 引用的数量（删除前引用完整性检查，P2③）
+     */
+    @Select("SELECT COUNT(*) FROM asset WHERE model_id = #{id} AND deleted = 0")
+    long countAssetRefs(@Param("id") Long id);
 }

@@ -1,7 +1,10 @@
 package com.sk.asset.dto.basedata.supplier;
 
 import com.sk.asset.entity.basedata.Supplier;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
@@ -27,6 +30,11 @@ public class SupplierReq {
     @Size(max = 500, message = "地址长度不能超过 500")
     private String address;
 
+    @NotNull(message = "状态不能为空")
+    @Min(value = 0, message = "状态取值只能为 0 或 1")
+    @Max(value = 1, message = "状态取值只能为 0 或 1")
+    private Integer status;
+
     @Size(max = 500, message = "备注长度不能超过 500")
     private String remark;
 
@@ -37,6 +45,7 @@ public class SupplierReq {
         entity.setPhone(this.phone);
         entity.setEmail(this.email);
         entity.setAddress(this.address);
+        entity.setStatus(this.status);
         entity.setRemark(this.remark);
         return entity;
     }
@@ -47,6 +56,7 @@ public class SupplierReq {
         entity.setPhone(this.phone);
         entity.setEmail(this.email);
         entity.setAddress(this.address);
+        entity.setStatus(this.status);
         entity.setRemark(this.remark);
     }
 }

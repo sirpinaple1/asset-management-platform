@@ -20,6 +20,10 @@ public class Supplier {
     private String phone;
     private String email;
     private String address;
+
+    /** 状态：1-启用 0-停用（停用仅从下拉选择排除，数据保留） */
+    private Integer status;
+
     private String remark;
 
     @TableLogic

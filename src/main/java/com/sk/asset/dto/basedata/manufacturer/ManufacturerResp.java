@@ -17,6 +17,7 @@ public class ManufacturerResp {
     private String phone;
     private String email;
     private String address;
+    private Integer status;
     private String remark;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -29,6 +30,7 @@ public class ManufacturerResp {
         resp.setPhone(entity.getPhone());
         resp.setEmail(entity.getEmail());
         resp.setAddress(entity.getAddress());
+        resp.setStatus(entity.getStatus());
         resp.setRemark(entity.getRemark());
         resp.setCreatedAt(entity.getCreatedAt());
         resp.setUpdatedAt(entity.getUpdatedAt());

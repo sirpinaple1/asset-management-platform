@@ -10,7 +10,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import java.lang.reflect.Field;
 import java.util.Arrays;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -24,11 +23,8 @@ class CategoryControllerTest {
     private final MockMvc mockMvc;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    CategoryControllerTest() throws Exception {
-        CategoryController controller = new CategoryController();
-        Field field = CategoryController.class.getDeclaredField("categoryService");
-        field.setAccessible(true);
-        field.set(controller, categoryService);
+    CategoryControllerTest() {
+        CategoryController controller = new CategoryController(categoryService);
 
         this.mockMvc = MockMvcBuilders
                 .standaloneSetup(controller)

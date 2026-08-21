@@ -9,7 +9,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -21,10 +21,10 @@ import java.util.stream.Collectors;
 @Tag(name = "资产分类管理")
 @RestController
 @RequestMapping("/api/v1/categories")
+@RequiredArgsConstructor
 public class CategoryController {
 
-    @Autowired
-    private CategoryService categoryService;
+    private final CategoryService categoryService;
 
     @Operation(summary = "分类列表（扁平，含 parentId）")
     @SecurityRequirement(name = "BearerAuth")

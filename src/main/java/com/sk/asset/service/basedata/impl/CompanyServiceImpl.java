@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.sk.asset.entity.basedata.Company;
 import com.sk.asset.mapper.basedata.CompanyMapper;
 import com.sk.asset.service.basedata.CompanyService;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -13,14 +13,17 @@ import java.util.List;
  * 公司主体服务实现
  */
 @Service
+@RequiredArgsConstructor
 public class CompanyServiceImpl implements CompanyService {
 
-    @Autowired
-    private CompanyMapper companyMapper;
+    private final CompanyMapper companyMapper;
 
     @Override
     public List<Company> list() {
-        return companyMapper.selectList(new LambdaQueryWrapper<>());
+        return companyMapper.selectList(
+            new LambdaQueryWrapper<Company>()
+                .orderByAsc(Company::getId)
+        );
     }
 
     @Override

@@ -102,7 +102,6 @@ class LocationControllerTest {
         LocationReq req = new LocationReq();
         req.setName("测试位置");
         req.setCode("TEST");
-        req.setPath("/1/");
 
         doAnswer(invocation -> {
             Location arg = invocation.getArgument(0);

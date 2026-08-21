@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import java.lang.reflect.Field;
 import java.util.Arrays;
 
 import static org.mockito.Mockito.*;
@@ -19,11 +18,8 @@ class CompanyControllerTest {
     private final CompanyService companyService = mock(CompanyService.class);
     private final MockMvc mockMvc;
 
-    CompanyControllerTest() throws Exception {
-        CompanyController controller = new CompanyController();
-        Field field = CompanyController.class.getDeclaredField("companyService");
-        field.setAccessible(true);
-        field.set(controller, companyService);
+    CompanyControllerTest() {
+        CompanyController controller = new CompanyController(companyService);
 
         this.mockMvc = MockMvcBuilders
                 .standaloneSetup(controller)

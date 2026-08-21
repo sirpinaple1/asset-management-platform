@@ -7,7 +7,7 @@ import com.sk.asset.service.basedata.CompanyService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,10 +19,10 @@ import java.util.stream.Collectors;
 @Tag(name = "公司主体管理")
 @RestController
 @RequestMapping("/api/v1/companies")
+@RequiredArgsConstructor
 public class CompanyController {
 
-    @Autowired
-    private CompanyService companyService;
+    private final CompanyService companyService;
 
     @Operation(summary = "公司列表")
     @SecurityRequirement(name = "BearerAuth")
