@@ -8,7 +8,7 @@ import { TRANSFER_STATUS_META, TRANSFER_SOURCE_META } from '@/api/interface/tran
 
 /**
  * 调拨单详情抽屉：全字段 + 资产明细 + 流转操作。
- * PENDING 时：调入方（非发起人）可确认/拒绝；发起人可撤销。
+ * PENDING 时：调入方（非发起人）可确认/拒绝（拒绝必填原因）；发起人可撤销。
  */
 const props = defineProps<{
   visible: boolean
@@ -88,21 +88,24 @@ const handleConfirm = async () => {
   }
 }
 
-/** 拒绝接收：资产不变，单据转已拒绝（文档未定义 body） */
+/** 拒绝接收：body={reason} 必填（后端 TransferRejectReq @NotBlank），资产不变 */
 const handleReject = async () => {
   if (!detail.value || acting.value) return
+  let reason: string
   try {
-    await ElMessageBox.confirm(
-      `确认拒绝接收单据 ${detail.value.serialNo} 吗？拒绝后资产保持原归属不变。`,
-      '拒绝接收',
-      { type: 'warning', confirmButtonText: '拒绝', cancelButtonText: '取消' },
-    )
+    const { value } = await ElMessageBox.prompt('请输入拒绝原因', '拒绝接收', {
+      confirmButtonText: '拒绝',
+      cancelButtonText: '取消',
+      inputPlaceholder: '拒绝原因（必填）',
+      inputValidator: (v: string) => (v && v.trim() ? true : '请输入拒绝原因'),
+    })
+    reason = value.trim()
   } catch {
     return /* 用户取消 */
   }
   acting.value = true
   try {
-    const updated = await transferApi.reject(detail.value.id)
+    const updated = await transferApi.reject(detail.value.id, reason)
     ElMessage.success('已拒绝')
     emit('updated', updated)
     handleClose()
@@ -113,7 +116,7 @@ const handleReject = async () => {
   }
 }
 
-/** 撤销：仅 PENDING 可撤，发起方或管理员；资产不变 */
+/** 撤销：仅 PENDING、仅发起人可撤（后端 403 校验），资产不变 */
 const handleCancel = async () => {
   if (!detail.value || acting.value) return
   try {
@@ -170,7 +173,8 @@ const dash = (v?: string | number | null) =>
           <el-descriptions-item label="调入负责人">{{ dash(detail.toUserName || (detail.toUserId ? String(detail.toUserId) : '')) }}</el-descriptions-item>
           <el-descriptions-item label="调拨原因" :span="2">{{ dash(detail.reason) }}</el-descriptions-item>
           <el-descriptions-item label="确认人">{{ dash(detail.confirmerName || (detail.confirmerUserId ? String(detail.confirmerUserId) : '')) }}</el-descriptions-item>
-          <el-descriptions-item label="确认时间">{{ dash(detail.confirmTime) }}</el-descriptions-item>
+          <el-descriptions-item label="处理时间">{{ dash(detail.confirmTime) }}</el-descriptions-item>
+          <el-descriptions-item label="拒绝原因" :span="2">{{ dash(detail.rejectReason) }}</el-descriptions-item>
         </el-descriptions>
 
         <div class="items-title">资产明细（{{ detail.items?.length ?? 0 }} 台）</div>

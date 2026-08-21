@@ -251,10 +251,10 @@ const confirmerText = (row: TransferOrder) =>
           <template #default="{ row }">{{ itemCount(row) }}</template>
         </el-table-column>
         <el-table-column prop="reason" label="调拨原因" min-width="150" show-overflow-tooltip :formatter="formatText" />
-        <el-table-column label="确认人" width="110">
+        <el-table-column label="处理人" width="110">
           <template #default="{ row }">{{ confirmerText(row) }}</template>
         </el-table-column>
-        <el-table-column prop="confirmTime" label="确认时间" min-width="160" :formatter="formatText" />
+        <el-table-column prop="confirmTime" label="处理时间" min-width="160" :formatter="formatText" />
         <el-table-column prop="createdAt" label="申请时间" min-width="160" />
         <el-table-column label="操作" width="90" fixed="right">
           <template #default="{ row }">

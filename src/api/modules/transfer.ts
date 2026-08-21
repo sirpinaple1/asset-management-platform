@@ -6,31 +6,30 @@ import type {
 } from '@/api/interface/transfer'
 
 /**
- * M05 调拨单 API（契约依据：asset-backend docs/modules/M05-调拨单.md）。
- * 后端 M05 尚未实现，联调时以实际 Controller 为准核对。
+ * M05 调拨单 API（契约依据：asset-backend 1e0cb87 TransferOrderController）。
  */
 export const transferApi = {
-  /** 发起调拨（一次可调多台资产，指定调入部门/位置），返回新建单据（发起人取当前登录用户） */
+  /** 发起调拨（一次可调多台资产；调入位置与调入部门至少一项，后端校验） */
   apply: (data: TransferApplyForm) =>
     request<TransferOrder>({ url: '/v1/transfers', method: 'post', data }),
 
-  /** 调拨单列表（支持 status/date/dept 筛选，含明细行与资产名称） */
+  /** 调拨单列表（支持 status/source/userId/dept/date 筛选，含明细行与位置名称） */
   getTransfers: (params?: TransferQuery) =>
     request<TransferOrder[]>({ url: '/v1/transfers', method: 'get', params }),
 
-  /** 调拨单详情（含明细行与资产名称） */
+  /** 调拨单详情（含明细行与位置名称） */
   getTransferById: (id: number) =>
     request<TransferOrder>({ url: `/v1/transfers/${id}`, method: 'get' }),
 
-  /** 调入方确认收到（资产归属更新：位置/部门/负责人，写持有与操作日志） */
+  /** 调入方确认收到（不能由发起人自己确认；资产归属更新+持有转移+写日志） */
   confirm: (id: number) =>
     request<TransferOrder>({ url: `/v1/transfers/${id}/confirm`, method: 'post' }),
 
-  /** 调入方拒绝接收（文档未定义 body，按无参调用） */
-  reject: (id: number) =>
-    request<TransferOrder>({ url: `/v1/transfers/${id}/reject`, method: 'post' }),
+  /** 调入方拒绝接收（不能由发起人自己拒绝；body={reason} 必填，记录拒绝原因，资产不变） */
+  reject: (id: number, reason: string) =>
+    request<TransferOrder>({ url: `/v1/transfers/${id}/reject`, method: 'post', data: { reason } }),
 
-  /** 撤销（仅 PENDING 状态可撤，发起方或管理员；资产不变） */
+  /** 撤销（仅 PENDING 状态、仅发起人可撤，资产不变） */
   cancel: (id: number) =>
     request<TransferOrder>({ url: `/v1/transfers/${id}/cancel`, method: 'post' }),
 }

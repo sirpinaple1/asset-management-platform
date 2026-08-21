@@ -28,18 +28,33 @@ const formRef = ref<FormInstance>()
 const tableRef = ref<TableInstance>()
 const submitting = ref(false)
 
-/* ---------------- 表单：调入位置 + 调入部门 + 调拨原因 ---------------- */
+/* ---------------- 表单：调入位置 + 调入部门 + 调入负责人 + 调拨原因 ---------------- */
 const formData = reactive({
   toLocationId: undefined as number | undefined,
   toDepartment: '',
+  toUserId: undefined as number | undefined,
   reason: '',
 })
 
 const locationTree = computed(() => buildTree<Location>(basedataStore.locations))
 
+/** 调入位置与调入部门至少填一项（服务端同步校验，前端预检减少一次 400 往返） */
+const validateAtLeastOne = (_rule: unknown, _value: unknown, callback: (error?: Error) => void) => {
+  if (!formData.toLocationId && !formData.toDepartment.trim()) {
+    callback(new Error('调入位置与调入部门至少填写一项'))
+  } else {
+    callback()
+  }
+}
+
 const rules: FormRules = {
-  toDepartment: [{ required: true, message: '请输入调入部门', trigger: 'blur' }],
-  reason: [{ required: true, message: '请输入调拨原因', trigger: 'blur' }],
+  toLocationId: [{ validator: validateAtLeastOne, trigger: 'change' }],
+  toDepartment: [
+    { max: 100, message: '调入部门长度不能超过 100', trigger: 'blur' },
+    { validator: validateAtLeastOne, trigger: 'blur' },
+  ],
+  toUserId: [{ type: 'number', message: '调入负责人 ID 必须是正整数', trigger: 'blur' }],
+  reason: [{ max: 500, message: '调拨原因长度不能超过 500', trigger: 'blur' }],
 }
 
 /* ---------------- 资产选择器：闲置/在用切换 + 服务端分页 + 跨页多选 ---------------- */
@@ -140,6 +155,7 @@ watch(
     if (val) {
       formData.toLocationId = undefined
       formData.toDepartment = ''
+      formData.toUserId = undefined
       formData.reason = ''
       selectedAssets.value = new Map()
       pickerStatus.value = 'IDLE'
@@ -170,8 +186,9 @@ const handleSubmit = async () => {
     const created = await transferApi.apply({
       assetIds: selectedList.value.map((a) => a.id),
       toLocationId: formData.toLocationId,
-      toDepartment: formData.toDepartment.trim(),
-      reason: formData.reason.trim(),
+      toDepartment: formData.toDepartment.trim() || undefined,
+      toUserId: formData.toUserId,
+      reason: formData.reason.trim() || undefined,
     })
     ElMessage.success('调拨申请已提交，等待调入方确认')
     emit('success', created)
@@ -261,7 +278,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
 
       <!-- 右侧：表单 + 已选清单 -->
       <div class="form-side">
-        <el-form ref="formRef" :model="formData" :rules="rules" label-width="80px" @submit.prevent="handleSubmit">
+        <el-form ref="formRef" :model="formData" :rules="rules" label-width="96px" @submit.prevent="handleSubmit">
           <el-form-item label="调入位置" prop="toLocationId">
             <el-tree-select
               v-model="formData.toLocationId"
@@ -271,19 +288,29 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
               check-strictly
               clearable
               filterable
-              placeholder="请选择调入位置（选填）"
+              placeholder="与调入部门至少填一项"
               class="full-width"
             />
           </el-form-item>
           <el-form-item label="调入部门" prop="toDepartment">
-            <el-input v-model="formData.toDepartment" placeholder="请输入调入部门" :maxlength="100" />
+            <el-input v-model="formData.toDepartment" placeholder="与调入位置至少填一项" :maxlength="100" />
+          </el-form-item>
+          <el-form-item label="调入负责人" prop="toUserId">
+            <el-input-number
+              v-model="formData.toUserId"
+              :min="1"
+              :precision="0"
+              :controls="false"
+              placeholder="用户 ID（选填，确认后资产转其持有）"
+              class="full-width"
+            />
           </el-form-item>
           <el-form-item label="调拨原因" prop="reason">
             <el-input
               v-model="formData.reason"
               type="textarea"
               :rows="3"
-              placeholder="请输入调拨原因"
+              placeholder="请输入调拨原因（选填）"
               :maxlength="500"
               show-word-limit
             />

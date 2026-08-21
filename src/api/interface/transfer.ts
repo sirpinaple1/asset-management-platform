@@ -1,8 +1,7 @@
 /**
  * M05 调拨单（ATR）类型。
- * 契约依据：asset-backend docs/modules/M05-调拨单.md + transfer_order 表结构
- * （后端 M05 尚未实现，字段命名对齐 M04 ReceiptResp 模式：statusLabel/applicantName 回填、
- * items 含资产信息；后端落地后需按实际 DTO 核对）。
+ * 契约依据：asset-backend 1e0cb87 TransferOrderController / dto/transfer/*（M05 已实现）。
+ * 调拨不流转资产状态（闲置/在用均可调拨），确认时更新归属（位置/部门/负责人）并转移持有关系。
  */
 
 /** 调拨单状态（transfer_order.status） */
@@ -47,11 +46,13 @@ export interface TransferOrder {
   toUserName?: string
   /** 调拨原因 */
   reason?: string
-  /** 确认人 ID（调入方） */
+  /** 确认人 ID（调入方；拒绝时为拒绝人） */
   confirmerUserId?: number
-  /** 确认人姓名（确认时快照，联调对齐） */
+  /** 确认人姓名（确认/拒绝时快照） */
   confirmerName?: string
   confirmTime?: string
+  /** 拒绝原因（调入方拒绝时记录） */
+  rejectReason?: string
   companyId?: number
   /** 明细行（含资产编码/名称/序列号） */
   items?: TransferItem[]
@@ -75,27 +76,34 @@ export interface TransferItem {
 
 /**
  * 发起调拨提交体（POST /v1/transfers；发起人由后端 UserContext 取，前端不传）。
- * 调入部门/调拨原因前端按必填校验（对齐 M04 领用单 department/reason @NotBlank 先例），
- * 后端 M05 落地时若放宽/收紧需同步此处。
+ * 调入位置与调入部门至少填一项（服务端校验 400"调入区域与调入部门至少填写一项"，前端同步预检）；
+ * 报废资产、已被 PENDING 调拨/领用单占用的资产不可发起（后端 409）。
  */
 export interface TransferApplyForm {
-  /** 调拨的资产 ID 列表（一次可多台，闲置/在用均可发起） */
+  /** 调拨的资产 ID 列表（一次可多台，闲置/在用均可） */
   assetIds: number[]
-  /** 调入位置（asset_location.id，选填：按位置调拨场景） */
+  /** 调入位置（asset_location.id，与 toDepartment 至少一项） */
   toLocationId?: number
-  /** 调入部门（必填） */
-  toDepartment: string
-  /** 调拨原因（必填） */
-  reason: string
+  /** 调入部门（与 toLocationId 至少一项） */
+  toDepartment?: string
+  /** 调入方负责人 ID（选填；确认时更新资产使用人并新建持有记录） */
+  toUserId?: number
+  /** 调入方负责人姓名（前端已知时快照传入，选填） */
+  toUserName?: string
+  /** 调拨原因（选填） */
+  reason?: string
 }
 
-/** 列表查询参数（GET /v1/transfers，文档支持 status/date/dept 筛选） */
+/** 列表查询参数（GET /v1/transfers，支持 status/source/userId/dept/date 筛选） */
 export interface TransferQuery {
   status?: TransferStatus
+  source?: TransferSource
+  /** 发起人 ID */
+  userId?: number
+  /** 调入部门（模糊匹配） */
+  dept?: string
   /** 申请日期（yyyy-MM-dd） */
   date?: string
-  /** 调入部门 */
-  dept?: string
 }
 
 /** 状态展示配置（tabs / 表格 tag 共用） */
