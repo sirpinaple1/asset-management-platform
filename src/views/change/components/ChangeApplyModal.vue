@@ -12,8 +12,9 @@ import { buildTree } from '@/utils/tree'
 
 /**
  * 发起实物信息变更弹窗：左侧资产选择器（闲置/在用可切换，服务端分页、跨页多选）
- * + 右侧变更内容（五个实物字段至少填一项）与已选清单。
- * 变更前值由服务端逐台快照，确认执行时才真正更新 asset 字段。
+ * + 右侧变更内容（五个 new_* 字段至少填一项）与已选清单。
+ * 一单 = N 台资产 + 一组统一新值，各字段 null = 不变更；
+ * 变更前值由服务端逐台快照（与当前值相同的字段不进明细行），确认执行时才真正更新 asset。
  */
 const props = defineProps<{
   visible: boolean
@@ -29,48 +30,50 @@ const formRef = ref<FormInstance>()
 const tableRef = ref<TableInstance>()
 const submitting = ref(false)
 
-/* ---------------- 表单：变更字段（五选一以上）+ 变更原因 ---------------- */
+/* ---------------- 表单：变更字段（new_* 五选一以上）+ 变更原因 ---------------- */
 const formData = reactive({
-  userId: undefined as number | undefined,
-  userDepartment: '',
-  locationId: undefined as number | undefined,
-  locationDetail: '',
-  companyId: undefined as number | undefined,
+  newUserId: undefined as number | undefined,
+  newUserName: '',
+  newUserDepartment: '',
+  newLocationId: undefined as number | undefined,
+  newLocationDetail: '',
+  newCompanyId: undefined as number | undefined,
   reason: '',
 })
 
 const locationTree = computed(() => buildTree<Location>(basedataStore.locations))
 
-/** 五个变更字段至少填一项（服务端同步校验，前端预检减少一次 400 往返） */
+/** 五个 new_* 至少填一项（服务端 400 同步校验，前端预检减少一次往返） */
 const validateAtLeastOne = (_rule: unknown, _value: unknown, callback: (error?: Error) => void) => {
   if (
-    !formData.userId &&
-    !formData.userDepartment.trim() &&
-    !formData.locationId &&
-    !formData.locationDetail.trim() &&
-    !formData.companyId
+    !formData.newUserId &&
+    !formData.newUserDepartment.trim() &&
+    !formData.newLocationId &&
+    !formData.newLocationDetail.trim() &&
+    !formData.newCompanyId
   ) {
-    callback(new Error('至少填写一项变更内容'))
+    callback(new Error('请至少指定一项变更内容（使用人/使用部门/区域/存放位置明细/归属公司）'))
   } else {
     callback()
   }
 }
 
 const rules: FormRules = {
-  userId: [
+  newUserId: [
     { type: 'number', message: '使用人 ID 必须是正整数', trigger: 'blur' },
     { validator: validateAtLeastOne, trigger: 'blur' },
   ],
-  userDepartment: [
+  newUserName: [{ max: 100, message: '使用人姓名长度不能超过 100', trigger: 'blur' }],
+  newUserDepartment: [
     { max: 100, message: '使用部门长度不能超过 100', trigger: 'blur' },
     { validator: validateAtLeastOne, trigger: 'blur' },
   ],
-  locationId: [{ validator: validateAtLeastOne, trigger: 'change' }],
-  locationDetail: [
-    { max: 200, message: '存放地点长度不能超过 200', trigger: 'blur' },
+  newLocationId: [{ validator: validateAtLeastOne, trigger: 'change' }],
+  newLocationDetail: [
+    { max: 200, message: '存放位置明细长度不能超过 200', trigger: 'blur' },
     { validator: validateAtLeastOne, trigger: 'blur' },
   ],
-  companyId: [{ validator: validateAtLeastOne, trigger: 'change' }],
+  newCompanyId: [{ validator: validateAtLeastOne, trigger: 'change' }],
   reason: [{ max: 500, message: '变更原因长度不能超过 500', trigger: 'blur' }],
 }
 
@@ -170,11 +173,12 @@ watch(
   () => props.visible,
   (val) => {
     if (val) {
-      formData.userId = undefined
-      formData.userDepartment = ''
-      formData.locationId = undefined
-      formData.locationDetail = ''
-      formData.companyId = undefined
+      formData.newUserId = undefined
+      formData.newUserName = ''
+      formData.newUserDepartment = ''
+      formData.newLocationId = undefined
+      formData.newLocationDetail = ''
+      formData.newCompanyId = undefined
       formData.reason = ''
       selectedAssets.value = new Map()
       pickerStatus.value = 'IDLE'
@@ -205,11 +209,12 @@ const handleSubmit = async () => {
   try {
     const created = await changeApi.apply({
       assetIds: selectedList.value.map((a) => a.id),
-      userId: formData.userId,
-      userDepartment: formData.userDepartment.trim() || undefined,
-      locationId: formData.locationId,
-      locationDetail: formData.locationDetail.trim() || undefined,
-      companyId: formData.companyId,
+      newUserId: formData.newUserId,
+      newUserName: formData.newUserName.trim() || undefined,
+      newUserDepartment: formData.newUserDepartment.trim() || undefined,
+      newLocationId: formData.newLocationId,
+      newLocationDetail: formData.newLocationDetail.trim() || undefined,
+      newCompanyId: formData.newCompanyId,
       reason: formData.reason.trim() || undefined,
     })
     ElMessage.success('变更申请已提交，等待确认执行')
@@ -300,10 +305,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
 
       <!-- 右侧：变更内容表单 + 已选清单 -->
       <div class="form-side">
-        <el-form ref="formRef" :model="formData" :rules="rules" label-width="84px" @submit.prevent="handleSubmit">
-          <el-form-item label="使用人" prop="userId">
+        <el-form ref="formRef" :model="formData" :rules="rules" label-width="96px" @submit.prevent="handleSubmit">
+          <el-form-item label="使用人" prop="newUserId">
             <el-input-number
-              v-model="formData.userId"
+              v-model="formData.newUserId"
               :min="1"
               :precision="0"
               :controls="false"
@@ -311,12 +316,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
               class="full-width"
             />
           </el-form-item>
-          <el-form-item label="使用部门" prop="userDepartment">
-            <el-input v-model="formData.userDepartment" placeholder="变更后的使用部门" :maxlength="100" />
+          <el-form-item label="使用人姓名" prop="newUserName">
+            <el-input v-model="formData.newUserName" placeholder="选填；不填则明细展示用户 ID" :maxlength="100" />
           </el-form-item>
-          <el-form-item label="区域" prop="locationId">
+          <el-form-item label="使用部门" prop="newUserDepartment">
+            <el-input v-model="formData.newUserDepartment" placeholder="变更后的使用部门" :maxlength="100" />
+          </el-form-item>
+          <el-form-item label="区域" prop="newLocationId">
             <el-tree-select
-              v-model="formData.locationId"
+              v-model="formData.newLocationId"
               :data="locationTree"
               node-key="id"
               :props="{ label: 'name' }"
@@ -327,15 +335,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
               class="full-width"
             />
           </el-form-item>
-          <el-form-item label="存放地点" prop="locationDetail">
-            <el-input v-model="formData.locationDetail" placeholder="变更后的存放地点（详细位置）" :maxlength="200" />
+          <el-form-item label="存放位置明细" prop="newLocationDetail">
+            <el-input v-model="formData.newLocationDetail" placeholder="变更后的存放位置明细" :maxlength="200" />
           </el-form-item>
-          <el-form-item label="所属公司" prop="companyId">
+          <el-form-item label="归属公司" prop="newCompanyId">
             <el-select
-              v-model="formData.companyId"
+              v-model="formData.newCompanyId"
               clearable
               filterable
-              placeholder="变更后的所属公司"
+              placeholder="变更后的归属公司"
               class="full-width"
             >
               <el-option
@@ -356,7 +364,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
               show-word-limit
             />
           </el-form-item>
-          <div class="form-tip">仅填写的字段会被变更（至少一项），变更前值由系统自动记录，确认执行后生效</div>
+          <div class="form-tip">仅填写的字段会被变更（至少一项）；与当前值相同的字段不生成明细行，确认执行后生效</div>
         </el-form>
 
         <div class="selected-header">
@@ -455,8 +463,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
 }
 
 .selected-list {
-  min-height: 120px;
-  max-height: 200px;
+  min-height: 100px;
+  max-height: 160px;
   overflow: auto;
   padding: 10px;
   background: #fafbfc;
@@ -472,7 +480,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
   text-align: center;
   color: #86909c;
   font-size: 13px;
-  padding: 44px 0;
+  padding: 34px 0;
 }
 
 .selected-tag {

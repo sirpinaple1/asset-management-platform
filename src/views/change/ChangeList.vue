@@ -32,7 +32,7 @@ const statusCount = (status: ChangeStatus) =>
 
 const tabs = computed(() => [
   { key: 'ALL' as TabKey, label: '全部', count: changeOrders.value.length },
-  { key: 'PENDING' as TabKey, label: '待执行', count: statusCount('PENDING') },
+  { key: 'PENDING' as TabKey, label: '待确认', count: statusCount('PENDING') },
   { key: 'CONFIRMED' as TabKey, label: '已执行', count: statusCount('CONFIRMED') },
   { key: 'CANCELLED' as TabKey, label: '已撤销', count: statusCount('CANCELLED') },
 ])

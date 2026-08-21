@@ -7,9 +7,10 @@ import type { ChangeOrder } from '@/api/interface/change'
 import { CHANGE_STATUS_META, CHANGE_FIELD_META } from '@/api/interface/change'
 
 /**
- * 实物信息变更单详情抽屉：单据信息 + 变更前/后对比明细 + 流转操作。
- * PENDING 时：非发起人可确认执行（真正更新 asset 字段）；发起人可撤销。
- * （操作权限沿用 M04/M05"操作人≠发起人、撤销限发起人"约定，后端 M06 落地时核对）
+ * 实物信息变更单详情抽屉：单据信息 + 变更后信息（主表 new_* 统一目标值）
+ * + 变更前/后对比明细 + 流转操作。
+ * 权限（对齐后端 M06）：变更单为信息修正单据，确认执行允许发起人自己操作（区别于 M04/M05 审批流）；
+ * 撤销仅 PENDING 且仅发起人可撤（后端 403 校验）。
  */
 const props = defineProps<{
   visible: boolean
@@ -32,11 +33,11 @@ const statusMeta = computed(() =>
   detail.value ? CHANGE_STATUS_META[detail.value.status] : undefined,
 )
 
-/** 发起人本人（撤销按钮出现条件；确认执行预判禁用，后端强校验） */
+/** 发起人本人（仅撤销按钮出现条件；确认执行允许发起人自审） */
 const isApplicant = computed(
   () => !!detail.value && detail.value.applicantUserId === userStore.me?.userId,
 )
-const canConfirm = computed(() => detail.value?.status === 'PENDING' && !isApplicant.value)
+const canConfirm = computed(() => detail.value?.status === 'PENDING')
 const canCancel = computed(() => detail.value?.status === 'PENDING' && isApplicant.value)
 
 /* 打开时拉取详情（含变更前/后对比明细） */
@@ -59,7 +60,7 @@ watch(
 
 const handleClose = () => emit('update:visible', false)
 
-/** 确认执行：批量更新资产实物字段（同一事务写 asset_log），不可逆 */
+/** 确认执行：批量更新资产实物字段（同一事务写持有关系与 asset_log），不可逆 */
 const handleConfirm = async () => {
   if (!detail.value || acting.value) return
   const count = detail.value.items?.length ?? 0
@@ -149,6 +150,15 @@ const assetCount = computed(() =>
           <el-descriptions-item label="执行时间">{{ dash(detail.confirmTime) }}</el-descriptions-item>
         </el-descriptions>
 
+        <div class="items-title">变更后信息（统一目标值）</div>
+        <el-descriptions :column="2" border size="default" class="detail-desc">
+          <el-descriptions-item label="使用人">{{ dash(detail.newUserName || (detail.newUserId ? String(detail.newUserId) : '')) }}</el-descriptions-item>
+          <el-descriptions-item label="使用部门">{{ dash(detail.newUserDepartment) }}</el-descriptions-item>
+          <el-descriptions-item label="区域">{{ dash(detail.newLocationName || (detail.newLocationId ? String(detail.newLocationId) : '')) }}</el-descriptions-item>
+          <el-descriptions-item label="存放位置明细">{{ dash(detail.newLocationDetail) }}</el-descriptions-item>
+          <el-descriptions-item label="归属公司" :span="2">{{ dash(detail.newCompanyName || (detail.newCompanyId ? String(detail.newCompanyId) : '')) }}</el-descriptions-item>
+        </el-descriptions>
+
         <div class="items-title">变更明细（{{ assetCount }} 台资产 × {{ detail.items?.length ?? 0 }} 项变更）</div>
         <el-table :data="detail.items || []" row-key="id" border size="small" empty-text="无明细数据">
           <el-table-column prop="assetBarcode" label="资产编码" min-width="130" show-overflow-tooltip>
@@ -157,7 +167,7 @@ const assetCount = computed(() =>
           <el-table-column prop="assetName" label="资产名称" min-width="140" show-overflow-tooltip>
             <template #default="{ row }">{{ dash(row.assetName) }}</template>
           </el-table-column>
-          <el-table-column label="变更字段" width="90">
+          <el-table-column label="变更字段" width="104">
             <template #default="{ row }">{{ fieldLabel(row) }}</template>
           </el-table-column>
           <el-table-column prop="valueBefore" label="变更前" min-width="110" show-overflow-tooltip>
@@ -174,20 +184,8 @@ const assetCount = computed(() =>
 
     <template #footer>
       <template v-if="detail">
-        <!-- 待执行：非发起人可确认执行 -->
-        <template v-if="canConfirm">
-          <el-button type="success" :loading="acting" @click="handleConfirm">确认执行</el-button>
-        </template>
-        <!-- 待执行：发起人不可自审（沿用 M04/M05 审批隔离约定），可撤销 -->
-        <el-tooltip
-          v-else-if="detail.status === 'PENDING' && isApplicant"
-          content="确认执行由其他资产管理员操作；发起人可撤销"
-          placement="top"
-        >
-          <span>
-            <el-button type="success" disabled>确认执行</el-button>
-          </span>
-        </el-tooltip>
+        <!-- 待确认：任何资产管理员可确认执行（信息修正单据，发起人可自审） -->
+        <el-button v-if="canConfirm" type="success" :loading="acting" @click="handleConfirm">确认执行</el-button>
         <el-button v-if="canCancel" :loading="acting" @click="handleCancel">撤销</el-button>
         <el-button @click="handleClose">关闭</el-button>
       </template>
