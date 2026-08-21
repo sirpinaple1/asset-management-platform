@@ -7,17 +7,22 @@ import com.sk.asset.dto.transfer.TransferApplyReq;
 import com.sk.asset.dto.transfer.TransferQuery;
 import com.sk.asset.entity.asset.Asset;
 import com.sk.asset.entity.basedata.Location;
+import com.sk.asset.entity.change.ChangeOrder;
+import com.sk.asset.entity.change.ChangeOrderItem;
 import com.sk.asset.entity.receipt.AssetAllocation;
 import com.sk.asset.entity.receipt.ReceiveReceipt;
 import com.sk.asset.entity.receipt.ReceiveReceiptItem;
 import com.sk.asset.entity.transfer.TransferOrder;
 import com.sk.asset.entity.transfer.TransferOrderItem;
 import com.sk.asset.enums.asset.AssetStatus;
+import com.sk.asset.enums.change.ChangeStatus;
 import com.sk.asset.enums.receipt.ReceiptStatus;
 import com.sk.asset.enums.transfer.TransferSource;
 import com.sk.asset.enums.transfer.TransferStatus;
 import com.sk.asset.mapper.asset.AssetMapper;
 import com.sk.asset.mapper.basedata.LocationMapper;
+import com.sk.asset.mapper.change.ChangeOrderItemMapper;
+import com.sk.asset.mapper.change.ChangeOrderMapper;
 import com.sk.asset.mapper.receipt.AssetAllocationMapper;
 import com.sk.asset.mapper.receipt.ReceiveReceiptItemMapper;
 import com.sk.asset.mapper.receipt.ReceiveReceiptMapper;
@@ -60,6 +65,8 @@ public class TransferOrderServiceImpl implements TransferOrderService {
     private final AssetAllocationMapper allocationMapper;
     private final ReceiveReceiptMapper receiptMapper;
     private final ReceiveReceiptItemMapper receiptItemMapper;
+    private final ChangeOrderMapper changeOrderMapper;
+    private final ChangeOrderItemMapper changeOrderItemMapper;
     private final LocationMapper locationMapper;
     private final AssetService assetService;
 
@@ -140,16 +147,36 @@ public class TransferOrderServiceImpl implements TransferOrderService {
             }
         }
 
-        // 5. 调入位置存在性校验
+        // 5. 待确认变更单占用校验（M06）：资产在 PENDING 变更单中不可调拨（互斥占用）
+        List<ChangeOrderItem> changeOccupied = changeOrderItemMapper.selectList(
+                new LambdaQueryWrapper<ChangeOrderItem>()
+                        .in(ChangeOrderItem::getAssetId, assetIds));
+        if (!changeOccupied.isEmpty()) {
+            Set<Long> changeIds = changeOccupied.stream()
+                    .map(ChangeOrderItem::getOrderId)
+                    .collect(Collectors.toSet());
+            List<ChangeOrder> pendingChanges = changeOrderMapper.selectList(
+                    new LambdaQueryWrapper<ChangeOrder>()
+                            .in(ChangeOrder::getId, changeIds)
+                            .eq(ChangeOrder::getStatus, ChangeStatus.PENDING.name()));
+            if (!pendingChanges.isEmpty()) {
+                throw new BusinessException(409, "资产已有待确认的变更单（单号："
+                        + pendingChanges.stream().map(ChangeOrder::getSerialNo)
+                                .collect(Collectors.joining("、"))
+                        + "），不可调拨");
+            }
+        }
+
+        // 6. 调入位置存在性校验
         if (req.getToLocationId() != null
                 && locationMapper.selectById(req.getToLocationId()) == null) {
             throw new BusinessException(400, "调入位置不存在（id=" + req.getToLocationId() + "）");
         }
 
-        // 6. 生成单号（锁定读串行取号，见 generateSerialNo）
+        // 7. 生成单号（锁定读串行取号，见 generateSerialNo）
         String serialNo = generateSerialNo();
 
-        // 7. 写主表 + 明细（调出位置未显式指定时取首台资产当前位置）
+        // 8. 写主表 + 明细（调出位置未显式指定时取首台资产当前位置）
         Asset firstAsset = assets.get(assetIds.get(0));
         TransferOrder order = new TransferOrder();
         order.setSerialNo(serialNo);

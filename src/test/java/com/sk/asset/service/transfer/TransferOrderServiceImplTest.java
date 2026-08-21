@@ -73,6 +73,12 @@ class TransferOrderServiceImplTest {
     private ReceiveReceiptItemMapper receiptItemMapper;
 
     @Mock
+    private com.sk.asset.mapper.change.ChangeOrderMapper changeOrderMapper;
+
+    @Mock
+    private com.sk.asset.mapper.change.ChangeOrderItemMapper changeOrderItemMapper;
+
+    @Mock
     private LocationMapper locationMapper;
 
     @Mock
@@ -262,6 +268,27 @@ class TransferOrderServiceImplTest {
 
         assertEquals(409, exception.getCode());
         assertTrue(exception.getMessage().contains("领用/借用单"));
+        verify(orderMapper, never()).insert(any(TransferOrder.class));
+    }
+
+    @Test
+    void create_shouldRejectWhenOccupiedByPendingChangeOrder() {
+        when(assetMapper.selectBatchIds(any())).thenReturn(List.of(inUseAsset(1L)));
+        com.sk.asset.entity.change.ChangeOrderItem changeItem = new com.sk.asset.entity.change.ChangeOrderItem();
+        changeItem.setOrderId(9L);
+        changeItem.setAssetId(1L);
+        when(changeOrderItemMapper.selectList(any())).thenReturn(List.of(changeItem));
+        com.sk.asset.entity.change.ChangeOrder pendingChange = new com.sk.asset.entity.change.ChangeOrder();
+        pendingChange.setId(9L);
+        pendingChange.setSerialNo("AOC" + today() + "0001");
+        pendingChange.setStatus("PENDING");
+        when(changeOrderMapper.selectList(any())).thenReturn(List.of(pendingChange));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> transferService.create(applyReq(List.of(1L)), 100L, "张三"));
+
+        assertEquals(409, exception.getCode());
+        assertTrue(exception.getMessage().contains("变更单"));
         verify(orderMapper, never()).insert(any(TransferOrder.class));
     }
 
