@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { InputInstance, TableInstance } from 'element-plus'
@@ -19,6 +19,7 @@ const router = useRouter()
 const tabsStore = useTabsStore()
 const store = useBasedataStore()
 const suppliers = computed(() => store.suppliers)
+const total = computed(() => store.supplierTotal)
 const loading = computed(() => store.loading.suppliers)
 
 const modalVisible = ref(false)
@@ -27,7 +28,13 @@ const currentRecord = ref<Supplier>()
 /* 弹窗打开 = 有未保存内容：关页签前需确认 */
 watch(modalVisible, (v) => tabsStore.setDirty(route.fullPath, v))
 
-/* ---------------- 搜索（防抖 300ms 前端过滤） ---------------- */
+/* ---------------- 状态 tabs（服务端 status 过滤：全部/启用/停用） ---------------- */
+type TabKey = 'ALL' | 'ENABLED' | 'DISABLED'
+const STATUS_TABS: TabKey[] = ['ALL', 'ENABLED', 'DISABLED']
+const TAB_LABEL: Record<TabKey, string> = { ALL: '全部', ENABLED: '启用', DISABLED: '停用' }
+const activeTab = ref<TabKey>('ALL')
+
+/* ---------------- 搜索（防抖 300ms，服务端按名称模糊匹配） ---------------- */
 const keyword = ref('')
 const searchKeyword = ref('')
 let searchTimer: ReturnType<typeof setTimeout> | undefined
@@ -36,7 +43,6 @@ watch(keyword, (val) => {
   if (searchTimer) clearTimeout(searchTimer)
   searchTimer = setTimeout(() => {
     searchKeyword.value = val.trim()
-    currentPage.value = 1
   }, 300)
 })
 onBeforeUnmount(() => searchTimer && clearTimeout(searchTimer))
@@ -64,12 +70,16 @@ const handleBatchDelete = async () => {
   const ids = selectedRows.value.map((row) => row.id)
   selectedRows.value = []
   try {
-    // 乐观删除：本地立即移除，失败项自动回滚
+    // 乐观删除：本地立即移除，失败项自动回滚；成功后重拉当前页补齐
     const { failedCount, okCount, snapshot } = await store.deleteSuppliersOptimistic(ids)
     if (okCount) {
+      fetchCurrent()
       showUndoMessage(
         failedCount ? `已删除 ${okCount} 个供应商，${failedCount} 个失败` : `已删除 ${okCount} 个供应商`,
-        () => store.undoDeleteSuppliers(snapshot),
+        async () => {
+          await store.undoDeleteSuppliers(snapshot)
+          fetchCurrent()
+        },
       )
     }
   } finally {
@@ -77,34 +87,37 @@ const handleBatchDelete = async () => {
   }
 }
 
-/* ---------------- 前端分页 ---------------- */
+/* ---------------- 服务端分页（M02.5 契约：keyword 仅匹配名称，id 倒序） ---------------- */
 const PAGE_SIZE = 10
 const currentPage = ref(1)
 
-const filtered = computed(() => {
-  const kw = searchKeyword.value.toLowerCase()
-  if (!kw) return suppliers.value
-  return suppliers.value.filter((item) =>
-    [item.name, item.contact, item.phone].some((field) => field?.toLowerCase().includes(kw)),
-  )
+const buildQuery = () => ({
+  page: currentPage.value,
+  size: PAGE_SIZE,
+  keyword: searchKeyword.value || undefined,
+  status: activeTab.value === 'ALL' ? undefined : activeTab.value === 'ENABLED' ? 1 : 0,
 })
 
-const total = computed(() => filtered.value.length)
-const pageData = computed(() =>
-  filtered.value.slice((currentPage.value - 1) * PAGE_SIZE, currentPage.value * PAGE_SIZE),
-)
-/* 过滤结果变化时纠正越界页码 */
-watch(total, () => {
-  const maxPage = Math.max(1, Math.ceil(total.value / PAGE_SIZE))
-  if (currentPage.value > maxPage) currentPage.value = maxPage
+const fetchCurrent = () => store.fetchSuppliers(buildQuery())
+
+/* 筛选维度变化：回第 1 页（页码本就是 1 时直接拉取） */
+watch([activeTab, searchKeyword], () => {
+  if (currentPage.value === 1) fetchCurrent()
+  else currentPage.value = 1 /* 页码变化触发下方 watcher 拉取 */
 })
 
-/* ---------------- 深链与刷新保持：搜索词/页码同步 URL query ---------------- */
+/* 页码变化：直接拉取 */
+watch(currentPage, () => fetchCurrent())
+
+/* ---------------- 深链与刷新保持：tabs/搜索词/页码同步 URL query ---------------- */
 /* query → 状态：初始化 & 前进/后退/页签切换回本页时恢复 */
 watch(
   () => route.query,
   (q) => {
     if (route.name !== 'basedata-suppliers') return
+    const tab = typeof q.tab === 'string' ? q.tab : ''
+    const nextTab = STATUS_TABS.includes(tab as TabKey) ? (tab as TabKey) : 'ALL'
+    if (nextTab !== activeTab.value) activeTab.value = nextTab
     const kw = typeof q.q === 'string' ? q.q : ''
     if (kw !== keyword.value) keyword.value = kw
     const p = Number(q.page)
@@ -114,9 +127,10 @@ watch(
 )
 
 /* 状态 → query：replace 不产生历史记录，刷新/分享 URL 可还原现场 */
-watch([searchKeyword, currentPage], () => {
+watch([activeTab, searchKeyword, currentPage], () => {
   if (route.name !== 'basedata-suppliers') return
   const query: Record<string, string> = {}
+  if (activeTab.value !== 'ALL') query.tab = activeTab.value
   if (searchKeyword.value) query.q = searchKeyword.value
   if (currentPage.value > 1) query.page = String(currentPage.value)
   const current = JSON.stringify(route.query)
@@ -125,8 +139,6 @@ watch([searchKeyword, currentPage], () => {
 })
 
 /* ---------------- CRUD ---------------- */
-const loadData = () => store.fetchSuppliers()
-
 const handleAdd = () => {
   currentRecord.value = undefined
   modalVisible.value = true
@@ -138,14 +150,21 @@ const handleEdit = (record: Supplier) => {
 }
 
 const handleDelete = async (id: number) => {
-  // 乐观删除：本地立即移除，失败自动回滚（拦截器提示错误）
+  // 乐观删除：本地立即移除，失败自动回滚（拦截器提示错误）；成功后重拉当前页补齐
   const { failedCount, okCount, snapshot } = await store.deleteSuppliersOptimistic([id])
   if (failedCount || !okCount) return
-  showUndoMessage('已删除 1 个供应商', () => store.undoDeleteSuppliers(snapshot))
+  fetchCurrent()
+  showUndoMessage('已删除 1 个供应商', async () => {
+    await store.undoDeleteSuppliers(snapshot)
+    fetchCurrent()
+  })
 }
 
-/** 新增/编辑成功：用响应数据原地合并本地列表（免全量刷新闪烁） */
-const handleSaved = (item: Supplier) => store.upsertSupplierLocal(item)
+/** 新增成功：重拉当前页（新记录按 id 倒序落在第 1 页）；编辑成功：响应数据原地合并 */
+const handleSaved = (item: Supplier) => {
+  if (currentRecord.value) store.upsertSupplierLocal(item)
+  else fetchCurrent()
+}
 
 /** 空值统一显示占位符 */
 const formatText = (_row: Supplier, _column: unknown, cellValue: unknown) =>
@@ -170,7 +189,7 @@ const handleCopyRow = async (row: Supplier) => {
 
 const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown, onCurrentChange } =
   useListInteractions<Supplier>({
-    pageRows: pageData,
+    pageRows: suppliers,
     selectedRows,
     isModalOpen: modalVisible,
     tableRef,
@@ -181,9 +200,11 @@ const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown
     onBatchDelete: handleBatchDelete,
   })
 
+/* keep-alive：首次挂载拉取；切回本页刷新（数据可能已被其他页签变更） */
+let firstActivation = true
 onMounted(async () => {
-  await loadData()
-  /* 深链定位：?id=123 打开对应行编辑（用后清除，避免刷新重复弹窗） */
+  await fetchCurrent()
+  /* 深链定位：?id=123 打开对应行编辑（用后清除，避免刷新重复弹窗；仅当前页可见行） */
   const id = Number(route.query.id)
   if (Number.isInteger(id) && id > 0) {
     const row = suppliers.value.find((s) => s.id === id)
@@ -191,6 +212,13 @@ onMounted(async () => {
     if (row) handleEdit(row)
     else ElMessage.warning(`未找到 id=${id} 的供应商`)
   }
+})
+onActivated(() => {
+  if (firstActivation) {
+    firstActivation = false
+    return
+  }
+  fetchCurrent()
 })
 </script>
 
@@ -201,11 +229,16 @@ onMounted(async () => {
         <h2 class="page-title">供应商管理</h2>
       </div>
 
-      <!-- 状态 tabs（骨架：全部；状态字段待后端支持后扩展"已停用"） -->
+      <!-- 状态 tabs（服务端 status 过滤：全部/启用/停用） -->
       <div class="tabs">
-        <div class="tab active">
-          <span>全部</span>
-          <span class="tab-count">({{ total }})</span>
+        <div
+          v-for="tab in STATUS_TABS"
+          :key="tab"
+          class="tab"
+          :class="{ active: activeTab === tab }"
+          @click="activeTab = tab"
+        >
+          <span>{{ TAB_LABEL[tab] }}</span>
         </div>
       </div>
 
@@ -227,7 +260,7 @@ onMounted(async () => {
           ref="searchInputRef"
           v-model="keyword"
           class="search-box"
-          placeholder="搜索名称 / 联系人 / 电话（Ctrl+F）"
+          placeholder="搜索名称（Ctrl+F）"
           clearable
         >
           <template #prefix>
@@ -243,7 +276,7 @@ onMounted(async () => {
       <el-table
         ref="tableRef"
         v-loading="loading"
-        :data="pageData"
+        :data="suppliers"
         row-key="id"
         border
         tabindex="0"
@@ -260,7 +293,14 @@ onMounted(async () => {
         <el-table-column prop="contact" label="联系人" min-width="100" :formatter="formatText" />
         <el-table-column prop="phone" label="联系电话" min-width="130" :formatter="formatText" />
         <el-table-column prop="address" label="地址" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip />
+        <el-table-column label="状态" width="80" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 1 ? 'success' : 'info'" effect="light">
+              {{ row.status === 1 ? '启用' : '停用' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip :formatter="formatText" />
         <el-table-column label="操作" width="140" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
@@ -273,7 +313,7 @@ onMounted(async () => {
         </el-table-column>
       </el-table>
 
-      <!-- 分页 -->
+      <!-- 分页（服务端分页） -->
       <div class="pagination">
         <span class="pagination-info">共 {{ total }} 条</span>
         <el-pagination
@@ -318,6 +358,7 @@ onMounted(async () => {
   margin: 0;
 }
 
+/* tabs（对齐原型：胶囊样式） */
 .tabs {
   display: flex;
   gap: 8px;
@@ -334,6 +375,8 @@ onMounted(async () => {
   font-size: 14px;
   background: #f3f4f6;
   color: #6b7280;
+  cursor: pointer;
+  user-select: none;
 }
 
 .tab.active {
@@ -341,10 +384,7 @@ onMounted(async () => {
   color: #ffffff;
 }
 
-.tab-count {
-  font-size: 13px;
-}
-
+/* 工具栏（对齐原型：浅底圆角条） */
 .toolbar {
   min-height: 60px;
   padding: 14px;
@@ -373,6 +413,7 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 
+/* 分页 */
 .pagination {
   display: flex;
   align-items: center;

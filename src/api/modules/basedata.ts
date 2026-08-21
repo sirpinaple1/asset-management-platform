@@ -1,5 +1,6 @@
 import { request } from '@/api/config/request'
 import type {
+  BasedataPageQuery,
   Company,
   Manufacturer,
   ManufacturerForm,
@@ -11,6 +12,7 @@ import type {
   AssetModel,
   AssetModelForm,
 } from '@/api/interface/basedata'
+import type { PageResp } from '@/api/interface/common'
 
 /** M02 基础数据 API（baseURL 已含 /api，路径以 /v1 开头） */
 export const basedataApi = {
@@ -18,8 +20,9 @@ export const basedataApi = {
   getCompanies: () => request<Company[]>({ url: '/v1/companies', method: 'get' }),
   getCompanyById: (id: number) => request<Company>({ url: `/v1/companies/${id}`, method: 'get' }),
 
-  // 厂商
-  getManufacturers: () => request<Manufacturer[]>({ url: '/v1/manufacturers', method: 'get' }),
+  // 厂商（M02.5 起服务端分页：keyword 仅匹配名称，status 1-启用 0-停用）
+  getManufacturers: (params?: BasedataPageQuery) =>
+    request<PageResp<Manufacturer>>({ url: '/v1/manufacturers', method: 'get', params }),
   getManufacturerById: (id: number) => request<Manufacturer>({ url: `/v1/manufacturers/${id}`, method: 'get' }),
   createManufacturer: (data: ManufacturerForm) =>
     request<Manufacturer>({ url: '/v1/manufacturers', method: 'post', data }),
@@ -30,8 +33,9 @@ export const basedataApi = {
   restoreManufacturer: (id: number) =>
     request<void>({ url: `/v1/manufacturers/${id}/restore`, method: 'put' }),
 
-  // 供应商
-  getSuppliers: () => request<Supplier[]>({ url: '/v1/suppliers', method: 'get' }),
+  // 供应商（M02.5 起服务端分页）
+  getSuppliers: (params?: BasedataPageQuery) =>
+    request<PageResp<Supplier>>({ url: '/v1/suppliers', method: 'get', params }),
   getSupplierById: (id: number) => request<Supplier>({ url: `/v1/suppliers/${id}`, method: 'get' }),
   createSupplier: (data: SupplierForm) =>
     request<Supplier>({ url: '/v1/suppliers', method: 'post', data }),

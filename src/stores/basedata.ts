@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, type Ref } from 'vue'
 import { basedataApi } from '@/api/modules/basedata'
 import type {
+  BasedataPageQuery,
   Company,
   Manufacturer,
   Supplier,
@@ -100,6 +101,10 @@ export const useBasedataStore = defineStore('basedata', () => {
   const locations = ref<Location[]>([])
   const models = ref<AssetModel[]>([])
 
+  // 服务端分页 total（M02.5：厂商/供应商）
+  const manufacturerTotal = ref(0)
+  const supplierTotal = ref(0)
+
   // 加载状态
   const loading = ref({
     companies: false,
@@ -120,19 +125,25 @@ export const useBasedataStore = defineStore('basedata', () => {
     }
   }
 
-  const fetchManufacturers = async () => {
+  /** 厂商列表（服务端分页：列表页传 page/size/keyword/status；下拉等全量场景传 size:500） */
+  const fetchManufacturers = async (query?: BasedataPageQuery) => {
     loading.value.manufacturers = true
     try {
-      manufacturers.value = await basedataApi.getManufacturers()
+      const page = await basedataApi.getManufacturers(query)
+      manufacturers.value = page.records
+      manufacturerTotal.value = page.total
     } finally {
       loading.value.manufacturers = false
     }
   }
 
-  const fetchSuppliers = async () => {
+  /** 供应商列表（服务端分页，语义同厂商） */
+  const fetchSuppliers = async (query?: BasedataPageQuery) => {
     loading.value.suppliers = true
     try {
-      suppliers.value = await basedataApi.getSuppliers()
+      const page = await basedataApi.getSuppliers(query)
+      suppliers.value = page.records
+      supplierTotal.value = page.total
     } finally {
       loading.value.suppliers = false
     }
@@ -176,6 +187,8 @@ export const useBasedataStore = defineStore('basedata', () => {
     categories,
     locations,
     models,
+    manufacturerTotal,
+    supplierTotal,
     loading,
     fetchCompanies,
     fetchManufacturers,

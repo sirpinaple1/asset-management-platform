@@ -1,3 +1,7 @@
+import type { PageResp } from '@/api/interface/common'
+
+export type { PageResp }
+
 /** 公司主体（asset-backend Company） */
 export interface Company {
   id: number
@@ -8,6 +12,16 @@ export interface Company {
   updatedAt: string
 }
 
+/** 厂商分页查询参数（M02.5：厂商/供应商列表已服务端分页） */
+export interface BasedataPageQuery {
+  page?: number
+  size?: number
+  /** 名称关键词（后端仅对 name 模糊匹配） */
+  keyword?: string
+  /** 状态：1-启用 0-停用，缺省=全部 */
+  status?: number
+}
+
 /** 厂商（asset-backend Manufacturer） */
 export interface Manufacturer {
   id: number
@@ -16,6 +30,8 @@ export interface Manufacturer {
   phone?: string
   email?: string
   address?: string
+  /** 1-启用 0-停用 */
+  status: number
   remark?: string
   createdAt: string
   updatedAt: string
@@ -39,6 +55,8 @@ export interface Supplier {
   phone?: string
   email?: string
   address?: string
+  /** 1-启用 0-停用 */
+  status: number
   remark?: string
   createdAt: string
   updatedAt: string
