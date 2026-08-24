@@ -28,6 +28,9 @@ public class TransferResp {
 
     private String sourceLabel;
 
+    /** 关联盘点任务（stocktake.id，盘点触发调拨时回填；手动调拨为空） */
+    private Long stocktakeId;
+
     private Long applicantUserId;
 
     /** 发起人姓名（提交时快照，空时前端回退展示用户 ID） */
@@ -85,6 +88,7 @@ public class TransferResp {
         resp.setSource(entity.getSource());
         resp.setSourceLabel(entity.getSource() == null
                 ? null : TransferSource.of(entity.getSource()).getLabel());
+        resp.setStocktakeId(entity.getStocktakeId());
         resp.setApplicantUserId(entity.getApplicantUserId());
         resp.setApplicantName(entity.getApplicantName());
         resp.setFromLocationId(entity.getFromLocationId());

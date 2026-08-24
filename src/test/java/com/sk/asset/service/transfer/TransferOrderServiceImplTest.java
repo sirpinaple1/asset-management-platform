@@ -197,6 +197,30 @@ class TransferOrderServiceImplTest {
     }
 
     @Test
+    void create_withSourceAndStocktakeId_shouldPersistInventoryTriggeredOrder() {
+        // M07 盘点差异触发：source=INVENTORY_TRIGGERED + stocktake_id 关联落库
+        AtomicReference<TransferOrder> inserted = new AtomicReference<>();
+        when(assetMapper.selectBatchIds(any())).thenReturn(List.of(inUseAsset(1L)));
+        when(orderMapper.selectOne(any())).thenReturn(null);
+        when(locationMapper.selectById(20L)).thenReturn(location(20L, "B区"));
+        when(orderMapper.insert(any(TransferOrder.class))).thenAnswer(invocation -> {
+            TransferOrder order = invocation.getArgument(0);
+            order.setId(1L);
+            inserted.set(order);
+            return 1;
+        });
+        when(orderMapper.selectById(1L)).thenAnswer(inv -> inserted.get());
+        when(locationMapper.selectBatchIds(any()))
+                .thenReturn(List.of(location(10L, "A区"), location(20L, "B区")));
+
+        TransferOrder created = transferService.create(applyReq(List.of(1L)), 100L, "张三",
+                com.sk.asset.enums.transfer.TransferSource.INVENTORY_TRIGGERED, 5L);
+
+        assertEquals("INVENTORY_TRIGGERED", created.getSource());
+        assertEquals(5L, created.getStocktakeId());
+    }
+
+    @Test
     void create_shouldRejectWhenNeitherToLocationNorDepartment() {
         TransferApplyReq req = applyReq(List.of(1L));
         req.setToLocationId(null);

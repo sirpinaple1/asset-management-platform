@@ -3,6 +3,7 @@ package com.sk.asset.service.transfer;
 import com.sk.asset.dto.transfer.TransferApplyReq;
 import com.sk.asset.dto.transfer.TransferQuery;
 import com.sk.asset.entity.transfer.TransferOrder;
+import com.sk.asset.enums.transfer.TransferSource;
 
 import java.util.List;
 
@@ -23,6 +24,14 @@ public interface TransferOrderService {
      * 调入位置存在；调入区域与调入部门至少一项。不锁定资产状态。
      */
     TransferOrder create(TransferApplyReq req, Long applicantUserId, String applicantName);
+
+    /**
+     * 发起调拨（显式来源，M07 盘点差异触发时传 INVENTORY_TRIGGERED + 任务 ID）。
+     * 其余校验与行为同 {@link #create(TransferApplyReq, Long, String)}；
+     * stocktakeId 写入 transfer_order 供反查来源与防重复生成。
+     */
+    TransferOrder create(TransferApplyReq req, Long applicantUserId, String applicantName,
+                         TransferSource source, Long stocktakeId);
 
     /** 列表（status/source/dept/userId/date 筛选，含明细行与位置名称回填） */
     List<TransferOrder> list(TransferQuery query);

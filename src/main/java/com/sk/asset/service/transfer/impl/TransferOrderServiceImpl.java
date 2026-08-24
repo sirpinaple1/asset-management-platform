@@ -76,6 +76,13 @@ public class TransferOrderServiceImpl implements TransferOrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public TransferOrder create(TransferApplyReq req, Long applicantUserId, String applicantName) {
+        return create(req, applicantUserId, applicantName, TransferSource.MANUAL, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public TransferOrder create(TransferApplyReq req, Long applicantUserId, String applicantName,
+                                TransferSource source, Long stocktakeId) {
         // 调入区域与调入部门至少一项（调拨必须改变归属维度之一）
         boolean hasToLocation = req.getToLocationId() != null;
         boolean hasToDepartment = req.getToDepartment() != null && !req.getToDepartment().isBlank();
@@ -182,7 +189,8 @@ public class TransferOrderServiceImpl implements TransferOrderService {
         TransferOrder order = new TransferOrder();
         order.setSerialNo(serialNo);
         order.setStatus(TransferStatus.PENDING.name());
-        order.setSource(TransferSource.MANUAL.name());
+        order.setSource(source.name());
+        order.setStocktakeId(stocktakeId);
         order.setApplicantUserId(applicantUserId);
         order.setApplicantName(applicantName);
         order.setFromLocationId(firstAsset != null ? firstAsset.getLocationId() : null);

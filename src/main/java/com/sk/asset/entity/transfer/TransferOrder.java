@@ -30,6 +30,9 @@ public class TransferOrder {
     /** 来源：MANUAL-手动调拨 INVENTORY_TRIGGERED-盘点触发（对应 TransferSource 枚举） */
     private String source;
 
+    /** 关联盘点任务（stocktake.id，盘点差异触发调拨时写入；手动调拨为空） */
+    private Long stocktakeId;
+
     /** 发起人ID（调出方，comm_public_basic 用户） */
     private Long applicantUserId;
 

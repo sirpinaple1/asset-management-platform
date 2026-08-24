@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-**Phase 3 进行中**：M06 实物信息变更单（AOC）已完成，下一步 M08-A/B 历史数据迁移。
+**Phase 4 进行中**：M07 盘点已完成，下一步 M08-A/B 历史数据迁移。
 
 ## 已完成
 
@@ -157,6 +157,17 @@
   - 审批联动：approve 时资产 `location_id` 更新为领用区域（与持有人同一 update），日志追加"领用区域：XX"；列表/详情回填 `locationName`；home_location_id（归属位置）不动，归还/盘亏可追溯"家"位置
   - 测试 270/270（新增 3：位置缺失 400 ×2 + 存量单跳过位置更新 + 位置 SET 断言）；前端待适配：申请弹窗加"领用区域"必选下拉（GET /api/v1/locations 取数）
 
+- [x] **M07 盘点（Stocktake）**（2026-08-24）：
+  - 迁移 `V20260829__stocktake_creator_name_and_transfer_ref.sql`：stocktake 加 creator_name（对齐 M04/M05/M06 快照模式）；transfer_order 加 stocktake_id（盘点触发调拨关联 + 防重复生成 + 反查来源）
+  - `enums/stocktake`：StocktakeStatus（PENDING→IN_PROGRESS→COMPLETED/CANCELLED）+ StocktakeItemStatus（PENDING/MATCHED/LOCATION_MISMATCH/NOT_FOUND/EXTRA）
+  - `entity/mapper/service/controller/dto` 的 stocktake 上下文：Stocktake（主表，范围=位置含子树/分类，统计计数回填）+ StocktakeItem（明细，expected=创建时账面位置快照）
+  - `StocktakeServiceImpl`：create（范围校验 400 + 报废排除 + 空范围 400 + 明细快照批量写入）、start（PENDING 409 校验）、scanItem（提交实际位置判定 MATCHED/LOCATION_MISMATCH，notFound 标记盘亏；已盘不可重盘 409）、scanByBarcode（PDA 入口：任务内资产更新明细/范围外已登记资产记盘盈 EXTRA/未登记 404/报废 409）、complete（剩余待盘批量记盘亏 + 逐台写"盘点处理"日志）、report（五态汇总 + 差异明细，进行中可看实时统计）、createTransfers（位置不符按实际位置分组生成 source=INVENTORY_TRIGGERED 调拨单，任务须 COMPLETED + stocktake_id 防重 409；EXTRA 盘盈不自动调拨，人工处置）、cancel（仅 PENDING/IN_PROGRESS 且创建人 403）；全部 @Transactional
+  - `TransferOrderService` 新增 create 重载（显式 source + stocktakeId，原方法委托 source=MANUAL 不变）；TransferOrder/TransferResp 透传 stocktakeId
+  - 端点：POST/GET /api/v1/stocktakes、GET /{id}、POST /{id}/start、POST /{id}/cancel、GET /{id}/items?status=、POST /{id}/items/{itemId}/scan、POST /{id}/scan（PDA 按条码）、POST /{id}/complete、GET /{id}/report、POST /{id}/transfer
+  - 统计用 SQL groupBy（selectMaps 别名规避 map-underscore 配置差异）；复用 M06 教训：Map.of() 空 map 不可 null-key 查询（范围/位置为 null 时先判空再 get）
+  - 测试 314/314（新增 44：StocktakeServiceImplTest 28 + StocktakeControllerTest 15 + TransferOrderServiceImplTest 1 盘点触发重载）
+  - **待跟进**：V20260829 需在测试库 172.16.5.247 手动执行；本地 6006 重启后 Flyway 自动落地；PDA 扫码前端（uni-app）Phase 4 独立会话实现
+
 ## 进行中
 
 - （无）
@@ -179,7 +190,7 @@
 11. **M08-A/B** 历史数据迁移：563条资产 + 346条领用单 + 56条调拨单 + 1775条日志
 
 ### Phase 4 — 支撑功能（Phase 3 完成后）
-12. **M07** 盘点（Stocktake）：扫码核对 + 差异处理 + 触发调拨
+12. ~~**M07** 盘点（Stocktake）：扫码核对 + 差异处理 + 触发调拨~~（已完成，2026-08-24）
 13. **M09** 折旧（低优先级，需 asset.amount 有真实数据才有意义）
 14. CI 流水线：GitHub Actions（编译 + 测试）
 
@@ -219,5 +230,5 @@
 
 ---
 
-**最后更新**：2026-08-21（M06 实物信息变更单完成，测试 267/267；同日完成 M05 调拨单审批流、在用报废悬死持有关系修复、资产编码自动生成、M04 审批流）
+**最后更新**：2026-08-24（M07 盘点完成，测试 314/314；含 PDA 按条码扫码、盘盈盘亏、盘点触发调拨）
 **当前阶段负责人**：待指派
