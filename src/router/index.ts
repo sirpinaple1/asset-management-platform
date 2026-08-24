@@ -85,6 +85,12 @@ const router = createRouter({
           name: 'changes-list',
           component: () => import('@/views/change/ChangeList.vue'),
           meta: { title: '实物信息变更' }
+        },
+        {
+          path: 'stocktakes',
+          name: 'stocktakes-list',
+          component: () => import('@/views/stocktake/StocktakeList.vue'),
+          meta: { title: '盘点管理' }
         }
       ]
     },

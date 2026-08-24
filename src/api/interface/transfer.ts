@@ -23,6 +23,8 @@ export interface TransferOrder {
   source: TransferSource
   /** 来源展示名（后端回填，空时回退本地 meta） */
   sourceLabel?: string
+  /** 关联盘点任务 ID（盘点触发调拨时回填，手动调拨为空；M07） */
+  stocktakeId?: number
   /** 发起人 ID（调出方） */
   applicantUserId: number
   /** 发起人姓名（提交时快照，空时回退展示用户 ID） */
