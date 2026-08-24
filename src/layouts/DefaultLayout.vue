@@ -46,6 +46,7 @@ const basedataMenus = [
   { path: '/basedata/categories', title: '分类管理' },
   { path: '/basedata/locations', title: '位置管理' },
   { path: '/basedata/models', title: '型号管理' },
+  { path: '/basedata/migration', title: '数据迁移' },
 ]
 
 /** 分组折叠状态（localStorage 持久化，刷新不丢） */

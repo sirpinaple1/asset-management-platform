@@ -63,6 +63,12 @@ const router = createRouter({
           meta: { title: '型号管理' }
         },
         {
+          path: 'basedata/migration',
+          name: 'basedata-migration',
+          component: () => import('@/views/basedata/MigrationPage.vue'),
+          meta: { title: '数据迁移' }
+        },
+        {
           path: 'receipts/receive',
           name: 'receipts-receive',
           component: () => import('@/views/receipt/ReceiveList.vue'),
