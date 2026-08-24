@@ -3,6 +3,7 @@ import { computed, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'v
 import { useRoute, useRouter } from 'vue-router'
 import { useChangeStore } from '@/stores/change'
 import { useTabsStore } from '@/stores/tabs'
+import { changeApi } from '@/api/modules/change'
 import type { ChangeOrder, ChangeStatus } from '@/api/interface/change'
 import { CHANGE_STATUS_META, CHANGE_FIELD_META } from '@/api/interface/change'
 import ChangeApplyModal from './components/ChangeApplyModal.vue'
@@ -144,6 +145,23 @@ const openDetail = (record: ChangeOrder) => {
   currentChange.value = record
   drawerVisible.value = true
 }
+
+/* 深链定位：?id=123 打开对应单据详情（审批中心跳转入口；watch 兼容 keep-alive 缓存后二次深链） */
+watch(
+  () => route.query.id,
+  async (v) => {
+    if (route.name !== 'changes-list') return
+    const id = Number(v)
+    if (!Number.isInteger(id) || id <= 0) return
+    router.replace({ query: { ...route.query, id: undefined } })
+    try {
+      openDetail(await changeApi.getChangeOrderById(id))
+    } catch {
+      /* 404 已由拦截器提示 */
+    }
+  },
+  { immediate: true },
+)
 
 /* 详情抽屉内确认执行/撤销成功：列表原地更新 */
 const handleUpdated = (item: ChangeOrder) => store.upsertLocal(item)

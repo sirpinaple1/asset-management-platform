@@ -158,6 +158,23 @@ const openDetail = (record: Stocktake) => {
   drawerVisible.value = true
 }
 
+/* 深链定位：?id=123 打开对应任务详情（工作台/审批中心跳转入口；watch 兼容 keep-alive 缓存后二次深链） */
+watch(
+  () => route.query.id,
+  async (v) => {
+    if (route.name !== 'stocktakes-list') return
+    const id = Number(v)
+    if (!Number.isInteger(id) || id <= 0) return
+    router.replace({ query: { ...route.query, id: undefined } })
+    try {
+      openDetail(await stocktakeApi.getStocktakeById(id))
+    } catch {
+      /* 404 已由拦截器提示 */
+    }
+  },
+  { immediate: true },
+)
+
 /* 详情抽屉内开始/取消/完成/生成调拨成功：列表原地更新 */
 const handleUpdated = (item: Stocktake) => store.upsertLocal(item)
 

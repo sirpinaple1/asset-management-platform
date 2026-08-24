@@ -2,11 +2,13 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { useApprovalStore } from '@/stores/approval'
 import { useTabsStore } from '@/stores/tabs'
 import TabBar from '@/components/TabBar.vue'
 
 const route = useRoute()
 const userStore = useUserStore()
+const approvalStore = useApprovalStore()
 const tabsStore = useTabsStore()
 
 /* 多页签工作台：路由变化登记页签（fullPath 含 query），keep-alive 缓存已打开页签 */
@@ -31,12 +33,16 @@ const cachedViews = computed(() => tabsStore.tabs.map((t) => t.name))
 const activeNav = computed(() => route.name)
 const user = computed(() => userStore.me)
 
-/** 资产管理模块（资产列表 + 基础数据 + 领用借用/调拨/变更/盘点单据子页面）→ 显示二级子侧边栏 */
+/** 资产管理模块（资产列表 + 基础数据 + 领用借用/调拨/变更/盘点单据子页面 + 审批中心）→ 显示二级子侧边栏 */
 const isAssetModule = computed(() =>
-  ['assets-', 'basedata-', 'receipts-', 'transfers-', 'changes-', 'stocktakes-'].some((p) =>
-    String(route.name || '').startsWith(p),
+  ['assets-', 'basedata-', 'receipts-', 'transfers-', 'changes-', 'stocktakes-', 'approvals-'].some(
+    (p) => String(route.name || '').startsWith(p),
   ),
 )
+
+/** 审批中心子菜单激活态：/approvals?tab=xxx（缺省 tab=todo） */
+const approvalsTabActive = (key: string) =>
+  route.path === '/approvals' && (String(route.query.tab || 'todo') === key)
 
 /** 二级侧边栏：基础设置菜单（对齐原型：厂商/供应商/分类/位置/型号 + 公司主体） */
 const basedataMenus = [
@@ -121,17 +127,18 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
           </router-link>
         </el-tooltip>
 
-        <el-tooltip content="审批中心（待接入）" placement="right" :show-after="300">
-          <div class="nav-item" @click="comingSoon">
+        <el-tooltip content="审批中心" placement="right" :show-after="300">
+          <router-link to="/approvals" class="nav-item" :class="{ active: activeNav === 'approvals-center' }">
+            <span v-if="approvalStore.todoCount > 0" class="red-dot"></span>
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M3 5L6 8L9 5" stroke="#86909C" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-              <line x1="11" y1="6.5" x2="17" y2="6.5" stroke="#86909C" stroke-width="1.5" stroke-linecap="round" />
-              <path d="M3 10L6 13L9 10" stroke="#86909C" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-              <line x1="11" y1="11.5" x2="17" y2="11.5" stroke="#86909C" stroke-width="1.5" stroke-linecap="round" />
-              <circle cx="5" cy="16" r="1.2" stroke="#86909C" stroke-width="1.5" />
-              <line x1="11" y1="16" x2="17" y2="16" stroke="#86909C" stroke-width="1.5" stroke-linecap="round" />
+              <path d="M3 5L6 8L9 5" :stroke="navStroke(activeNav === 'approvals-center')" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+              <line x1="11" y1="6.5" x2="17" y2="6.5" :stroke="navStroke(activeNav === 'approvals-center')" stroke-width="1.5" stroke-linecap="round" />
+              <path d="M3 10L6 13L9 10" :stroke="navStroke(activeNav === 'approvals-center')" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+              <line x1="11" y1="11.5" x2="17" y2="11.5" :stroke="navStroke(activeNav === 'approvals-center')" stroke-width="1.5" stroke-linecap="round" />
+              <circle cx="5" cy="16" r="1.2" :stroke="navStroke(activeNav === 'approvals-center')" stroke-width="1.5" />
+              <line x1="11" y1="16" x2="17" y2="16" :stroke="navStroke(activeNav === 'approvals-center')" stroke-width="1.5" stroke-linecap="round" />
             </svg>
-          </div>
+          </router-link>
         </el-tooltip>
 
         <el-tooltip content="资产管理" placement="right" :show-after="300">
@@ -186,27 +193,27 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
         </div>
 
         <nav class="sidebar-menu">
-          <a class="menu-item" @click="comingSoon">
+          <router-link to="/approvals?tab=todo" class="menu-item" :class="{ active: approvalsTabActive('todo') }">
             <span class="menu-icon">
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M3 5L6 8L9 5" stroke="#4B5563" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /><line x1="11" y1="6.5" x2="17" y2="6.5" stroke="#4B5563" stroke-width="1.5" stroke-linecap="round" /><path d="M3 10L6 13L9 10" stroke="#4B5563" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /><line x1="11" y1="11.5" x2="17" y2="11.5" stroke="#4B5563" stroke-width="1.5" stroke-linecap="round" /></svg>
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M3 5L6 8L9 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /><line x1="11" y1="6.5" x2="17" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /><path d="M3 10L6 13L9 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /><line x1="11" y1="11.5" x2="17" y2="11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg>
             </span>
             <span>我的待办</span>
-          </a>
-          <a class="menu-item" @click="comingSoon">
+          </router-link>
+          <router-link to="/approvals?tab=mine" class="menu-item" :class="{ active: approvalsTabActive('mine') }">
             <span class="menu-icon">
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M6 14L10 18L14 14" stroke="#4B5563" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /><path d="M6 6L10 2L14 6" stroke="#4B5563" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M6 14L10 18L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /><path d="M6 6L10 2L14 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
             </span>
             <span>我发起的</span>
-          </a>
-          <a class="menu-item" @click="comingSoon">
+          </router-link>
+          <router-link to="/approvals?tab=handled" class="menu-item" :class="{ active: approvalsTabActive('handled') }">
             <span class="menu-icon">
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="4" y="4" width="12" height="12" rx="2" stroke="#4B5563" stroke-width="1.5" /><path d="M7.5 10L9.5 12L12.5 8" stroke="#4B5563" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="4" y="4" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5" /><path d="M7.5 10L9.5 12L12.5 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
             </span>
             <span>我处理的</span>
-          </a>
+          </router-link>
           <a class="menu-item" @click="comingSoon">
             <span class="menu-icon">
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M3 6C3 4.34315 4.34315 3 6 3H14C15.6569 3 17 4.34315 17 6V12C17 13.6569 15.6569 15 14 15H9L6 17.5V15H6C4.34315 15 3 13.6569 3 12V6Z" stroke="#4B5563" stroke-width="1.5" /></svg>
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M3 6C3 4.34315 4.34315 3 6 3H14C15.6569 3 17 4.34315 17 6V12C17 13.6569 15.6569 15 14 15H9L6 17.5V15H6C4.34315 15 3 13.6569 3 12V6Z" stroke="currentColor" stroke-width="1.5" /></svg>
             </span>
             <span>抄送我的</span>
           </a>
@@ -214,11 +221,15 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
 
         <div class="menu-section">
           <div class="section-title-static">常用入口</div>
-          <a class="menu-item" @click="comingSoon"><span>待处理工单</span></a>
+          <router-link to="/approvals?tab=todo" class="menu-item" :class="{ active: approvalsTabActive('todo') }">
+            <span>待处理工单</span>
+          </router-link>
           <router-link to="/transfers?tab=PENDING" class="menu-item" :class="{ active: route.path === '/transfers' && route.query.tab === 'PENDING' }">
             <span>待确认调拨单</span>
           </router-link>
-          <a class="menu-item" @click="comingSoon"><span>待处理员工申请</span></a>
+          <router-link to="/receipts/receive?tab=PENDING" class="menu-item" :class="{ active: route.path === '/receipts/receive' && route.query.tab === 'PENDING' }">
+            <span>待处理员工申请</span>
+          </router-link>
         </div>
 
         <div class="menu-section">
@@ -437,6 +448,7 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
   text-decoration: none;
   transition: background 0.15s ease;
   border-radius: 0;
+  position: relative;
 }
 
 .nav-item:hover {

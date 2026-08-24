@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import type { TableInstance } from 'element-plus'
 import { useTransferStore } from '@/stores/transfer'
 import { useTabsStore } from '@/stores/tabs'
+import { transferApi } from '@/api/modules/transfer'
 import type { TransferOrder, TransferStatus } from '@/api/interface/transfer'
 import { TRANSFER_STATUS_META, TRANSFER_SOURCE_META } from '@/api/interface/transfer'
 import TransferApplyModal from './components/TransferApplyModal.vue'
@@ -139,6 +140,23 @@ const openDetail = (record: TransferOrder) => {
   currentTransfer.value = record
   drawerVisible.value = true
 }
+
+/* 深链定位：?id=123 打开对应单据详情（审批中心跳转入口；watch 兼容 keep-alive 缓存后二次深链） */
+watch(
+  () => route.query.id,
+  async (v) => {
+    if (route.name !== 'transfers-list') return
+    const id = Number(v)
+    if (!Number.isInteger(id) || id <= 0) return
+    router.replace({ query: { ...route.query, id: undefined } })
+    try {
+      openDetail(await transferApi.getTransferById(id))
+    } catch {
+      /* 404 已由拦截器提示 */
+    }
+  },
+  { immediate: true },
+)
 
 /* 详情抽屉内确认/拒绝/撤销成功：列表原地更新 */
 const handleUpdated = (item: TransferOrder) => store.upsertLocal(item)

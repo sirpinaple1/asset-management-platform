@@ -1,0 +1,524 @@
+<script setup lang="ts">
+import { computed, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import type { Component } from 'vue'
+import { useUserStore } from '@/stores/user'
+import { useApprovalStore } from '@/stores/approval'
+import { receiptApi } from '@/api/modules/receipt'
+import { transferApi } from '@/api/modules/transfer'
+import { changeApi } from '@/api/modules/change'
+import type { ApprovalBizType, ApprovalItem, ApprovalTabKey } from '@/api/interface/approval'
+import {
+  APPROVAL_BIZ_META,
+  APPROVAL_TAB_META,
+  approvalStatusTag,
+  isHandledBy,
+  isMine,
+  isTodoFor,
+} from '@/api/interface/approval'
+import IconDocReceive from '@/components/icons/IconDocReceive.vue'
+import IconDocBorrow from '@/components/icons/IconDocBorrow.vue'
+import IconDocTransfer from '@/components/icons/IconDocTransfer.vue'
+import IconDocChange from '@/components/icons/IconDocChange.vue'
+
+/**
+ * 审批中心：M04 领用/借用 + M05 调拨 + M06 变更三类单据的统一处理入口（共享池语义——
+ * 后端无指定审批人模型，PENDING 单据任何非发起人可处理；变更单允许发起人自审）。
+ * 三 tab（待我处理/我发起的/我处理的）+ 类型筛选 + 关键词搜索 + 前端分页 + 深链 query 同步；
+ * 行内快速通过/拒绝（仅"待我处理"tab），详情经 ?id= 深链跳各列表页抽屉。
+ */
+defineOptions({ name: 'approvals-center' })
+
+const route = useRoute()
+const router = useRouter()
+const userStore = useUserStore()
+const store = useApprovalStore()
+
+const items = computed(() => store.items)
+const loading = computed(() => store.loading)
+const meUserId = computed(() => userStore.me?.userId)
+
+/* ---------------- 状态 tabs（前端过滤 + 计数） ---------------- */
+const TAB_KEYS: ApprovalTabKey[] = ['todo', 'mine', 'handled']
+const activeTab = ref<ApprovalTabKey>('todo')
+
+const tabs = computed(() => [
+  {
+    key: 'todo' as ApprovalTabKey,
+    label: APPROVAL_TAB_META.todo.label,
+    count: items.value.filter((it) => isTodoFor(it, meUserId.value)).length,
+  },
+  {
+    key: 'mine' as ApprovalTabKey,
+    label: APPROVAL_TAB_META.mine.label,
+    count: items.value.filter((it) => isMine(it, meUserId.value)).length,
+  },
+  {
+    key: 'handled' as ApprovalTabKey,
+    label: APPROVAL_TAB_META.handled.label,
+    count: items.value.filter((it) => isHandledBy(it, meUserId.value)).length,
+  },
+])
+
+/* ---------------- 类型筛选 chips ---------------- */
+type TypeKey = 'ALL' | ApprovalBizType
+const TYPE_KEYS: TypeKey[] = ['ALL', 'RECEIVE', 'BORROW', 'TRANSFER', 'CHANGE']
+const activeType = ref<TypeKey>('ALL')
+
+const typeChips = computed(() => [
+  { key: 'ALL' as TypeKey, label: '全部类型' },
+  ...(['RECEIVE', 'BORROW', 'TRANSFER', 'CHANGE'] as ApprovalBizType[]).map((key) => ({
+    key: key as TypeKey,
+    label: APPROVAL_BIZ_META[key].label,
+  })),
+])
+
+/* ---------------- 搜索（防抖 300ms 前端过滤） ---------------- */
+const keyword = ref('')
+const searchKeyword = ref('')
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+
+watch(keyword, (val) => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    searchKeyword.value = val.trim()
+    currentPage.value = 1
+  }, 300)
+})
+onBeforeUnmount(() => searchTimer && clearTimeout(searchTimer))
+
+/* ---------------- 前端过滤 + 分页 ---------------- */
+const PAGE_SIZE = 10
+const currentPage = ref(1)
+
+const filtered = computed(() => {
+  const me = meUserId.value
+  let list = items.value.filter((it) =>
+    activeTab.value === 'todo'
+      ? isTodoFor(it, me)
+      : activeTab.value === 'mine'
+        ? isMine(it, me)
+        : isHandledBy(it, me),
+  )
+  if (activeType.value !== 'ALL') list = list.filter((it) => it.bizType === activeType.value)
+  const kw = searchKeyword.value.toLowerCase()
+  if (kw) {
+    list = list.filter((it) =>
+      [it.serialNo, it.applicantName, it.summary].some((field) =>
+        field?.toLowerCase().includes(kw),
+      ),
+    )
+  }
+  return list
+})
+
+const total = computed(() => filtered.value.length)
+
+const pageData = computed(() =>
+  filtered.value.slice((currentPage.value - 1) * PAGE_SIZE, currentPage.value * PAGE_SIZE),
+)
+
+/* tab/过滤结果变化时纠正越界页码 */
+watch([activeTab, activeType, total], () => {
+  const maxPage = Math.max(1, Math.ceil(total.value / PAGE_SIZE))
+  if (currentPage.value > maxPage) currentPage.value = maxPage
+})
+
+/* ---------------- 深链与刷新保持：tab/类型/搜索词/页码同步 URL query ---------------- */
+watch(
+  () => route.query,
+  (q) => {
+    if (route.name !== 'approvals-center') return
+    const tab = typeof q.tab === 'string' ? q.tab : ''
+    if (TAB_KEYS.includes(tab as ApprovalTabKey)) {
+      const nextTab = tab as ApprovalTabKey
+      if (nextTab !== activeTab.value) activeTab.value = nextTab
+    }
+    const type = typeof q.type === 'string' ? q.type : ''
+    if (TYPE_KEYS.includes(type as TypeKey)) {
+      const nextType = type as TypeKey
+      if (nextType !== activeType.value) activeType.value = nextType
+    }
+    const kw = typeof q.q === 'string' ? q.q : ''
+    if (kw !== keyword.value) keyword.value = kw
+    const p = Number(q.page)
+    if (Number.isInteger(p) && p >= 1 && p !== currentPage.value) currentPage.value = p
+  },
+  { immediate: true },
+)
+
+watch([activeTab, activeType, searchKeyword, currentPage], () => {
+  if (route.name !== 'approvals-center') return
+  const query: Record<string, string> = {}
+  if (activeTab.value !== 'todo') query.tab = activeTab.value
+  if (activeType.value !== 'ALL') query.type = activeType.value
+  if (searchKeyword.value) query.q = searchKeyword.value
+  if (currentPage.value > 1) query.page = String(currentPage.value)
+  const current = JSON.stringify(route.query)
+  const next = JSON.stringify(query)
+  if (current !== next) router.replace({ query })
+})
+
+/* ---------------- 数据加载 ---------------- */
+/* keep-alive：首次挂载先取当前用户（tab 过滤依赖 userId）再拉聚合列表；
+   之后每次切回本页刷新（单据状态可能已被他人变更） */
+let firstActivation = true
+onMounted(async () => {
+  try {
+    await userStore.loadMe()
+  } catch {
+    /* 401/403/503 已由 axios 拦截器统一提示/跳转 */
+  }
+  void store.refresh()
+})
+onActivated(() => {
+  if (firstActivation) {
+    firstActivation = false
+    return
+  }
+  void store.refresh()
+})
+
+/* ---------------- 行内快捷处理（仅"待我处理"tab） ---------------- */
+const actingId = ref<number>()
+
+/** 快捷通过按钮文案：领用/借用=通过、调拨=确认、变更=执行 */
+const approveText = (bizType: ApprovalBizType) =>
+  bizType === 'TRANSFER' ? '确认' : bizType === 'CHANGE' ? '执行' : '通过'
+
+const handleApprove = async (row: ApprovalItem) => {
+  if (actingId.value) return /* 防重复提交 */
+  actingId.value = row.bizId
+  try {
+    if (row.bizType === 'RECEIVE' || row.bizType === 'BORROW') {
+      await receiptApi.approve(row.bizId)
+    } else if (row.bizType === 'TRANSFER') {
+      await transferApi.confirm(row.bizId)
+    } else {
+      await changeApi.confirm(row.bizId)
+    }
+    ElMessage.success('处理成功')
+    await store.refresh() /* 计数联动（侧边栏角标/工作台待办卡） */
+  } catch {
+    /* 业务/网络错误已由 axios 拦截器统一提示 */
+  } finally {
+    actingId.value = undefined
+  }
+}
+
+/** 拒绝：必填原因（变更单无拒绝，撤销走详情抽屉） */
+const handleReject = async (row: ApprovalItem) => {
+  let reason = ''
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `拒绝单据「${row.serialNo}」后将驳回发起人申请，请填写拒绝原因。`,
+      '拒绝确认',
+      {
+        confirmButtonText: '拒绝',
+        cancelButtonText: '取消',
+        inputPlaceholder: '拒绝原因（必填）',
+        inputValidator: (v: string) => (v && v.trim() ? true : '请填写拒绝原因'),
+      },
+    )
+    reason = value.trim()
+  } catch {
+    return /* 用户取消 */
+  }
+  if (actingId.value) return
+  actingId.value = row.bizId
+  try {
+    if (row.bizType === 'TRANSFER') await transferApi.reject(row.bizId, reason)
+    else await receiptApi.reject(row.bizId, reason)
+    ElMessage.success('已拒绝')
+    await store.refresh()
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    actingId.value = undefined
+  }
+}
+
+/* 详情：深链跳对应列表页，?id= 自动打开详情抽屉 */
+const goDetail = (row: ApprovalItem) => {
+  router.push({ path: APPROVAL_BIZ_META[row.bizType].listPath, query: { id: String(row.bizId) } })
+}
+
+/* ---------------- 输入与触发：Ctrl+F 聚焦搜索 ---------------- */
+const searchInputEl = ref<HTMLElement>()
+
+const onWindowKeydown = (e: KeyboardEvent) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+    e.preventDefault()
+    searchInputEl.value?.querySelector('input')?.focus()
+  }
+}
+onMounted(() => window.addEventListener('keydown', onWindowKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
+
+/* ---------------- 展示工具 ---------------- */
+const BIZ_ICONS: Record<ApprovalBizType, Component> = {
+  RECEIVE: IconDocReceive,
+  BORROW: IconDocBorrow,
+  TRANSFER: IconDocTransfer,
+  CHANGE: IconDocChange,
+}
+
+const bizLabel = (row: ApprovalItem) => APPROVAL_BIZ_META[row.bizType].label
+
+const applicantText = (row: ApprovalItem) => row.applicantName || String(row.applicantUserId)
+
+const statusTagOf = (row: ApprovalItem) => approvalStatusTag(row)
+
+const emptyText = computed(() =>
+  activeTab.value === 'todo'
+    ? '暂无待处理单据'
+    : activeTab.value === 'mine'
+      ? '暂无我发起的单据'
+      : '暂无我处理的单据',
+)
+</script>
+
+<template>
+  <div class="page">
+    <div class="page-container">
+      <div class="page-header">
+        <h2 class="page-title">审批中心</h2>
+        <span class="page-subtitle">领用/借用 · 调拨 · 变更三类单据统一处理（待办为共享池：待处理单据任何非发起人可办理）</span>
+      </div>
+
+      <!-- 状态 tabs -->
+      <div class="tabs">
+        <div
+          v-for="tab in tabs"
+          :key="tab.key"
+          class="tab"
+          :class="{ active: activeTab === tab.key }"
+          @click="activeTab = tab.key"
+        >
+          <span>{{ tab.label }}</span>
+          <span class="tab-count">({{ tab.count }})</span>
+        </div>
+      </div>
+
+      <!-- 工具栏：类型筛选 chips + 搜索 -->
+      <div class="toolbar">
+        <div class="type-chips">
+          <button
+            v-for="chip in typeChips"
+            :key="chip.key"
+            type="button"
+            class="type-chip"
+            :class="{ active: activeType === chip.key }"
+            @click="activeType = chip.key"
+          >
+            {{ chip.label }}
+          </button>
+        </div>
+        <el-input
+          ref="searchInputEl"
+          v-model="keyword"
+          class="search-box"
+          placeholder="搜索单号 / 申请人 / 摘要（Ctrl+F）"
+          clearable
+        />
+      </div>
+
+      <!-- 聚合表格 -->
+      <el-table
+        v-loading="loading"
+        :data="pageData"
+        row-key="bizId"
+        border
+        highlight-current-row
+        :empty-text="emptyText"
+      >
+        <el-table-column label="类型" width="92">
+          <template #default="{ row }">
+            <span class="biz-cell">
+              <component :is="BIZ_ICONS[row.bizType as ApprovalBizType]" :size="16" />
+              <span>{{ bizLabel(row) }}</span>
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="serialNo" label="单号" min-width="150" show-overflow-tooltip />
+        <el-table-column label="状态" width="96">
+          <template #default="{ row }">
+            <el-tag :type="statusTagOf(row).tagType" effect="light">
+              {{ statusTagOf(row).label }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="申请人" min-width="110">
+          <template #default="{ row }">{{ applicantText(row) }}</template>
+        </el-table-column>
+        <el-table-column prop="summary" label="摘要" min-width="220" show-overflow-tooltip />
+        <el-table-column prop="createdAt" label="申请时间" min-width="160" />
+        <el-table-column label="操作" :width="activeTab === 'todo' ? 168 : 90" fixed="right">
+          <template #default="{ row }">
+            <template v-if="activeTab === 'todo'">
+              <el-button
+                link
+                type="success"
+                :loading="actingId === row.bizId"
+                @click="handleApprove(row)"
+              >
+                {{ approveText(row.bizType) }}
+              </el-button>
+              <el-button
+                v-if="row.bizType !== 'CHANGE'"
+                link
+                type="danger"
+                :disabled="actingId === row.bizId"
+                @click="handleReject(row)"
+              >
+                拒绝
+              </el-button>
+            </template>
+            <el-button link type="primary" @click="goDetail(row)">详情</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <!-- 分页 -->
+      <div class="pagination">
+        <span class="pagination-info">共 {{ total }} 条</span>
+        <el-pagination
+          v-model:current-page="currentPage"
+          :page-size="PAGE_SIZE"
+          :total="total"
+          layout="prev, pager, next"
+          background
+        />
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.page-container {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.page-header {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.page-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.page-subtitle {
+  font-size: 13px;
+  color: #86909c;
+  flex: 1;
+}
+
+/* tabs（对齐其他列表页：胶囊样式） */
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.tab {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  background: #f3f4f6;
+  color: #6b7280;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tab.active {
+  background: #165dff;
+  color: #ffffff;
+}
+
+.tab-count {
+  font-size: 13px;
+}
+
+/* 工具栏：类型 chips + 搜索 */
+.toolbar {
+  min-height: 56px;
+  padding: 12px 14px;
+  background: #fafbfc;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.type-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.type-chip {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 15px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  font-size: 13px;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.type-chip:hover {
+  color: #165dff;
+  border-color: #b8d4ff;
+}
+
+.type-chip.active {
+  background: #e8f3ff;
+  border-color: #165dff;
+  color: #165dff;
+  font-weight: 500;
+}
+
+.search-box {
+  width: 280px;
+  flex-shrink: 0;
+}
+
+/* 类型列：图标 + 文字 */
+.biz-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #4e5969;
+}
+
+/* 分页 */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.pagination-info {
+  font-size: 13px;
+  color: #6b7280;
+}
+</style>

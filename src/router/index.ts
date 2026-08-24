@@ -21,6 +21,12 @@ const router = createRouter({
           meta: { title: '工作台' }
         },
         {
+          path: 'approvals',
+          name: 'approvals-center',
+          component: () => import('@/views/approval/ApprovalCenter.vue'),
+          meta: { title: '审批中心' }
+        },
+        {
           path: 'assets',
           name: 'assets-list',
           component: () => import('@/views/asset/AssetList.vue'),

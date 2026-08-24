@@ -226,6 +226,23 @@ const openDetail = (record: ReceiveReceipt) => {
   drawerVisible.value = true
 }
 
+/* 深链定位：?id=123 打开对应单据详情（审批中心跳转入口；watch 兼容 keep-alive 缓存后二次深链） */
+watch(
+  () => route.query.id,
+  async (v) => {
+    if (route.name !== routeName.value) return
+    const id = Number(v)
+    if (!Number.isInteger(id) || id <= 0) return
+    router.replace({ query: { ...route.query, id: undefined } })
+    try {
+      openDetail(await receiptApi.getReceiptById(id))
+    } catch {
+      /* 404 已由拦截器提示 */
+    }
+  },
+  { immediate: true },
+)
+
 /* 详情抽屉内审批成功：列表原地更新 */
 const handleUpdated = (item: ReceiveReceipt) => store.upsertLocal(item)
 
