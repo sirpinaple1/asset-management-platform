@@ -25,6 +25,10 @@ export interface ReceiveReceipt {
   applicantName?: string
   /** 领用部门 */
   department?: string
+  /** 领用区域 ID（审批通过后资产位置更新至此；存量单可空） */
+  locationId?: number
+  /** 领用区域名称（列表/详情回填） */
+  locationName?: string
   /** 领用事由 */
   reason?: string
   approverUserId?: number
@@ -59,6 +63,8 @@ export interface ReceiptApplyForm {
   type: ReceiptType
   /** 申请领用/借用的资产 ID 列表（一次可多台） */
   assetIds: number[]
+  /** 领用区域（后端 @NotNull 必填，4a69c36）：审批通过后资产位置更新至此，盘点按位置扫资产的依据 */
+  locationId: number
   /** 领用部门（后端 @NotBlank 必填） */
   department: string
   /** 领用事由（后端 @NotBlank 必填） */
@@ -90,19 +96,19 @@ export const RECEIPT_TYPE_META: Record<ReceiptType, { label: string; serialPrefi
   BORROW: { label: '借用', serialPrefix: 'BOR' },
 }
 
-/** 资产持有关系（AllocationResp：审批通过发放时写入，归还经 /return 闭环） */
+/** 资产持有关系（AllocationResp：M04 发放 / M05 调拨确认写入，归还经 /return 闭环） */
 export interface Allocation {
   id: number
   assetId: number
   assetBarcode?: string
   assetName?: string
   assetSn?: string
-  /** 持有人 ID（comm_public_basic 用户） */
-  userId: number
-  /** 持有人姓名（发放时快照） */
+  /** 持有人 ID（NULL=部门持有——M05 调拨只填部门时，后端 4dc0d23 / V20260828 起可空） */
+  userId?: number
+  /** 持有人姓名（发放时快照；部门持有时为空） */
   userName?: string
-  /** RECEIVE-领用 BORROW-借用 */
-  type: ReceiptType
+  /** RECEIVE-领用 BORROW-借用 TRANSFER-调拨（列表接口 type 筛选仅收 RECEIVE/BORROW） */
+  type: ReceiptType | 'TRANSFER'
   typeLabel?: string
   department?: string
   /** 发放时间 */

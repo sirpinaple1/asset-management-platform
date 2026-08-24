@@ -131,6 +131,7 @@ const dash = (v?: string | null) => (v === undefined || v === null || v === '' ?
           <el-descriptions-item label="单号" :span="2">{{ detail.serialNo }}</el-descriptions-item>
           <el-descriptions-item label="申请人">{{ dash(detail.applicantName || String(detail.applicantUserId)) }}</el-descriptions-item>
           <el-descriptions-item label="申请部门">{{ dash(detail.department) }}</el-descriptions-item>
+          <el-descriptions-item label="领用区域">{{ dash(detail.locationName || (detail.locationId ? String(detail.locationId) : '')) }}</el-descriptions-item>
           <el-descriptions-item label="申请时间" :span="2">{{ detail.createdAt }}</el-descriptions-item>
           <el-descriptions-item label="申请事由" :span="2">{{ dash(detail.reason) }}</el-descriptions-item>
           <el-descriptions-item label="审批人">{{ dash(detail.approverName || (detail.approverUserId ? String(detail.approverUserId) : '')) }}</el-descriptions-item>

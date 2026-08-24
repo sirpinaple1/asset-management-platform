@@ -301,7 +301,13 @@ const applicantText = (row: ReceiveReceipt) =>
 const approverText = (row: ReceiveReceipt) =>
   row.approverName || (row.approverUserId ? String(row.approverUserId) : '—')
 
-const holderText = (row: Allocation) => row.userName || String(row.userId)
+/** 持有人展示：人持有→姓名/ID；部门持有（userId 空，M05 调拨只填部门）→部门（部门持有） */
+const holderText = (row: Allocation) =>
+  row.userId == null
+    ? row.department
+      ? `${row.department}（部门持有）`
+      : '—'
+    : row.userName || String(row.userId)
 </script>
 
 <template>
@@ -381,6 +387,7 @@ const holderText = (row: Allocation) => row.userName || String(row.userId)
             <template #default="{ row }">{{ applicantText(row) }}</template>
           </el-table-column>
           <el-table-column prop="department" label="部门" min-width="120" :formatter="formatText" />
+          <el-table-column prop="locationName" label="领用区域" min-width="120" show-overflow-tooltip :formatter="formatText" />
           <el-table-column label="资产数" width="76" align="center">
             <template #default="{ row }">{{ itemCount(row) }}</template>
           </el-table-column>

@@ -63,12 +63,12 @@ watch(
 
 const handleClose = () => emit('update:visible', false)
 
-/** 确认收到：资产归属更新（位置/部门/负责人），写持有与操作日志 */
+/** 确认收到：归属更新（位置/部门/负责人）+ 状态联动（填人/部门→在用；仅区域→回库闲置），写持有与操作日志 */
 const handleConfirm = async () => {
   if (!detail.value || acting.value) return
   try {
     await ElMessageBox.confirm(
-      `确认已收到单据 ${detail.value.serialNo} 的全部资产吗？确认后资产归属将更新为调入方。`,
+      `确认已收到单据 ${detail.value.serialNo} 的全部资产吗？确认后归属更新并联动状态：指定负责人/部门 → 在用（转其持有/部门持有）；仅填区域 → 回库闲置。`,
       '确认收到',
       { type: 'warning', confirmButtonText: '确认收到', cancelButtonText: '取消' },
     )

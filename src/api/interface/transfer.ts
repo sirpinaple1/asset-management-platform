@@ -1,7 +1,8 @@
 /**
  * M05 调拨单（ATR）类型。
- * 契约依据：asset-backend 1e0cb87 TransferOrderController / dto/transfer/*（M05 已实现）。
- * 调拨不流转资产状态（闲置/在用均可调拨），确认时更新归属（位置/部门/负责人）并转移持有关系。
+ * 契约依据：asset-backend 1e0cb87 + 4dc0d23 TransferOrderController / dto/transfer/*。
+ * 确认终态二选一（4dc0d23，消除"在用却无人持有"）：填负责人→人持有→在用；
+ * 只填部门→部门持有→在用；只填区域→调拨回库（闭环旧持有+持有人归零）→闲置。
  */
 
 /** 调拨单状态（transfer_order.status） */

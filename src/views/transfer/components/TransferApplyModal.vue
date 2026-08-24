@@ -315,6 +315,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
               show-word-limit
             />
           </el-form-item>
+          <div class="terminal-hint">
+            确认后：填负责人 → 资产转其持有（在用）；只填部门 → 部门持有（在用）；只填区域 → 调拨回库（闲置）
+          </div>
         </el-form>
 
         <div class="selected-header">
@@ -393,6 +396,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
 
 .full-width {
   width: 100%;
+}
+
+.terminal-hint {
+  font-size: 12px;
+  color: #86909c;
+  line-height: 1.6;
+  padding: 6px 0 0;
 }
 
 .selected-header {

@@ -5,9 +5,12 @@ import type { FormInstance, FormRules, TableInstance } from 'element-plus'
 import { assetApi } from '@/api/modules/asset'
 import { receiptApi } from '@/api/modules/receipt'
 import { useUserStore } from '@/stores/user'
+import { useBasedataStore } from '@/stores/basedata'
 import type { Asset } from '@/api/interface/asset'
 import type { ReceiveReceipt, ReceiptType } from '@/api/interface/receipt'
 import { RECEIPT_TYPE_META } from '@/api/interface/receipt'
+import type { Location } from '@/api/interface/basedata'
+import { buildTree } from '@/utils/tree'
 
 const props = defineProps<{
   visible: boolean
@@ -21,19 +24,24 @@ const emit = defineEmits<{
 }>()
 
 const userStore = useUserStore()
+const basedataStore = useBasedataStore()
 const formRef = ref<FormInstance>()
 const tableRef = ref<TableInstance>()
 const submitting = ref(false)
 
 const typeLabel = computed(() => RECEIPT_TYPE_META[props.type].label)
 
-/* ---------------- 表单：部门 + 事由 ---------------- */
+const locationTree = computed(() => buildTree<Location>(basedataStore.locations))
+
+/* ---------------- 表单：领用区域 + 部门 + 事由 ---------------- */
 const formData = reactive({
+  locationId: undefined as number | undefined,
   department: '',
   reason: '',
 })
 
 const rules: FormRules = {
+  locationId: [{ required: true, message: '请选择领用区域', trigger: 'change' }],
   department: [{ required: true, message: '请输入领用部门', trigger: 'blur' }],
   reason: [{ required: true, message: '请输入领用事由', trigger: 'blur' }],
 }
@@ -120,6 +128,7 @@ watch(
   () => props.visible,
   (val) => {
     if (val) {
+      formData.locationId = undefined
       formData.department = userStore.me?.dept || ''
       formData.reason = ''
       selectedAssets.value = new Map()
@@ -127,6 +136,8 @@ watch(
       searchKeyword.value = ''
       currentPage.value = 1
       loadAssets()
+      // 领用区域树：通常已预载，空时按需拉取
+      if (!basedataStore.locations.length) void basedataStore.fetchLocations()
       nextTick(() => formRef.value?.clearValidate())
     }
   },
@@ -148,6 +159,7 @@ const handleSubmit = async () => {
     const created = await receiptApi.apply({
       type: props.type,
       assetIds: selectedList.value.map((a) => a.id),
+      locationId: formData.locationId!,
       department: formData.department,
       reason: formData.reason,
     })
@@ -236,6 +248,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
       <!-- 右侧：表单 + 已选清单 -->
       <div class="form-side">
         <el-form ref="formRef" :model="formData" :rules="rules" label-width="80px" @submit.prevent="handleSubmit">
+          <el-form-item label="领用区域" prop="locationId">
+            <el-tree-select
+              v-model="formData.locationId"
+              :data="locationTree"
+              node-key="id"
+              :props="{ label: 'name' }"
+              check-strictly
+              clearable
+              filterable
+              placeholder="审批通过后资产位置更新至此"
+              class="full-width"
+            />
+          </el-form-item>
           <el-form-item label="领用部门" prop="department">
             <el-input v-model="formData.department" placeholder="请输入领用部门" :maxlength="100" />
           </el-form-item>
@@ -329,6 +354,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
 .form-side {
   flex: 1;
   min-width: 0;
+}
+
+.full-width {
+  width: 100%;
 }
 
 .selected-header {

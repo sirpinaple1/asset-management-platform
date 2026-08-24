@@ -61,7 +61,8 @@ token 失效（HTTP 401）自动清除并跳回 auth-center 登录页（带 retu
 - [x] M02.5-Frontend: 厂商/供应商切换服务端分页契约（tabs/搜索/分页）
 - [x] M03-Frontend: 资产主表（列表筛选分页/新增编辑弹窗/详情抽屉含操作日志/报废/导出，验收清单见 `docs/M03-前端验收清单.md`）
 - [x] M04-Frontend: 领用/借用单页面（领用&退库 / 借用&归还 两菜单共用单据流：状态 tabs/搜索/分页/发起申请弹窗含闲置资产选择器/详情抽屉含审批操作/持有中资产退库归还；已对齐后端 29bd8a6 M04 契约——statusLabel/typeLabel 回填、GET /v1/allocations 持有列表、POST /v1/allocations/{id}/return 退库归还、申请 department/reason 必填）
-- [x] M05-Frontend: 调拨单（ATR）页面（状态 tabs/搜索/分页/发起调拨弹窗含闲置·在用资产选择器与调入位置树/详情抽屉含调入方确认·拒绝与发起人撤销；已对齐后端 1e0cb87 M05 契约——reject body={reason} 必填、toDepartment/reason 选填且调入位置与部门至少一项、toUserId 调入负责人、rejectReason 拒绝原因回显、发起人自审 403/重复调拨 409 拦截，curl 全链路验证通过）
+- [x] M05-Frontend: 调拨单（ATR）页面（状态 tabs/搜索/分页/发起调拨弹窗含闲置·在用资产选择器与调入位置树/详情抽屉含调入方确认·拒绝与发起人撤销；已对齐后端 1e0cb87 M05 契约——reject body={reason} 必填、toDepartment/reason 选填且调入位置与部门至少一项、toUserId 调入负责人、rejectReason 拒绝原因回显、发起人自审 403/重复调拨 409 拦截，curl 全链路验证通过；4dc0d23 确认终态语义同步——填负责人→人持有在用/只填部门→部门持有在用/只填区域→回库闲置清归属，弹窗与确认弹窗加终态提示、Allocation.userId 改可空（NULL=部门持有）+持有中视图兜底展示"部门（部门持有）"、type 联合加 TRANSFER，curl 验证部门持有与回库两路径）
+- [x] M04-Frontend-适配: 领用区域必填（4a69c36）：申请弹窗加"领用区域"树选必填（审批通过后资产位置更新至此）、列表加领用区域列、详情抽屉展示；curl 验证 400 预检/审批后位置联动（森科设备仓→IT部在用仓+在用）
 - [x] M06-Frontend: 实物信息变更单（AOC）页面（状态 tabs/搜索/分页/发起变更弹窗含闲置·在用资产选择器与 new_* 五字段变更表单——使用人+姓名快照/使用部门/区域树/存放位置明细/归属公司，至少填一项/详情抽屉含变更后信息统一目标值区块+变更前·后对比明细与确认执行·撤销；已对齐后端 M06 契约——**提交体 new* 前缀字段+newUserName 快照、状态 PENDING=待确认/CONFIRMED/CANCELLED、明细 value 存展示值（位置/公司名称、使用人姓名）、变更单为信息修正单据确认执行允许发起人自审（区别于 M04/M05 审批流）、撤销仅发起人 403、同资产 PENDING 单重复发起 409、与 M04/M05 单据互斥校验**，curl 全链路 16 项 + 浏览器端到端 9 步验证通过）
 - [ ] M02-Frontend-Tree: 分类/位置树形结构
 - [ ] M02-Frontend-Model: 型号管理（关联分类+厂商）
