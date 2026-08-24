@@ -212,6 +212,17 @@ watch(view, (v) => {
 /* ---------------- 新建申请 ---------------- */
 const modalVisible = ref(false)
 
+/* 深链发起：?compose=1 自动打开发起弹窗（工作台快捷入口；用后清洗） */
+watch(
+  () => route.query.compose,
+  (v) => {
+    if (route.name !== routeName.value || v !== '1') return
+    router.replace({ query: { ...route.query, compose: undefined } })
+    modalVisible.value = true
+  },
+  { immediate: true },
+)
+
 /* 弹窗打开 = 有未提交内容：关页签前需确认 */
 watch(modalVisible, (v) => tabsStore.setDirty(route.fullPath, v))
 

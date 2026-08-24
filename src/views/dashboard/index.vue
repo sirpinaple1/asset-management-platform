@@ -1,12 +1,27 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import type { Component } from 'vue'
 import { useUserStore } from '@/stores/user'
+import { useApprovalStore } from '@/stores/approval'
+import { stocktakeApi } from '@/api/modules/stocktake'
 import type { MeInfo } from '@/api/interface'
+import IconDocReceive from '@/components/icons/IconDocReceive.vue'
+import IconDocBorrow from '@/components/icons/IconDocBorrow.vue'
+import IconDocTransfer from '@/components/icons/IconDocTransfer.vue'
+import IconDocChange from '@/components/icons/IconDocChange.vue'
+import IconDocStocktake from '@/components/icons/IconDocStocktake.vue'
 
+const router = useRouter()
 const userStore = useUserStore()
+const approvalStore = useApprovalStore()
+
 const loading = ref(true)
 const failed = ref(false)
 const me = ref<MeInfo | null>(null)
+
+/** 进行中盘点任务数（>0 时待办卡下方提示） */
+const inProgressStocktakes = ref(0)
 
 onMounted(async () => {
   try {
@@ -18,7 +33,71 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+  /* 审批计数（待办卡三格）与进行中盘点数并行拉取，互不阻塞 */
+  void approvalStore.refresh()
+  stocktakeApi
+    .getStocktakes({ status: 'IN_PROGRESS' })
+    .then((list) => (inProgressStocktakes.value = list.length))
+    .catch(() => {
+      /* 拦截器已提示；提示行不渲染即可 */
+    })
 })
+
+/* ---------------- 发起流程（待办卡第四格 popover + 快捷入口卡共用） ---------------- */
+const composeEntries: { label: string; path: string; icon: Component }[] = [
+  { label: '领用申请', path: '/receipts/receive?compose=1', icon: IconDocReceive },
+  { label: '借用申请', path: '/receipts/borrow?compose=1', icon: IconDocBorrow },
+  { label: '资产调拨', path: '/transfers?compose=1', icon: IconDocTransfer },
+  { label: '信息变更', path: '/changes?compose=1', icon: IconDocChange },
+  { label: '盘点任务', path: '/stocktakes?compose=1', icon: IconDocStocktake },
+]
+
+/* ---------------- 我的待办卡：审批计数三格 ---------------- */
+const todoCells = computed(() => [
+  { key: 'todo', label: '待我处理', count: approvalStore.todoCount, path: '/approvals?tab=todo' },
+  { key: 'mine', label: '我发起的', count: approvalStore.mineActiveCount, path: '/approvals?tab=mine' },
+  { key: 'handled', label: '我处理的', count: approvalStore.handledCount, path: '/approvals?tab=handled' },
+])
+
+/* ---------------- 最近使用（路由 afterEach 写 localStorage） ---------------- */
+interface RecentRoute {
+  path: string
+  title: string
+  ts: number
+}
+const recentRoutes = ref<RecentRoute[]>([])
+
+const loadRecent = () => {
+  try {
+    const raw = localStorage.getItem('asset.recent.routes')
+    if (raw) recentRoutes.value = JSON.parse(raw)
+  } catch {
+    /* 忽略损坏的本地存储 */
+  }
+}
+loadRecent()
+
+/** 足迹条目图标：按路径前缀映射五单据图标，其余用通用文档图形 */
+const RECENT_ICONS: { prefix: string; icon: Component }[] = [
+  { prefix: '/receipts/receive', icon: IconDocReceive },
+  { prefix: '/receipts/borrow', icon: IconDocBorrow },
+  { prefix: '/transfers', icon: IconDocTransfer },
+  { prefix: '/changes', icon: IconDocChange },
+  { prefix: '/stocktakes', icon: IconDocStocktake },
+]
+const iconOf = (path: string): Component | 'doc' =>
+  RECENT_ICONS.find((it) => path === it.prefix || path.startsWith(`${it.prefix}/`) || path.startsWith(`${it.prefix}?`))
+    ?.icon ?? 'doc'
+
+/** 相对时间：刚刚 / N 分钟前 / N 小时前 / N 天前 / 日期 */
+const formatTime = (ts: number) => {
+  const diff = Date.now() - ts
+  if (diff < 60_000) return '刚刚'
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`
+  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)} 天前`
+  return new Date(ts).toLocaleDateString()
+}
 </script>
 
 <template>
@@ -29,32 +108,28 @@ onMounted(async () => {
         <div class="left-col">
           <div class="card recent-card">
             <div class="card-title">最近使用</div>
-            <div class="recent-item">
-              <div class="recent-icon">
-                <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <rect x="10" y="6" width="20" height="26" rx="3" stroke="#165DFF" stroke-width="1.5" />
-                  <rect x="14" y="12" width="12" height="1.5" rx="0.75" fill="#165DFF" />
-                  <rect x="14" y="17" width="12" height="1.5" rx="0.75" fill="#165DFF" />
-                  <rect x="14" y="22" width="8" height="1.5" rx="0.75" fill="#165DFF" />
-                </svg>
+            <template v-if="recentRoutes.length">
+              <div
+                v-for="r in recentRoutes"
+                :key="r.path"
+                class="recent-item"
+                @click="router.push(r.path)"
+              >
+                <div class="recent-icon">
+                  <component :is="iconOf(r.path)" v-if="iconOf(r.path) !== 'doc'" :size="22" />
+                  <svg v-else width="22" height="22" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M5 2.5H12L16 6.5V17.5H5V2.5Z" stroke="#165DFF" stroke-width="1.5" stroke-linejoin="round" />
+                    <path d="M12 2.5V6.5H16" stroke="#165DFF" stroke-width="1.5" stroke-linejoin="round" />
+                    <path d="M7.5 10H12.5M7.5 13H12.5" stroke="#165DFF" stroke-width="1.5" stroke-linecap="round" />
+                  </svg>
+                </div>
+                <div class="recent-meta">
+                  <span class="recent-text">{{ r.title }}</span>
+                  <span class="recent-time">{{ formatTime(r.ts) }}</span>
+                </div>
               </div>
-              <span class="recent-text">物品领用记录</span>
-            </div>
-            <div class="recent-item">
-              <div class="recent-icon">
-                <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <rect x="8" y="6" width="24" height="28" rx="3" stroke="#14C9C9" stroke-width="1.5" />
-                  <rect x="13" y="13" width="8" height="1.5" rx="0.75" fill="#14C9C9" />
-                  <rect x="13" y="19" width="8" height="1.5" rx="0.75" fill="#14C9C9" />
-                  <rect x="13" y="25" width="8" height="1.5" rx="0.75" fill="#14C9C9" />
-                  <path
-                    d="M24 16L26 18L30 13" stroke="#14C9C9" stroke-width="1.5"
-                    stroke-linecap="round" stroke-linejoin="round"
-                  />
-                </svg>
-              </div>
-              <span class="recent-text">盘点管理</span>
-            </div>
+            </template>
+            <div v-else class="empty-text">暂无最近使用</div>
           </div>
 
           <div class="card fav-card">
@@ -70,7 +145,20 @@ onMounted(async () => {
 
           <div class="card quick-card">
             <div class="card-title">快捷入口</div>
-            <div class="empty-text">暂无设置快捷入口</div>
+            <div class="quick-list">
+              <div
+                v-for="entry in composeEntries"
+                :key="entry.path"
+                class="quick-item"
+                @click="router.push(entry.path)"
+              >
+                <div class="quick-icon">
+                  <component :is="entry.icon" :size="18" />
+                </div>
+                <span class="quick-label">{{ entry.label }}</span>
+                <span class="quick-arrow">→</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -83,23 +171,45 @@ onMounted(async () => {
                 <span class="todo-title">我的待办</span>
               </div>
               <div class="todo-right">
-                <div class="todo-item">
-                  <div class="todo-item-icon" style="background: #e8f3ff; color: #165dff">→</div>
-                  <span class="todo-item-text">我发起的</span>
+                <div
+                  v-for="cell in todoCells"
+                  :key="cell.key"
+                  class="todo-item"
+                  @click="router.push(cell.path)"
+                >
+                  <div class="todo-count" :class="{ hot: cell.key === 'todo' && cell.count > 0 }">
+                    {{ cell.count }}
+                  </div>
+                  <span class="todo-item-text">{{ cell.label }}</span>
                 </div>
-                <div class="todo-item">
-                  <div class="todo-item-icon" style="background: #e8ffea; color: #00b42a">✓</div>
-                  <span class="todo-item-text">我处理的</span>
-                </div>
-                <div class="todo-item">
-                  <div class="todo-item-icon" style="background: #fff7e8; color: #f7ba1e">@</div>
-                  <span class="todo-item-text">抄送我的</span>
-                </div>
-                <div class="todo-item">
-                  <div class="todo-item-icon" style="background: #f5e8ff; color: #722ed1">+</div>
-                  <span class="todo-item-text">发起流程</span>
-                </div>
+                <el-popover placement="bottom" :width="150" trigger="hover">
+                  <template #reference>
+                    <div class="todo-item">
+                      <div class="todo-item-icon" style="background: #f5e8ff; color: #722ed1">+</div>
+                      <span class="todo-item-text">发起流程</span>
+                    </div>
+                  </template>
+                  <div class="compose-menu">
+                    <div
+                      v-for="entry in composeEntries"
+                      :key="entry.path"
+                      class="compose-item"
+                      @click="router.push(entry.path)"
+                    >
+                      <component :is="entry.icon" :size="16" />
+                      <span>{{ entry.label }}</span>
+                    </div>
+                  </div>
+                </el-popover>
               </div>
+            </div>
+            <div
+              v-if="inProgressStocktakes > 0"
+              class="stocktake-line"
+              @click="router.push('/stocktakes?tab=IN_PROGRESS')"
+            >
+              <span>进行中盘点任务 {{ inProgressStocktakes }} 个</span>
+              <span class="stocktake-arrow">去处理 →</span>
             </div>
           </div>
 
@@ -107,7 +217,7 @@ onMounted(async () => {
             <div class="app-title">我的应用</div>
             <div class="app-section-title">资产管理</div>
             <div class="app-row">
-              <div class="app-item">
+              <div class="app-item" @click="router.push('/assets')">
                 <div class="app-icon-wrap">
                   <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <circle cx="24" cy="12" r="6.5" stroke="#165DFF" stroke-width="2.6" />
@@ -252,29 +362,56 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow: hidden;
 }
 
 .recent-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 100px;
+  gap: 10px;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border-radius: 8px;
   cursor: pointer;
 }
 
+.recent-item:hover {
+  background: #f7f8fa;
+}
+
 .recent-icon {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: #f2f6ff;
+  color: #165dff;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+}
+
+.recent-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .recent-text {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 400;
   color: #4e5969;
-  line-height: 24px;
+  line-height: 22px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-time {
+  font-size: 12px;
+  color: #a6adb8;
+  line-height: 18px;
 }
 
 .fav-card,
@@ -283,6 +420,51 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* 快捷入口：五个发起流程（跳列表页 ?compose=1 自动开弹窗） */
+.quick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.quick-item {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px;
+  margin: 0 -8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.quick-item:hover {
+  background: #f7f8fa;
+}
+
+.quick-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  background: #eef4ff;
+  color: #165dff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.quick-label {
+  font-size: 14px;
+  color: #4e5969;
+  flex: 1;
+}
+
+.quick-arrow {
+  font-size: 12px;
+  color: #c0c6cf;
 }
 
 /* 右列 */
@@ -299,7 +481,7 @@ onMounted(async () => {
   padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   flex-shrink: 0;
 }
 
@@ -350,9 +532,27 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding-bottom: 4px;
   cursor: pointer;
+}
+
+.todo-item:hover .todo-count,
+.todo-item:hover .todo-item-text {
+  color: #165dff;
+}
+
+.todo-count {
+  font-size: 26px;
+  font-weight: 600;
+  color: #1d2129;
+  line-height: 32px;
+  font-variant-numeric: tabular-nums;
+  transition: color 0.15s ease;
+}
+
+.todo-count.hot {
+  color: #f53f3f;
 }
 
 .todo-item-icon {
@@ -372,6 +572,25 @@ onMounted(async () => {
   font-weight: 400;
   color: #4e5969;
   line-height: 22px;
+  transition: color 0.15s ease;
+}
+
+/* 进行中盘点提示行（仅 N>0 渲染） */
+.stocktake-line {
+  height: 40px;
+  border-radius: 8px;
+  background: #fff7e8;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #d25f00;
+  cursor: pointer;
+}
+
+.stocktake-arrow {
+  font-weight: 500;
 }
 
 .app-card {
@@ -486,5 +705,30 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   gap: 6px;
+}
+
+/* 发起流程 popover 菜单 */
+.compose-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.compose-item {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  margin: 0 -6px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #4e5969;
+  cursor: pointer;
+}
+
+.compose-item:hover {
+  background: #f2f6ff;
+  color: #165dff;
 }
 </style>

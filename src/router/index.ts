@@ -147,12 +147,34 @@ router.beforeEach((to, from) => {
 router.afterEach((to) => {
   document.title = to.meta.title ? `${to.meta.title} - 资产管理系统` : '资产管理系统'
 
+  // 最近使用足迹：工作台"最近使用"卡数据源（排除工作台自身与 404）
+  recordRecentRoute(to)
+
   // 滚动恢复：回到访问过的页面时滚回上次离开的位置，新页面回顶部
   nextTick(() => {
     const scrollEl = document.querySelector('.content-scroll')
     if (scrollEl) scrollEl.scrollTop = scrollMap.get(to.fullPath) ?? 0
   })
 })
+
+/** 最近使用足迹（localStorage）：同 fullPath 去重置顶，上限 8 条 */
+const RECENT_KEY = 'asset.recent.routes'
+const RECENT_MAX = 8
+function recordRecentRoute(to: { fullPath: string; name?: unknown; meta: { title?: unknown } }) {
+  if (to.fullPath === '/dashboard' || to.name === 'not-found' || !to.meta.title) return
+  try {
+    const list: { path: string; title: string; ts: number }[] = JSON.parse(
+      localStorage.getItem(RECENT_KEY) || '[]',
+    )
+    const next = [
+      { path: to.fullPath, title: String(to.meta.title), ts: Date.now() },
+      ...list.filter((it) => it.path !== to.fullPath),
+    ].slice(0, RECENT_MAX)
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next))
+  } catch {
+    /* 忽略损坏的本地存储 */
+  }
+}
 
 /** 各页面内容区滚动位置记忆（fullPath → scrollTop） */
 const scrollMap = new Map<string, number>()
