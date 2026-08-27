@@ -34,6 +34,9 @@ public class AssetLog {
     /** 操作内容 */
     private String content;
 
+    /** 字段变更明细 JSON（M08 历史日志迁移产物，如 [{"field":"使用人","before":"","after":"谷仍山"}]） */
+    private String diffJson;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 }

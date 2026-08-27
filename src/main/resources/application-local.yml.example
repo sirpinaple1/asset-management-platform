@@ -24,3 +24,11 @@ app:
   security:
     # 本地放开 /doc.html、/v3/api-docs 等文档端点（生产 fail-closed）
     docs-permit-all: true
+  # M08 历史数据迁移（可选；xlsx-dir 为 4 份导出 Excel 所在目录，
+  # auth-db-* 为 comm_public_basic 库 JDBC——迁移直读 sys_user 匹配/建账号）
+  migration:
+    enabled: false
+    xlsx-dir: /path/to/excel-export-dir
+    auth-db-url: jdbc:mysql://127.0.0.1:3306/db_comm_public_basic?useUnicode=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    auth-db-username: root
+    auth-db-password: 123456

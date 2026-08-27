@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-**Phase 4 进行中**：M07 盘点已完成，下一步 M08-A/B 历史数据迁移。
+**Phase 3 收尾**：M08 历史数据迁移代码已完成（测试 340/340），**待重启本地 6006 后触发执行**（POST /api/v1/migration/run）。
 
 ## 已完成
 
@@ -170,7 +170,16 @@
 
 ## 进行中
 
-- （无）
+- [ ] **M08-A/B 历史数据迁移**（代码完成 2026-08-24，待执行验证）：
+  - `migration/` 包（一次性工具模块）：MigrationService（编排：基础数据→资产→领用单→调拨单→日志）+ MigrationController（`POST /api/v1/migration/run`，双重门禁：`app.migration.enabled` + `asset-资产管理员` 角色）+ OperatorTextParser（操作人文本→工号/姓名）+ LogContentParser（content→diff_json）+ AuthUserDirectory（sys_user 匹配/建号，独立 JDBC 直连 comm_public_basic 库）
+  - **实测源数据规模**（旧系统 2026-08-18 导出）：资产 563 / 领用单 **162**（M08 文档记 346 系含空行口径）/ 调拨单 56 / 日志 **1773**（文档记 1775 偏差 2 条）
+  - 幂等策略：资产/单据按 barcode/serial_no upsert；**asset_log 按"时间区段清除+重灌"**（created_at < 2026-08-19 的日志只可能来自迁移，run 开始时清除后重写，含 563 条"迁移导入"标记日志）；持有关系仅补建（已有持有中跳过）
+  - 用户匹配：工号（SK\d+）→ 姓名唯一命中 → 重名取最小 id（警告）→ 未命中**自动创建 sys_user 账号**（SK 工号段顺延，BCrypt 默认密码 123456，remark 标记来源；默认密码用户被 comm_public_basic 拦在业务系统外，改密后可登录）
+  - 关键映射决策：报废/闲置资产清使用人（对齐 M04 归还/M03 报废联动不变量）；在用资产补建 asset_allocation（type=RECEIVE + note 标记）；领用单/调拨单导出**无资产明细列**只迁主表（items 空，待审批单在新系统无明细可审批——数据局限，见 MigrationService 类注释）；规格型号并入 remark（"规格：xxx"）；操作人含"+盘点"后缀的调拨单 source=INVENTORY_TRIGGERED；位置树按 Excel 区域路径逐级建节点，叶子段同名顶级种子节点收养归位（不产生双节点）
+  - **有意偏离 M08 文档**："通过 service 层方法写入"改为直写 mapper——业务方法会重新生成编码、强制状态、以当前时间写日志，与迁移保真冲突
+  - 配置：`app.migration.*`（enabled/xlsx-dir/auth-db-*，默认关闭；本地已配 ~/Downloads + 本地 comm_public_basic 库）；AssetLog 实体补 diffJson 字段（V20260819 建表已有列）
+  - 测试 340/340（新增 26：OperatorTextParser 8 + LogContentParser 7 + AuthUserDirectory 8 + 状态映射 3）
+  - **待执行**：重启本地 6006（新代码已编译进 target/classes）→ Redis 管理员 token（如 `73075822b7a34ab8976b9634f1f56d52`）或前端登录态调 `POST /api/v1/migration/run` → 按结果 warnings 复核；注意本地测试资产 SFBGIT2528/SFBGIT2563 在 Excel 中，迁移会将其重置为历史基线（预期行为）
 
 ## 待办（按模块分阶段，详见 docs/modules/）
 
@@ -187,7 +196,7 @@
 8. ~~**M04** 领用/借用单（ARE/BOR）审批流：申请→审批→资产状态联动（`receive_receipt.type` 区分领用/借用，共用单据流）~~（已完成，2026-08-21）
 9. ~~**M05** 调拨单（ATR）审批流：调出→调入确认→归属更新~~（已完成，2026-08-21）
 10. ~~**M06** 实物信息变更单（AOC）：变更前/后记录 + 确认执行~~（已完成，2026-08-21）
-11. **M08-A/B** 历史数据迁移：563条资产 + 346条领用单 + 56条调拨单 + 1775条日志
+11. ~~**M08-A/B** 历史数据迁移：563条资产 + 162条领用单 + 56条调拨单 + 1773条日志~~（代码完成 2026-08-24，执行验证见"进行中"）
 
 ### Phase 4 — 支撑功能（Phase 3 完成后）
 12. ~~**M07** 盘点（Stocktake）：扫码核对 + 差异处理 + 触发调拨~~（已完成，2026-08-24）
@@ -230,5 +239,5 @@
 
 ---
 
-**最后更新**：2026-08-24（M07 盘点完成，测试 314/314；含 PDA 按条码扫码、盘盈盘亏、盘点触发调拨）
+**最后更新**：2026-08-24（M08 历史数据迁移代码完成：migration 包 + 幂等 upsert + sys_user 自动建号，测试 340/340；待重启 6006 执行）
 **当前阶段负责人**：待指派
