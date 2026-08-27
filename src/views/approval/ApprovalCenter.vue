@@ -16,6 +16,7 @@ import {
   isHandledBy,
   isMine,
   isTodoFor,
+  todoBucketOf,
 } from '@/api/interface/approval'
 import IconDocReceive from '@/components/icons/IconDocReceive.vue'
 import IconDocBorrow from '@/components/icons/IconDocBorrow.vue'
@@ -88,9 +89,20 @@ watch(keyword, (val) => {
 })
 onBeforeUnmount(() => searchTimer && clearTimeout(searchTimer))
 
-/* ---------------- 前端过滤 + 分页 ---------------- */
+/* ---------------- 前端过滤 + 分页（待我处理分 TO_ME / SHARED_POOL 两池） ---------------- */
 const PAGE_SIZE = 10
 const currentPage = ref(1)
+
+const todoToMe = computed<ApprovalItem[]>(() =>
+  items.value.filter(
+    (it) => isTodoFor(it, meUserId.value) && todoBucketOf(it, meUserId.value) === 'TO_ME',
+  ),
+)
+const todoSharedPool = computed<ApprovalItem[]>(() =>
+  items.value.filter(
+    (it) => isTodoFor(it, meUserId.value) && todoBucketOf(it, meUserId.value) === 'SHARED_POOL',
+  ),
+)
 
 const filtered = computed(() => {
   const me = meUserId.value
@@ -270,6 +282,16 @@ const applicantText = (row: ApprovalItem) => row.applicantName || String(row.app
 
 const statusTagOf = (row: ApprovalItem) => approvalStatusTag(row)
 
+/** 定向标签：待我处理 tab 下按 assignee 展示，@我 或 指定给xxx 或共享池 */
+const todoBucketTag = (row: ApprovalItem) => {
+  const bucket = todoBucketOf(row, meUserId.value)
+  if (bucket === 'TO_ME') return { label: '指定处理人是我', type: 'warning' as const }
+  if (row.assigneeUserId && row.assigneeUserName) {
+    return { label: `定向给：${row.assigneeUserName}`, type: 'info' as const }
+  }
+  return { label: '共享池', type: 'info' as const }
+}
+
 const emptyText = computed(() =>
   activeTab.value === 'todo'
     ? '暂无待处理单据'
@@ -284,7 +306,11 @@ const emptyText = computed(() =>
     <div class="page-container">
       <div class="page-header">
         <h2 class="page-title">审批中心</h2>
-        <span class="page-subtitle">领用/借用 · 调拨 · 变更三类单据统一处理（待办为共享池：待处理单据任何非发起人可办理）</span>
+        <span class="page-subtitle">
+          待办按 assignee 语义拆分：
+          <strong>定向给我</strong>（{{ todoToMe.length }}）
+          · <strong>共享池</strong>（{{ todoSharedPool.length }}，任何有权限用户均可处理）
+        </span>
       </div>
 
       <!-- 状态 tabs -->
@@ -346,6 +372,13 @@ const emptyText = computed(() =>
           <template #default="{ row }">
             <el-tag :type="statusTagOf(row).tagType" effect="light">
               {{ statusTagOf(row).label }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="activeTab === 'todo'" label="待办分区" width="140">
+          <template #default="{ row }">
+            <el-tag :type="todoBucketTag(row).type" effect="plain">
+              {{ todoBucketTag(row).label }}
             </el-tag>
           </template>
         </el-table-column>

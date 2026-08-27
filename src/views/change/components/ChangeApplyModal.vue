@@ -5,6 +5,7 @@ import type { FormInstance, FormRules, TableInstance } from 'element-plus'
 import { assetApi } from '@/api/modules/asset'
 import { changeApi } from '@/api/modules/change'
 import { useBasedataStore } from '@/stores/basedata'
+import UserSelector from '@/components/UserSelector.vue'
 import type { Asset, AssetStatus } from '@/api/interface/asset'
 import type { ChangeOrder } from '@/api/interface/change'
 import type { Location } from '@/api/interface/basedata'
@@ -30,7 +31,7 @@ const formRef = ref<FormInstance>()
 const tableRef = ref<TableInstance>()
 const submitting = ref(false)
 
-/* ---------------- 表单：变更字段（new_* 五选一以上）+ 变更原因 ---------------- */
+/* ---------------- 表单：变更字段（new_* 五选一以上）+ 指定处理人 + 变更原因 ---------------- */
 const formData = reactive({
   newUserId: undefined as number | undefined,
   newUserName: '',
@@ -38,6 +39,8 @@ const formData = reactive({
   newLocationId: undefined as number | undefined,
   newLocationDetail: '',
   newCompanyId: undefined as number | undefined,
+  assigneeUserId: undefined as number | undefined,
+  assigneeUserName: '',
   reason: '',
 })
 
@@ -60,8 +63,8 @@ const validateAtLeastOne = (_rule: unknown, _value: unknown, callback: (error?: 
 
 const rules: FormRules = {
   newUserId: [
-    { type: 'number', message: '使用人 ID 必须是正整数', trigger: 'blur' },
-    { validator: validateAtLeastOne, trigger: 'blur' },
+    { type: 'number', message: '使用人格式不正确', trigger: 'change' },
+    { validator: validateAtLeastOne, trigger: 'change' },
   ],
   newUserName: [{ max: 100, message: '使用人姓名长度不能超过 100', trigger: 'blur' }],
   newUserDepartment: [
@@ -74,6 +77,7 @@ const rules: FormRules = {
     { validator: validateAtLeastOne, trigger: 'blur' },
   ],
   newCompanyId: [{ validator: validateAtLeastOne, trigger: 'change' }],
+  assigneeUserId: [{ type: 'number', message: '指定处理人格式不正确', trigger: 'change' }],
   reason: [{ max: 500, message: '变更原因长度不能超过 500', trigger: 'blur' }],
 }
 
@@ -179,6 +183,8 @@ watch(
       formData.newLocationId = undefined
       formData.newLocationDetail = ''
       formData.newCompanyId = undefined
+      formData.assigneeUserId = undefined
+      formData.assigneeUserName = ''
       formData.reason = ''
       selectedAssets.value = new Map()
       pickerStatus.value = 'IDLE'
@@ -215,6 +221,8 @@ const handleSubmit = async () => {
       newLocationId: formData.newLocationId,
       newLocationDetail: formData.newLocationDetail.trim() || undefined,
       newCompanyId: formData.newCompanyId,
+      assigneeUserId: formData.assigneeUserId,
+      assigneeUserName: formData.assigneeUserName.trim() || undefined,
       reason: formData.reason.trim() || undefined,
     })
     ElMessage.success('变更申请已提交，等待确认执行')
@@ -307,17 +315,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
       <div class="form-side">
         <el-form ref="formRef" :model="formData" :rules="rules" label-width="96px" @submit.prevent="handleSubmit">
           <el-form-item label="使用人" prop="newUserId">
-            <el-input-number
+            <UserSelector
               v-model="formData.newUserId"
-              :min="1"
-              :precision="0"
-              :controls="false"
-              placeholder="用户 ID（确认后更新资产使用人）"
-              class="full-width"
+              v-model:user-name="formData.newUserName"
+              placeholder="选填：确认后资产使用人更新为此人"
             />
-          </el-form-item>
-          <el-form-item label="使用人姓名" prop="newUserName">
-            <el-input v-model="formData.newUserName" placeholder="选填；不填则明细展示用户 ID" :maxlength="100" />
           </el-form-item>
           <el-form-item label="使用部门" prop="newUserDepartment">
             <el-input v-model="formData.newUserDepartment" placeholder="变更后的使用部门" :maxlength="100" />
@@ -362,6 +364,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
               placeholder="请输入变更原因（选填）"
               :maxlength="500"
               show-word-limit
+            />
+          </el-form-item>
+          <el-form-item label="指定处理人" prop="assigneeUserId">
+            <UserSelector
+              v-model="formData.assigneeUserId"
+              v-model:user-name="formData.assigneeUserName"
+              placeholder="选填：定向派单给某人确认，否则进入共享池"
             />
           </el-form-item>
           <div class="form-tip">仅填写的字段会被变更（至少一项）；与当前值相同的字段不生成明细行，确认执行后生效</div>

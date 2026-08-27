@@ -5,6 +5,7 @@ import { useUserStore } from '@/stores/user'
 import { useApprovalStore } from '@/stores/approval'
 import { useTabsStore } from '@/stores/tabs'
 import TabBar from '@/components/TabBar.vue'
+import NotificationBell from '@/components/NotificationBell.vue'
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -91,6 +92,7 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
       </div>
 
       <div class="user-area">
+        <NotificationBell />
         <el-dropdown trigger="click">
           <div class="user-trigger">
             <span class="user-name">{{ userStore.displayName || '未登录' }}</span>

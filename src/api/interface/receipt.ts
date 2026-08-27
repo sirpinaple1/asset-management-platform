@@ -37,6 +37,10 @@ export interface ReceiveReceipt {
   approveTime?: string
   /** 审批意见 / 拒绝原因 */
   approveRemark?: string
+  /** B1 定向待办：指定处理人 ID（PENDING 时仅该用户出现在"定向给我"分区；NULL=共享池） */
+  assigneeUserId?: number
+  /** 指定处理人姓名（提交时快照） */
+  assigneeUserName?: string
   companyId?: number
   /** 明细行（含资产编码/名称/序列号） */
   items?: ReceiptItem[]
@@ -69,6 +73,10 @@ export interface ReceiptApplyForm {
   department: string
   /** 领用事由（后端 @NotBlank 必填） */
   reason: string
+  /** B1 定向待办：指定处理人 ID（NULL/不传 → 走共享池语义） */
+  assigneeUserId?: number
+  /** 指定处理人姓名（发起时快照；传了 assigneeUserId 建议一并带上） */
+  assigneeUserName?: string
 }
 
 /** 列表查询参数（GET /v1/receipts，文档支持 status/date/userId/type 筛选） */

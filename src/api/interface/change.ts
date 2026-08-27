@@ -30,6 +30,10 @@ export interface ChangeOrder {
   applicantName?: string
   /** 变更原因 */
   reason?: string
+  /** B1 定向待办：指定处理人 ID（NULL/不传 → 共享池） */
+  assigneeUserId?: number
+  /** 指定处理人姓名（发起时快照） */
+  assigneeUserName?: string
   /** 变更后使用人 ID（null = 不变更） */
   newUserId?: number
   /** 变更后使用人姓名（发起时快照） */
@@ -102,6 +106,10 @@ export interface ChangeApplyForm {
   newCompanyId?: number
   /** 变更原因（选填） */
   reason?: string
+  /** B1 定向待办：指定处理人 ID（NULL/不传 → 共享池） */
+  assigneeUserId?: number
+  /** 指定处理人姓名（发起时快照） */
+  assigneeUserName?: string
 }
 
 /** 列表查询参数（GET /v1/change-orders，支持 status/userId/assetId/date 筛选） */

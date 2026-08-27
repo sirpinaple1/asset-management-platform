@@ -6,6 +6,7 @@ import { assetApi } from '@/api/modules/asset'
 import { receiptApi } from '@/api/modules/receipt'
 import { useUserStore } from '@/stores/user'
 import { useBasedataStore } from '@/stores/basedata'
+import UserSelector from '@/components/UserSelector.vue'
 import type { Asset } from '@/api/interface/asset'
 import type { ReceiveReceipt, ReceiptType } from '@/api/interface/receipt'
 import { RECEIPT_TYPE_META } from '@/api/interface/receipt'
@@ -33,17 +34,20 @@ const typeLabel = computed(() => RECEIPT_TYPE_META[props.type].label)
 
 const locationTree = computed(() => buildTree<Location>(basedataStore.locations))
 
-/* ---------------- 表单：领用区域 + 部门 + 事由 ---------------- */
+/* ---------------- 表单：领用区域 + 部门 + 事由 + 指定处理人 ---------------- */
 const formData = reactive({
   locationId: undefined as number | undefined,
   department: '',
   reason: '',
+  assigneeUserId: undefined as number | undefined,
+  assigneeUserName: '',
 })
 
 const rules: FormRules = {
   locationId: [{ required: true, message: '请选择领用区域', trigger: 'change' }],
   department: [{ required: true, message: '请输入领用部门', trigger: 'blur' }],
   reason: [{ required: true, message: '请输入领用事由', trigger: 'blur' }],
+  assigneeUserId: [{ type: 'number', message: '指定处理人格式不正确', trigger: 'change' }],
 }
 
 /* ---------------- 资产选择器：闲置资产服务端分页 + 跨页多选 ---------------- */
@@ -131,6 +135,8 @@ watch(
       formData.locationId = undefined
       formData.department = userStore.me?.dept || ''
       formData.reason = ''
+      formData.assigneeUserId = undefined
+      formData.assigneeUserName = ''
       selectedAssets.value = new Map()
       keyword.value = ''
       searchKeyword.value = ''
@@ -162,6 +168,8 @@ const handleSubmit = async () => {
       locationId: formData.locationId!,
       department: formData.department,
       reason: formData.reason,
+      assigneeUserId: formData.assigneeUserId,
+      assigneeUserName: formData.assigneeUserName.trim() || undefined,
     })
     ElMessage.success(`${typeLabel.value}申请已提交，等待审批`)
     emit('success', created)
@@ -274,6 +282,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
               show-word-limit
             />
           </el-form-item>
+          <el-form-item label="指定处理人" prop="assigneeUserId">
+            <UserSelector
+              v-model="formData.assigneeUserId"
+              v-model:user-name="formData.assigneeUserName"
+              placeholder="选填：定向派单给某人处理，否则进入共享池"
+            />
+          </el-form-item>
+          <div class="form-tip">不指定处理人时，该单进入"共享池"，任何有权限的用户均可处理</div>
         </el-form>
 
         <div class="selected-header">
@@ -393,6 +409,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
 
 .selected-tag {
   max-width: 100%;
+}
+
+.form-tip {
+  font-size: 12px;
+  color: #86909c;
+  line-height: 18px;
+  margin: -4px 0 10px;
 }
 
 :deep(.selected-tag .el-tag__content) {

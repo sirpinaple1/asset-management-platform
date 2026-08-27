@@ -5,6 +5,7 @@ import type { FormInstance, FormRules, TableInstance } from 'element-plus'
 import { assetApi } from '@/api/modules/asset'
 import { transferApi } from '@/api/modules/transfer'
 import { useBasedataStore } from '@/stores/basedata'
+import UserSelector from '@/components/UserSelector.vue'
 import type { Asset, AssetStatus } from '@/api/interface/asset'
 import type { TransferOrder } from '@/api/interface/transfer'
 import type { Location } from '@/api/interface/basedata'
@@ -28,11 +29,14 @@ const formRef = ref<FormInstance>()
 const tableRef = ref<TableInstance>()
 const submitting = ref(false)
 
-/* ---------------- 表单：调入位置 + 调入部门 + 调入负责人 + 调拨原因 ---------------- */
+/* ---------------- 表单：调入位置 + 调入部门 + 调入负责人（已升级选人器）+ 指定处理人 + 调拨原因 ---------------- */
 const formData = reactive({
   toLocationId: undefined as number | undefined,
   toDepartment: '',
   toUserId: undefined as number | undefined,
+  toUserName: '',
+  assigneeUserId: undefined as number | undefined,
+  assigneeUserName: '',
   reason: '',
 })
 
@@ -53,7 +57,8 @@ const rules: FormRules = {
     { max: 100, message: '调入部门长度不能超过 100', trigger: 'blur' },
     { validator: validateAtLeastOne, trigger: 'blur' },
   ],
-  toUserId: [{ type: 'number', message: '调入负责人 ID 必须是正整数', trigger: 'blur' }],
+  toUserId: [{ type: 'number', message: '调入负责人格式不正确', trigger: 'change' }],
+  assigneeUserId: [{ type: 'number', message: '指定处理人格式不正确', trigger: 'change' }],
   reason: [{ max: 500, message: '调拨原因长度不能超过 500', trigger: 'blur' }],
 }
 
@@ -156,6 +161,9 @@ watch(
       formData.toLocationId = undefined
       formData.toDepartment = ''
       formData.toUserId = undefined
+      formData.toUserName = ''
+      formData.assigneeUserId = undefined
+      formData.assigneeUserName = ''
       formData.reason = ''
       selectedAssets.value = new Map()
       pickerStatus.value = 'IDLE'
@@ -188,6 +196,9 @@ const handleSubmit = async () => {
       toLocationId: formData.toLocationId,
       toDepartment: formData.toDepartment.trim() || undefined,
       toUserId: formData.toUserId,
+      toUserName: formData.toUserName.trim() || undefined,
+      assigneeUserId: formData.assigneeUserId,
+      assigneeUserName: formData.assigneeUserName.trim() || undefined,
       reason: formData.reason.trim() || undefined,
     })
     ElMessage.success('调拨申请已提交，等待调入方确认')
@@ -296,13 +307,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
             <el-input v-model="formData.toDepartment" placeholder="与调入位置至少填一项" :maxlength="100" />
           </el-form-item>
           <el-form-item label="调入负责人" prop="toUserId">
-            <el-input-number
+            <UserSelector
               v-model="formData.toUserId"
-              :min="1"
-              :precision="0"
-              :controls="false"
-              placeholder="用户 ID（选填，确认后资产转其持有）"
-              class="full-width"
+              v-model:user-name="formData.toUserName"
+              placeholder="选填：确认后资产由该负责人持有（在用）"
+            />
+          </el-form-item>
+          <el-form-item label="指定处理人" prop="assigneeUserId">
+            <UserSelector
+              v-model="formData.assigneeUserId"
+              v-model:user-name="formData.assigneeUserName"
+              placeholder="选填：定向派单给某人确认，否则进入共享池"
             />
           </el-form-item>
           <el-form-item label="调拨原因" prop="reason">

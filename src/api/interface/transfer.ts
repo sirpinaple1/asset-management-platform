@@ -45,10 +45,14 @@ export interface TransferOrder {
   toDepartment?: string
   /** 调入方负责人 ID */
   toUserId?: number
-  /** 调入方负责人姓名（联调对齐） */
+  /** 调入方负责人姓名（联调对齐；选人器选择后快照提交） */
   toUserName?: string
   /** 调拨原因 */
   reason?: string
+  /** B1 定向待办：指定处理人 ID（NULL/不传 → 走共享池语义） */
+  assigneeUserId?: number
+  /** 指定处理人姓名（发起时快照） */
+  assigneeUserName?: string
   /** 确认人 ID（调入方；拒绝时为拒绝人） */
   confirmerUserId?: number
   /** 确认人姓名（确认/拒绝时快照） */
@@ -91,10 +95,14 @@ export interface TransferApplyForm {
   toDepartment?: string
   /** 调入方负责人 ID（选填；确认时更新资产使用人并新建持有记录） */
   toUserId?: number
-  /** 调入方负责人姓名（前端已知时快照传入，选填） */
+  /** 调入方负责人姓名（选人器选择后快照提交，建议与 toUserId 配套） */
   toUserName?: string
   /** 调拨原因（选填） */
   reason?: string
+  /** B1 定向待办：指定处理人 ID（NULL/不传 → 共享池） */
+  assigneeUserId?: number
+  /** 指定处理人姓名（发起时快照） */
+  assigneeUserName?: string
 }
 
 /** 列表查询参数（GET /v1/transfers，支持 status/source/userId/dept/date 筛选） */
