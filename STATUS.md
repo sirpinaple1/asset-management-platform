@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-**Phase 3 收尾**：M08 历史数据迁移代码已完成（测试 340/340），**待重启本地 6006 后触发执行**（POST /api/v1/migration/run）。
+**Phase 4 支撑功能**：审批中心后端 B1/B2/B3（定向待办/通知中心/统计聚合）已实现，测试 372/372；前端 F3/F4 适配待做。M08 历史数据迁移仍待执行验证（POST /api/v1/migration/run）。
 
 ## 已完成
 
@@ -168,9 +168,28 @@
   - 测试 314/314（新增 44：StocktakeServiceImplTest 28 + StocktakeControllerTest 15 + TransferOrderServiceImplTest 1 盘点触发重载）
   - **待跟进**：V20260829 需在测试库 172.16.5.247 手动执行；本地 6006 重启后 Flyway 自动落地；PDA 扫码前端（uni-app）Phase 4 独立会话实现
 
+- [x] **B1 定向待办（assignee 模型）**（2026-08-27，commit 8afbe18，审批中心方案 §3-B1）：
+  - 迁移 `V20260830__approval_assignee.sql`：receive_receipt/transfer_order/change_order 加 assignee_user_id（NULL=共享池，存量数据不动）+ 索引
+  - 三单提交体/列表 Query/Resp 透传 assigneeUserId；service 校验收紧：提交时 assignee 不能是申请人自己（死单防御）+ 存在性校验（comm_public_basic sys_user）；approve/reject/confirm 操作人必须 = assignee（NULL 保持非发起人即可）
+  - `auth/UserDirectory`：独立 JDBC 只读 sys_user（`app.user-directory.*` 配置，与 M08 `app.migration.auth-db-*` 刻意分离——生命周期/权限/降级语义独立）；未配置时存在性校验降级跳过、搜索 503
+  - `GET /api/v1/users?keyword=&page=&size=`：用户搜索（工号/姓名模糊，分页），F3 选人器数据源
+  - 测试：UserDirectoryTest + 三单 service 测试（assignee 校验分支 + 存量 NULL 回归）
+
+- [x] **B2 通知中心**（2026-08-27，审批中心方案 §3-B2）：
+  - 迁移 `V20260831__notification.sql`：sys_notification 表（user_id/type/title/biz_type/biz_id/read_flag + user_id,read_flag,id 索引）
+  - `notification/` 上下文：SysNotification 实体 + NotificationType 枚举（DOC_SUBMITTED/APPROVED/REJECTED/COMPLETED）+ NotificationService（notify 与业务同事务写入；接收人空静默跳过；标题超长截断 200）
+  - 端点：GET /api/v1/notifications（分页，unread=true 仅未读）、GET /unread-count、POST /{id}/read（404 防越权）、POST /read-all
+  - 写入点：三单定向提交→通知 assignee；审批通过/拒绝→通知申请人（M04 领用借用 + M05 调拨）；变更确认→通知申请人（M06）；共享池单据无定向接收人不通知
+  - 测试：NotificationServiceImplTest 9 + 三单 service 集成断言
+
+- [x] **B3 统计聚合**（2026-08-27，审批中心方案 §3-B3）：
+  - `GET /api/v1/stats/overview`：assetStatusCounts（GROUP BY status，AssetStatus 枚举全集补 0）/ myTodoCount（三单 PENDING 定向我或共享池；领用借用调拨排除我发起，变更允许自审含我发起——与审批中心"待我处理"口径一致）/ myHoldingCount（asset.user_id=我 且 IN_USE）/ inProgressStocktakeCount（我创建的进行中盘点，用户确认口径）
+  - `stats/` 上下文：StatsService 纯 count 聚合，无缓存；简单索引列等值查询
+  - 测试 372/372（`mvn test` 全量通过）；Flyway V20260830/V20260831 本地库实测落地
+
 ## 进行中
 
-- [ ] **M08-A/B 历史数据迁移**（代码完成 2026-08-24，待执行验证）：
+- [ ] **M08-A/B 历史数据迁移执行验证**（代码完成 2026-08-24，已提交 76a3604，测试 340/340）：
   - `migration/` 包（一次性工具模块）：MigrationService（编排：基础数据→资产→领用单→调拨单→日志）+ MigrationController（`POST /api/v1/migration/run`，双重门禁：`app.migration.enabled` + `asset-资产管理员` 角色）+ OperatorTextParser（操作人文本→工号/姓名）+ LogContentParser（content→diff_json）+ AuthUserDirectory（sys_user 匹配/建号，独立 JDBC 直连 comm_public_basic 库）
   - **实测源数据规模**（旧系统 2026-08-18 导出）：资产 563 / 领用单 **162**（M08 文档记 346 系含空行口径）/ 调拨单 56 / 日志 **1773**（文档记 1775 偏差 2 条）
   - 幂等策略：资产/单据按 barcode/serial_no upsert；**asset_log 按"时间区段清除+重灌"**（created_at < 2026-08-19 的日志只可能来自迁移，run 开始时清除后重写，含 563 条"迁移导入"标记日志）；持有关系仅补建（已有持有中跳过）
@@ -239,5 +258,5 @@
 
 ---
 
-**最后更新**：2026-08-24（M08 历史数据迁移代码完成：migration 包 + 幂等 upsert + sys_user 自动建号，测试 340/340；待重启 6006 执行）
+**最后更新**：2026-08-27（审批中心后端 B1/B2/B3 落地：assignee 定向待办 + 通知中心 + 统计聚合，测试 372/372，Flyway 本地实测落地；前端 F3/F4 适配待做）
 **当前阶段负责人**：待指派
