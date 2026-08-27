@@ -5,6 +5,8 @@ import type { Component } from 'vue'
 import { useUserStore } from '@/stores/user'
 import { useApprovalStore } from '@/stores/approval'
 import { stocktakeApi } from '@/api/modules/stocktake'
+import { statsApi } from '@/api/modules/stats'
+import type { AssetStatusSlice, StatsOverviewVO } from '@/api/interface/stats'
 import type { MeInfo } from '@/api/interface'
 import IconDocReceive from '@/components/icons/IconDocReceive.vue'
 import IconDocBorrow from '@/components/icons/IconDocBorrow.vue'
@@ -23,17 +25,21 @@ const me = ref<MeInfo | null>(null)
 /** 进行中盘点任务数（>0 时待办卡下方提示） */
 const inProgressStocktakes = ref(0)
 
+/** B3 工作台统计：资产状态占比 + 待办/持有/盘点总览 */
+const overview = ref<StatsOverviewVO | null>(null)
+const overviewLoading = ref(false)
+const overviewFailed = ref(false)
+
 onMounted(async () => {
   try {
     me.value = await userStore.loadMe()
     if (!me.value) failed.value = true
   } catch {
-    // 401/403/503 已由 axios 拦截器统一提示/跳转，这里只标记失败态
     failed.value = true
   } finally {
     loading.value = false
   }
-  /* 审批计数（待办卡三格）与进行中盘点数并行拉取，互不阻塞 */
+  /* 审批计数、进行中盘点、B3 聚合统计 三者独立并行，互不阻塞 */
   void approvalStore.refresh()
   stocktakeApi
     .getStocktakes({ status: 'IN_PROGRESS' })
@@ -41,6 +47,49 @@ onMounted(async () => {
     .catch(() => {
       /* 拦截器已提示；提示行不渲染即可 */
     })
+  void loadOverview()
+})
+
+/** 加载 /stats/overview，失败不抛出不阻塞主页面 */
+const loadOverview = async () => {
+  overviewLoading.value = true
+  overviewFailed.value = false
+  try {
+    overview.value = await statsApi.overview()
+  } catch {
+    overview.value = null
+    overviewFailed.value = true
+  } finally {
+    overviewLoading.value = false
+  }
+}
+
+/* ---------------- 待办卡三格（优先用 B3 概览，若 B3 未就绪则退回审批 store 计数） ---------------- */
+const effectiveTodo = computed(() => overview.value?.todoStat)
+const todoCells = computed(() => {
+  const total = effectiveTodo.value?.total ?? approvalStore.todoCount
+  const urgent = effectiveTodo.value?.urgent ?? approvalStore.todoCount
+  return [
+    {
+      key: 'todo',
+      label: '待我处理',
+      count: total,
+      sub: urgent > 0 ? `定向 ${urgent}` : undefined,
+      path: '/approvals?tab=todo',
+    },
+    {
+      key: 'mine',
+      label: '我发起的',
+      count: approvalStore.mineActiveCount,
+      path: '/approvals?tab=mine',
+    },
+    {
+      key: 'handled',
+      label: '我处理的',
+      count: approvalStore.handledCount,
+      path: '/approvals?tab=handled',
+    },
+  ]
 })
 
 /* ---------------- 发起流程（待办卡第四格 popover + 快捷入口卡共用） ---------------- */
@@ -52,12 +101,44 @@ const composeEntries: { label: string; path: string; icon: Component }[] = [
   { label: '盘点任务', path: '/stocktakes?compose=1', icon: IconDocStocktake },
 ]
 
-/* ---------------- 我的待办卡：审批计数三格 ---------------- */
-const todoCells = computed(() => [
-  { key: 'todo', label: '待我处理', count: approvalStore.todoCount, path: '/approvals?tab=todo' },
-  { key: 'mine', label: '我发起的', count: approvalStore.mineActiveCount, path: '/approvals?tab=mine' },
-  { key: 'handled', label: '我处理的', count: approvalStore.handledCount, path: '/approvals?tab=handled' },
-])
+/* ---------------- 资产状态占比饼（不用 ECharts：纯 CSS/SVG 环形图，避免额外依赖） ---------------- */
+const pieSlices = computed<AssetStatusSlice[]>(() => overview.value?.assetStatusPie ?? [])
+const pieTotal = computed(() => pieSlices.value.reduce((acc, s) => acc + s.count, 0))
+/** SVG 环形图参数：circle r=42, d=2*PI*42 ≈ 263.89 */
+const PIE_RADIUS = 42
+const PIE_CIRC = Math.round(2 * Math.PI * PIE_RADIUS * 100) / 100
+const pieSegments = computed(() => {
+  let offset = 0
+  return pieSlices.value.map((s) => {
+    const length = pieTotal.value > 0 ? (s.count / pieTotal.value) * PIE_CIRC : 0
+    const seg = {
+      ...s,
+      dashArray: `${length.toFixed(2)} ${(PIE_CIRC - length).toFixed(2)}`,
+      dashOffset: (-offset).toFixed(2),
+    }
+    offset += length
+    return seg
+  })
+})
+const pieColor = (c: string) => {
+  switch (c) {
+    case 'primary':
+      return '#165DFF'
+    case 'success':
+      return '#00B42A'
+    case 'warning':
+      return '#FF7D00'
+    case 'danger':
+      return '#F53F3F'
+    case 'info':
+    default:
+      return '#86909C'
+  }
+}
+
+/* ---------------- 持有卡 + 盘点卡（B3 小卡） ---------------- */
+const holdingStat = computed(() => overview.value?.holdingStat)
+const stocktakeStat = computed(() => overview.value?.stocktakeStat)
 
 /* ---------------- 最近使用（路由 afterEach 写 localStorage） ---------------- */
 interface RecentRoute {
@@ -97,6 +178,13 @@ const formatTime = (ts: number) => {
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`
   if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)} 天前`
   return new Date(ts).toLocaleDateString()
+}
+
+/** 百分比显示：0.34 → 34%，0 显示 -，总计 0 时也显示 - */
+const formatPercent = (p: number) => {
+  if (!p || p <= 0) return '-'
+  const v = Math.round(p * 100)
+  return v <= 0 ? '<1%' : `${v}%`
 }
 </script>
 
@@ -180,7 +268,10 @@ const formatTime = (ts: number) => {
                   <div class="todo-count" :class="{ hot: cell.key === 'todo' && cell.count > 0 }">
                     {{ cell.count }}
                   </div>
-                  <span class="todo-item-text">{{ cell.label }}</span>
+                  <div class="todo-col">
+                    <span class="todo-item-text">{{ cell.label }}</span>
+                    <span v-if="cell.sub" class="todo-sub">· {{ cell.sub }}</span>
+                  </div>
                 </div>
                 <el-popover placement="bottom" :width="150" trigger="hover">
                   <template #reference>
@@ -265,14 +356,119 @@ const formatTime = (ts: number) => {
             </div>
           </div>
 
-          <div class="card chart-card">
+          <!-- 工作台数据卡：资产状态占比（环形图） + 持有卡 + 盘点卡（B3 /stats/overview） -->
+          <div class="card stats-card">
             <div class="title-row">
-              <span class="card-title">我的图表</span>
-              <span class="action">+ 添加</span>
+              <span class="card-title">数据概览</span>
+              <el-tooltip
+                v-if="overviewFailed"
+                content="统计接口加载失败，点击重试"
+                placement="top"
+              >
+                <span class="action" @click="loadOverview">↻ 重试</span>
+              </el-tooltip>
             </div>
-            <div class="chart-empty">
-              <span class="empty-text">暂无图表</span>
-              <span class="empty-action">添加</span>
+
+            <div v-loading="overviewLoading" class="stats-body">
+              <!-- 左：资产状态占比饼 -->
+              <div class="pie-card">
+                <div class="pie-title">资产状态占比</div>
+                <div class="pie-row">
+                  <div class="pie-chart" :title="`资产总数 ${pieTotal}`">
+                    <svg viewBox="0 0 100 100" width="104" height="104">
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="42"
+                        fill="none"
+                        stroke="#f2f3f5"
+                        stroke-width="12"
+                      />
+                      <circle
+                        v-for="seg in pieSegments"
+                        :key="seg.status"
+                        cx="50"
+                        cy="50"
+                        r="42"
+                        fill="none"
+                        :stroke="pieColor(seg.color)"
+                        stroke-width="12"
+                        stroke-dasharray="263.89"
+                        :stroke-dashoffset="0"
+                        transform="rotate(-90 50 50)"
+                        style="pointer-events: none"
+                      />
+                      <!-- 第二个叠层，用于按 dashArray 分块渲染（避免 SVG 渲染歧义） -->
+                      <circle
+                        v-for="seg in pieSegments"
+                        :key="'p2-' + seg.status"
+                        cx="50"
+                        cy="50"
+                        r="42"
+                        fill="none"
+                        :stroke="pieColor(seg.color)"
+                        stroke-width="12"
+                        :stroke-dasharray="seg.dashArray"
+                        :stroke-dashoffset="seg.dashOffset"
+                        :stroke-linecap="'butt'"
+                        transform="rotate(-90 50 50)"
+                      />
+                    </svg>
+                    <div class="pie-center">
+                      <span class="pie-num">{{ pieTotal }}</span>
+                      <span class="pie-num-label">总数</span>
+                    </div>
+                  </div>
+
+                  <ul class="pie-legend">
+                    <li v-for="s in pieSlices" :key="s.status" class="legend-row">
+                      <span class="legend-dot" :style="{ background: pieColor(s.color) }" />
+                      <span class="legend-label">{{ s.label }}</span>
+                      <span class="legend-val">{{ s.count }} · {{ formatPercent(s.percent) }}</span>
+                    </li>
+                    <li v-if="!overviewLoading && pieSlices.length === 0" class="legend-empty">
+                      {{ overviewFailed ? '统计加载失败' : '暂无数据' }}
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <!-- 右：持有 + 盘点 两张小卡 -->
+              <div class="mini-cards">
+                <div class="mini-card holding-card-mini">
+                  <div class="mini-title">我的持有</div>
+                  <div class="mini-big-row">
+                    <div class="mini-num">
+                      {{ holdingStat?.myHoldings ?? 0 }}
+                      <span class="mini-num-unit">件</span>
+                    </div>
+                    <div class="mini-sub">
+                      部门持有：
+                      <strong>{{ typeof holdingStat?.deptHoldings === 'number' ? holdingStat.deptHoldings : '-' }}</strong>
+                    </div>
+                  </div>
+                  <div class="mini-link" @click="router.push('/assets?me=hold')">
+                    查看我的资产 →
+                  </div>
+                </div>
+
+                <div class="mini-card stocktake-card-mini">
+                  <div class="mini-title">盘点</div>
+                  <div class="mini-big-row">
+                    <div class="mini-num">
+                      {{ stocktakeStat?.ongoing ?? 0 }}
+                      <span class="mini-num-unit">单</span>
+                    </div>
+                    <div class="mini-sub">
+                      近 30 天完成：
+                      <strong>{{ typeof stocktakeStat?.recent === 'number' ? stocktakeStat.recent : '-' }}</strong>
+                    </div>
+                  </div>
+                  <div class="mini-link" @click="router.push('/stocktakes?tab=IN_PROGRESS')">
+                    进入盘点 →
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -575,6 +771,20 @@ const formatTime = (ts: number) => {
   transition: color 0.15s ease;
 }
 
+.todo-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.todo-sub {
+  font-size: 12px;
+  color: #f53f3f;
+  font-weight: 500;
+  line-height: 16px;
+}
+
 /* 进行中盘点提示行（仅 N>0 渲染） */
 .stocktake-line {
   height: 40px;
@@ -705,6 +915,213 @@ const formatTime = (ts: number) => {
   align-items: center;
   justify-content: center;
   gap: 6px;
+}
+
+/* ---------- F4 数据概览卡 ---------- */
+.stats-card {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.stats-body {
+  display: flex;
+  align-items: stretch;
+  gap: 20px;
+  min-height: 160px;
+}
+
+/* 饼区 */
+.pie-card {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pie-title {
+  font-size: 13px;
+  color: #86909c;
+  line-height: 18px;
+}
+
+.pie-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.pie-chart {
+  position: relative;
+  width: 104px;
+  height: 104px;
+  flex-shrink: 0;
+}
+
+.pie-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.pie-num {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1d2129;
+  line-height: 24px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pie-num-label {
+  font-size: 12px;
+  color: #86909c;
+  line-height: 16px;
+}
+
+.pie-legend {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.legend-row {
+  display: grid;
+  grid-template-columns: 12px 1fr auto;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #4e5969;
+  line-height: 20px;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.legend-label {
+  color: #4e5969;
+}
+
+.legend-val {
+  color: #1d2129;
+  font-variant-numeric: tabular-nums;
+}
+
+.legend-empty {
+  font-size: 13px;
+  color: #86909c;
+  padding: 12px 0;
+  text-align: center;
+}
+
+/* 右小卡：持有 + 盘点 */
+.mini-cards {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mini-card {
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.holding-card-mini {
+  background: linear-gradient(135deg, #eef4ff 0%, #f5faff 100%);
+  border: 1px solid #d6e4ff;
+}
+
+.stocktake-card-mini {
+  background: linear-gradient(135deg, #e8ffea 0%, #f3fff4 100%);
+  border: 1px solid #c9f2cf;
+}
+
+.mini-title {
+  font-size: 13px;
+  color: #86909c;
+  line-height: 18px;
+}
+
+.mini-big-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mini-num {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1d2129;
+  line-height: 32px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mini-num-unit {
+  font-size: 13px;
+  font-weight: 400;
+  color: #86909c;
+  margin-left: 2px;
+}
+
+.mini-sub {
+  font-size: 12px;
+  color: #4e5969;
+  line-height: 18px;
+  padding-bottom: 4px;
+}
+.mini-sub strong {
+  color: #1d2129;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.mini-link {
+  align-self: flex-start;
+  font-size: 12px;
+  color: #165dff;
+  line-height: 18px;
+  cursor: pointer;
+  font-weight: 500;
+}
+.mini-link:hover {
+  text-decoration: underline;
+}
+
+/* ---------- 响应式：窄屏下 mini-cards 切 100% 宽 ---------- */
+@media (max-width: 1100px) {
+  .stats-body {
+    flex-direction: column;
+  }
+  .mini-cards {
+    width: 100%;
+    flex-direction: row;
+  }
+  .mini-card {
+    flex: 1;
+  }
 }
 
 /* 发起流程 popover 菜单 */
