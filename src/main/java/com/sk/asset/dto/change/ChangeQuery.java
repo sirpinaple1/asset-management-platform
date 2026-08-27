@@ -16,6 +16,12 @@ public class ChangeQuery {
     /** 发起人 ID */
     private Long userId;
 
+    /** 指定处理人 ID（精确匹配；B1 定向待办） */
+    private Long assigneeUserId;
+
+    /** true=仅共享池单据（assignee_user_id IS NULL） */
+    private Boolean unassigned;
+
     /** 资产 ID（查某台资产的变更历史，按明细行反查主表） */
     private Long assetId;
 

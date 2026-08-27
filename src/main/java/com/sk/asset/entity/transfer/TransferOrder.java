@@ -39,6 +39,9 @@ public class TransferOrder {
     /** 发起人姓名（提交时快照） */
     private String applicantName;
 
+    /** 指定处理人ID（comm_public_basic 用户，NULL=共享池：任何非发起人可确认/拒绝；B1 定向待办） */
+    private Long assigneeUserId;
+
     /** 调出位置（asset_location.id，未显式指定时取首台资产当前位置） */
     private Long fromLocationId;
 

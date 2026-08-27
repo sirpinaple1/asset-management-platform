@@ -20,6 +20,12 @@ public class TransferQuery {
     /** 发起人 ID */
     private Long userId;
 
+    /** 指定处理人 ID（精确匹配；B1 定向待办） */
+    private Long assigneeUserId;
+
+    /** true=仅共享池单据（assignee_user_id IS NULL） */
+    private Boolean unassigned;
+
     /** 调入部门（模糊匹配） */
     private String dept;
 

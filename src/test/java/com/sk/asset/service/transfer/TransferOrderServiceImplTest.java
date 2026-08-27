@@ -84,6 +84,9 @@ class TransferOrderServiceImplTest {
     @Mock
     private AssetService assetService;
 
+    @Mock
+    private com.sk.asset.auth.UserDirectory userDirectory;
+
     @InjectMocks
     private TransferOrderServiceImpl transferService;
 
@@ -157,6 +160,56 @@ class TransferOrderServiceImplTest {
         allocation.setDepartment("PMC部");
         allocation.setAllocatedAt(java.time.LocalDateTime.now().minusDays(10));
         return allocation;
+    }
+
+    // ---- create：B1 指定处理人 ----
+
+    @Test
+    void create_shouldRejectWhenAssigneeIsApplicant() {
+        TransferApplyReq req = applyReq(List.of(1L));
+        req.setAssigneeUserId(100L);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> transferService.create(req, 100L, "张三"));
+
+        assertEquals(400, exception.getCode());
+        assertTrue(exception.getMessage().contains("发起人自己"));
+        verify(orderMapper, never()).insert(any(TransferOrder.class));
+    }
+
+    @Test
+    void create_shouldRejectWhenAssigneeNotExist() {
+        when(userDirectory.exists(999L)).thenReturn(false);
+        TransferApplyReq req = applyReq(List.of(1L));
+        req.setAssigneeUserId(999L);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> transferService.create(req, 100L, "张三"));
+
+        assertEquals(400, exception.getCode());
+        assertTrue(exception.getMessage().contains("指定处理人不存在"));
+        verify(orderMapper, never()).insert(any(TransferOrder.class));
+    }
+
+    @Test
+    void create_shouldPersistAssigneeWhenValid() {
+        when(userDirectory.exists(200L)).thenReturn(true);
+        AtomicReference<TransferOrder> inserted = new AtomicReference<>();
+        when(assetMapper.selectBatchIds(any())).thenReturn(List.of(inUseAsset(1L)));
+        when(locationMapper.selectById(20L)).thenReturn(location(20L, "B区"));
+        when(orderMapper.selectOne(any())).thenReturn(null);
+        when(orderMapper.insert(any(TransferOrder.class))).thenAnswer(invocation -> {
+            TransferOrder order = invocation.getArgument(0);
+            order.setId(1L);
+            inserted.set(order);
+            return 1;
+        });
+
+        TransferApplyReq req = applyReq(List.of(1L));
+        req.setAssigneeUserId(200L);
+        transferService.create(req, 100L, "张三");
+
+        assertEquals(200L, inserted.get().getAssigneeUserId());
     }
 
     // ---- create ----
@@ -501,6 +554,38 @@ class TransferOrderServiceImplTest {
 
         assertEquals(403, exception.getCode());
         verify(assetService, never()).writeLog(anyLong(), any(), anyLong(), any());
+    }
+
+    // ---- confirm/reject：B1 指定处理人门禁 ----
+
+    @Test
+    void confirm_shouldRejectWhenOperatorIsNotAssignee() {
+        TransferOrder order = pendingOrder();
+        order.setAssigneeUserId(200L);
+        when(orderMapper.selectById(1L)).thenReturn(order);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> transferService.confirm(1L, 300L, "王五"));
+
+        assertEquals(403, exception.getCode());
+        assertTrue(exception.getMessage().contains("指定处理人"));
+        verify(orderMapper, never()).updateById(any(TransferOrder.class));
+    }
+
+    @Test
+    void confirm_shouldAllowAssigneeToConfirm() {
+        TransferOrder order = pendingOrder();
+        order.setAssigneeUserId(400L);
+        when(orderMapper.selectById(1L)).thenReturn(order);
+        when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
+        when(assetMapper.selectBatchIds(any())).thenReturn(List.of(inUseAsset(1L)));
+        when(allocationMapper.selectList(any()))
+                .thenReturn(List.of(activeAllocation(1L, 250L, "王五")));
+        when(locationMapper.selectBatchIds(any()))
+                .thenReturn(List.of(location(10L, "A区"), location(20L, "B区")));
+        when(orderMapper.updateById(any(TransferOrder.class))).thenReturn(1);
+
+        assertEquals("COMPLETED", transferService.confirm(1L, 400L, "赵六").getStatus());
     }
 
     @Test

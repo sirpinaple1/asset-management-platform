@@ -42,7 +42,7 @@ public class ReceiveReceiptController {
 
     private final ReceiveReceiptService receiptService;
 
-    @Operation(summary = "单据列表（支持 type/status/userId/date 筛选，含明细行与资产名称）")
+    @Operation(summary = "单据列表（支持 type/status/userId/assigneeUserId/unassigned/date 筛选，含明细行与资产名称）")
     @SecurityRequirement(name = "BearerAuth")
     @GetMapping
     public Result<List<ReceiptResp>> list(
@@ -52,6 +52,10 @@ public class ReceiveReceiptController {
             @RequestParam(required = false) String status,
             @Parameter(description = "申请人 ID")
             @RequestParam(required = false) Long userId,
+            @Parameter(description = "指定处理人 ID（精确匹配）")
+            @RequestParam(required = false) Long assigneeUserId,
+            @Parameter(description = "true=仅共享池单据（未指定处理人）")
+            @RequestParam(required = false) Boolean unassigned,
             @Parameter(description = "申请日期（yyyy-MM-dd）")
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
@@ -64,6 +68,8 @@ public class ReceiveReceiptController {
             query.setStatus(ReceiptStatus.of(status.trim()));
         }
         query.setUserId(userId);
+        query.setAssigneeUserId(assigneeUserId);
+        query.setUnassigned(unassigned);
         query.setDate(date);
         List<ReceiptResp> respList = receiptService.list(query).stream()
                 .map(ReceiptResp::from)

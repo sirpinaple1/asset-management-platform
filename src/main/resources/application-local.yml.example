@@ -32,3 +32,8 @@ app:
     auth-db-url: jdbc:mysql://127.0.0.1:3306/db_comm_public_basic?useUnicode=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
     auth-db-username: root
     auth-db-password: 123456
+  # 用户目录（B1 定向待办：用户搜索 + assignee 存在性校验，只读 sys_user；与 migration.auth-db-* 独立）
+  user-directory:
+    url: jdbc:mysql://127.0.0.1:3306/db_comm_public_basic?useUnicode=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    username: root
+    password: 123456

@@ -2,6 +2,7 @@ package com.sk.asset.service.transfer.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.sk.asset.auth.UserDirectory;
 import com.sk.asset.common.BusinessException;
 import com.sk.asset.dto.transfer.TransferApplyReq;
 import com.sk.asset.dto.transfer.TransferQuery;
@@ -70,6 +71,7 @@ public class TransferOrderServiceImpl implements TransferOrderService {
     private final ChangeOrderItemMapper changeOrderItemMapper;
     private final LocationMapper locationMapper;
     private final AssetService assetService;
+    private final UserDirectory userDirectory;
 
     // ---- create ----
 
@@ -89,6 +91,9 @@ public class TransferOrderServiceImpl implements TransferOrderService {
         if (!hasToLocation && !hasToDepartment) {
             throw new BusinessException(400, "调入区域与调入部门至少填写一项");
         }
+
+        // 指定处理人校验（B1）：不能是发起人自己（否则单据永远无法确认），需存在于 comm_public_basic
+        validateAssignee(req.getAssigneeUserId(), applicantUserId);
 
         // 去重（前端跨页多选可能重复提交同一资产）
         List<Long> assetIds = req.getAssetIds().stream()
@@ -193,6 +198,7 @@ public class TransferOrderServiceImpl implements TransferOrderService {
         order.setStocktakeId(stocktakeId);
         order.setApplicantUserId(applicantUserId);
         order.setApplicantName(applicantName);
+        order.setAssigneeUserId(req.getAssigneeUserId());
         order.setFromLocationId(firstAsset != null ? firstAsset.getLocationId() : null);
         order.setToLocationId(req.getToLocationId());
         order.setToDepartment(hasToDepartment ? req.getToDepartment().trim() : null);
@@ -227,6 +233,12 @@ public class TransferOrderServiceImpl implements TransferOrderService {
             if (query.getUserId() != null) {
                 wrapper.eq(TransferOrder::getApplicantUserId, query.getUserId());
             }
+            if (query.getAssigneeUserId() != null) {
+                wrapper.eq(TransferOrder::getAssigneeUserId, query.getAssigneeUserId());
+            }
+            if (Boolean.TRUE.equals(query.getUnassigned())) {
+                wrapper.isNull(TransferOrder::getAssigneeUserId);
+            }
             if (query.getDept() != null && !query.getDept().isBlank()) {
                 wrapper.like(TransferOrder::getToDepartment, query.getDept().trim());
             }
@@ -259,6 +271,7 @@ public class TransferOrderServiceImpl implements TransferOrderService {
     public TransferOrder confirm(Long id, Long confirmerUserId, String confirmerName) {
         TransferOrder order = requirePendingOrder(id);
         requireNotApplicant(order, confirmerUserId);
+        requireAssignee(order, confirmerUserId);
 
         List<TransferOrderItem> items = listItems(id);
         List<Long> assetIds = items.stream().map(TransferOrderItem::getAssetId).toList();
@@ -292,6 +305,7 @@ public class TransferOrderServiceImpl implements TransferOrderService {
     public TransferOrder reject(Long id, String reason, Long confirmerUserId, String confirmerName) {
         TransferOrder order = requirePendingOrder(id);
         requireNotApplicant(order, confirmerUserId);
+        requireAssignee(order, confirmerUserId);
 
         // 拒绝：资产不变，仅记录处理人与原因
         order.setStatus(TransferStatus.REJECTED.name());
@@ -506,6 +520,27 @@ public class TransferOrderServiceImpl implements TransferOrderService {
     private void requireNotApplicant(TransferOrder order, Long operatorUserId) {
         if (operatorUserId != null && operatorUserId.equals(order.getApplicantUserId())) {
             throw new BusinessException(403, "调入方确认/拒绝不能由发起人自己操作");
+        }
+    }
+
+    /** 指定处理人门禁（B1）：assignee 非空时，确认/拒绝必须是 assignee；NULL=共享池保持现状 */
+    private void requireAssignee(TransferOrder order, Long operatorUserId) {
+        if (order.getAssigneeUserId() != null && operatorUserId != null
+                && !operatorUserId.equals(order.getAssigneeUserId())) {
+            throw new BusinessException(403, "该单据已指定处理人，仅指定处理人可确认/拒绝");
+        }
+    }
+
+    /** 提交时 assignee 校验（B1）：不能是发起人自己（死单防御），需存在于 comm_public_basic（未配置目录时降级跳过） */
+    private void validateAssignee(Long assigneeUserId, Long applicantUserId) {
+        if (assigneeUserId == null) {
+            return;
+        }
+        if (assigneeUserId.equals(applicantUserId)) {
+            throw new BusinessException(400, "指定处理人不能是发起人自己");
+        }
+        if (!userDirectory.exists(assigneeUserId)) {
+            throw new BusinessException(400, "指定处理人不存在（id=" + assigneeUserId + "）");
         }
     }
 

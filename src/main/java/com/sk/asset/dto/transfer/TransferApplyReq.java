@@ -1,6 +1,7 @@
 package com.sk.asset.dto.transfer;
 
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Positive;
 import lombok.Data;
 
 import java.util.List;
@@ -31,4 +32,8 @@ public class TransferApplyReq {
 
     /** 调拨原因 */
     private String reason;
+
+    /** 指定处理人 ID（可选，NULL=共享池；不能是发起人自己，需存在于 comm_public_basic） */
+    @Positive(message = "指定处理人 ID 需为正整数")
+    private Long assigneeUserId;
 }

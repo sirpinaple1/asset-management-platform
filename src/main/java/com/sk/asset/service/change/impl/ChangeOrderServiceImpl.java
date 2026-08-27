@@ -2,6 +2,7 @@ package com.sk.asset.service.change.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.sk.asset.auth.UserDirectory;
 import com.sk.asset.common.BusinessException;
 import com.sk.asset.dto.change.ChangeApplyReq;
 import com.sk.asset.dto.change.ChangeQuery;
@@ -76,6 +77,7 @@ public class ChangeOrderServiceImpl implements ChangeOrderService {
     private final LocationMapper locationMapper;
     private final CompanyMapper companyMapper;
     private final AssetService assetService;
+    private final UserDirectory userDirectory;
 
     // ---- create ----
 
@@ -90,6 +92,11 @@ public class ChangeOrderServiceImpl implements ChangeOrderService {
                 || req.getNewCompanyId() != null;
         if (!hasChangeField) {
             throw new BusinessException(400, "请至少指定一项变更内容（使用人/使用部门/区域/存放位置明细/归属公司）");
+        }
+
+        // 1b. 指定处理人校验（B1）：变更允许发起人自审，可指定为自己；需存在于 comm_public_basic
+        if (req.getAssigneeUserId() != null && !userDirectory.exists(req.getAssigneeUserId())) {
+            throw new BusinessException(400, "指定处理人不存在（id=" + req.getAssigneeUserId() + "）");
         }
 
         // 2. 去重（前端跨页多选可能重复提交同一资产）
@@ -197,6 +204,7 @@ public class ChangeOrderServiceImpl implements ChangeOrderService {
         order.setStatus(ChangeStatus.PENDING.name());
         order.setApplicantUserId(applicantUserId);
         order.setApplicantName(applicantName);
+        order.setAssigneeUserId(req.getAssigneeUserId());
         order.setReason(req.getReason());
         order.setNewUserId(req.getNewUserId());
         order.setNewUserName(trimToNull(req.getNewUserName()));
@@ -244,6 +252,12 @@ public class ChangeOrderServiceImpl implements ChangeOrderService {
             if (query.getUserId() != null) {
                 wrapper.eq(ChangeOrder::getApplicantUserId, query.getUserId());
             }
+            if (query.getAssigneeUserId() != null) {
+                wrapper.eq(ChangeOrder::getAssigneeUserId, query.getAssigneeUserId());
+            }
+            if (Boolean.TRUE.equals(query.getUnassigned())) {
+                wrapper.isNull(ChangeOrder::getAssigneeUserId);
+            }
             if (query.getDate() != null) {
                 LocalDateTime start = query.getDate().atStartOfDay();
                 wrapper.ge(ChangeOrder::getCreatedAt, start)
@@ -272,6 +286,11 @@ public class ChangeOrderServiceImpl implements ChangeOrderService {
     @Transactional(rollbackFor = Exception.class)
     public ChangeOrder confirm(Long id, Long confirmerUserId, String confirmerName) {
         ChangeOrder order = requirePendingOrder(id);
+        // 指定处理人门禁（B1）：assignee 非空时确认人必须是 assignee；NULL=共享池保持现状（允许任何人含发起人自审）
+        if (order.getAssigneeUserId() != null && confirmerUserId != null
+                && !confirmerUserId.equals(order.getAssigneeUserId())) {
+            throw new BusinessException(403, "该变更单已指定处理人，仅指定处理人可确认执行");
+        }
 
         List<ChangeOrderItem> items = listItems(id);
         Map<Long, List<ChangeOrderItem>> itemsByAsset = items.stream()

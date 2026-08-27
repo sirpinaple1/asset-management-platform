@@ -84,6 +84,9 @@ class ReceiveReceiptServiceImplTest {
     @Mock
     private AssetService assetService;
 
+    @Mock
+    private com.sk.asset.auth.UserDirectory userDirectory;
+
     @InjectMocks
     private ReceiveReceiptServiceImpl receiptService;
 
@@ -250,6 +253,56 @@ class ReceiveReceiptServiceImplTest {
 
         assertEquals(404, exception.getCode());
         verify(receiptMapper, never()).insert(any(ReceiveReceipt.class));
+    }
+
+    // ---- create：B1 指定处理人 ----
+
+    @Test
+    void create_shouldRejectWhenAssigneeIsApplicant() {
+        ReceiptApplyReq req = applyReq("RECEIVE", List.of(1L));
+        req.setAssigneeUserId(100L);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> receiptService.create(req, 100L, "张三"));
+
+        assertEquals(400, exception.getCode());
+        assertTrue(exception.getMessage().contains("申请人自己"));
+        verify(receiptMapper, never()).insert(any(ReceiveReceipt.class));
+    }
+
+    @Test
+    void create_shouldRejectWhenAssigneeNotExist() {
+        when(userDirectory.exists(999L)).thenReturn(false);
+        ReceiptApplyReq req = applyReq("RECEIVE", List.of(1L));
+        req.setAssigneeUserId(999L);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> receiptService.create(req, 100L, "张三"));
+
+        assertEquals(400, exception.getCode());
+        assertTrue(exception.getMessage().contains("指定处理人不存在"));
+        verify(receiptMapper, never()).insert(any(ReceiveReceipt.class));
+    }
+
+    @Test
+    void create_shouldPersistAssigneeWhenValid() {
+        when(userDirectory.exists(200L)).thenReturn(true);
+        stubLocationExists();
+        when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
+        when(itemMapper.selectList(any())).thenReturn(List.of());
+        when(receiptMapper.selectOne(any())).thenReturn(null);
+        when(receiptMapper.insert(any(ReceiveReceipt.class))).thenAnswer(invocation -> {
+            ((ReceiveReceipt) invocation.getArgument(0)).setId(1L);
+            return 1;
+        });
+
+        ReceiptApplyReq req = applyReq("RECEIVE", List.of(1L));
+        req.setAssigneeUserId(200L);
+        receiptService.create(req, 100L, "张三");
+
+        ArgumentCaptor<ReceiveReceipt> captor = ArgumentCaptor.forClass(ReceiveReceipt.class);
+        verify(receiptMapper).insert(captor.capture());
+        assertEquals(200L, captor.getValue().getAssigneeUserId());
     }
 
     @Test
@@ -426,6 +479,55 @@ class ReceiveReceiptServiceImplTest {
 
         assertEquals(403, exception.getCode());
         verify(assetService, never()).changeStatus(anyLong(), any(), anyLong(), any(), any());
+    }
+
+    // ---- approve/reject：B1 指定处理人门禁 ----
+
+    @Test
+    void approve_shouldRejectWhenOperatorIsNotAssignee() {
+        ReceiveReceipt receipt = pendingReceipt();
+        receipt.setAssigneeUserId(200L);
+        when(receiptMapper.selectById(1L)).thenReturn(receipt);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> receiptService.approve(1L, 300L, "王五"));
+
+        assertEquals(403, exception.getCode());
+        assertTrue(exception.getMessage().contains("指定处理人"));
+        verify(assetService, never()).changeStatus(anyLong(), any(), anyLong(), any(), any());
+    }
+
+    @Test
+    void approve_shouldAllowAssigneeToApprove() {
+        ReceiveReceipt receipt = pendingReceipt();
+        receipt.setAssigneeUserId(200L);
+        when(receiptMapper.selectById(1L)).thenReturn(receipt);
+        when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
+        Asset asset = idleAsset(1L);
+        when(assetMapper.selectById(1L)).thenReturn(asset);
+        when(assetMapper.selectBatchIds(any())).thenReturn(List.of(asset));
+        when(receiptMapper.updateById(any(ReceiveReceipt.class))).thenReturn(1);
+        stubLocationExists();
+        stubLocationNames();
+
+        ReceiveReceipt approved = receiptService.approve(1L, 200L, "李四");
+
+        assertEquals("APPROVED", approved.getStatus());
+    }
+
+    @Test
+    void approve_shouldKeepSharedPoolBehaviorWhenAssigneeNull() {
+        // 存量单（assignee NULL）：任何非申请人可审批——回归保护
+        when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt());
+        when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
+        Asset asset = idleAsset(1L);
+        when(assetMapper.selectById(1L)).thenReturn(asset);
+        when(assetMapper.selectBatchIds(any())).thenReturn(List.of(asset));
+        when(receiptMapper.updateById(any(ReceiveReceipt.class))).thenReturn(1);
+        stubLocationExists();
+        stubLocationNames();
+
+        assertEquals("APPROVED", receiptService.approve(1L, 300L, "王五").getStatus());
     }
 
     @Test

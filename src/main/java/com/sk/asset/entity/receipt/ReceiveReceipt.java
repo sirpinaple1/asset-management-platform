@@ -36,6 +36,9 @@ public class ReceiveReceipt {
     /** 申请人姓名（提交时快照） */
     private String applicantName;
 
+    /** 指定处理人ID（comm_public_basic 用户，NULL=共享池：任何非申请人可审批；B1 定向待办） */
+    private Long assigneeUserId;
+
     /** 领用/借用部门 */
     private String department;
 

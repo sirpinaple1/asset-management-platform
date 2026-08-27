@@ -2,6 +2,7 @@ package com.sk.asset.service.receipt.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.sk.asset.auth.UserDirectory;
 import com.sk.asset.common.BusinessException;
 import com.sk.asset.dto.receipt.ReceiptApplyReq;
 import com.sk.asset.dto.receipt.ReceiptQuery;
@@ -66,11 +67,14 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
     private final ChangeOrderMapper changeOrderMapper;
     private final ChangeOrderItemMapper changeOrderItemMapper;
     private final AssetService assetService;
+    private final UserDirectory userDirectory;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ReceiveReceipt create(ReceiptApplyReq req, Long applicantUserId, String applicantName) {
         ReceiptType type = ReceiptType.of(req.getType());
+        // 0b. 指定处理人校验（B1）：不能是申请人自己（否则单据永远无法审批），需存在于 comm_public_basic
+        validateAssignee(req.getAssigneeUserId(), applicantUserId);
         // 去重（前端跨页多选可能重复提交同一资产）
         List<Long> assetIds = req.getAssetIds().stream()
                 .filter(Objects::nonNull)
@@ -161,6 +165,7 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
         receipt.setStatus(ReceiptStatus.PENDING.name());
         receipt.setApplicantUserId(applicantUserId);
         receipt.setApplicantName(applicantName);
+        receipt.setAssigneeUserId(req.getAssigneeUserId());
         receipt.setDepartment(req.getDepartment());
         receipt.setLocationId(req.getLocationId());
         receipt.setReason(req.getReason());
@@ -194,6 +199,12 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
             if (query.getUserId() != null) {
                 wrapper.eq(ReceiveReceipt::getApplicantUserId, query.getUserId());
             }
+            if (query.getAssigneeUserId() != null) {
+                wrapper.eq(ReceiveReceipt::getAssigneeUserId, query.getAssigneeUserId());
+            }
+            if (Boolean.TRUE.equals(query.getUnassigned())) {
+                wrapper.isNull(ReceiveReceipt::getAssigneeUserId);
+            }
             if (query.getDate() != null) {
                 LocalDateTime start = query.getDate().atStartOfDay();
                 wrapper.ge(ReceiveReceipt::getCreatedAt, start)
@@ -221,6 +232,7 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
     public ReceiveReceipt approve(Long id, Long approverUserId, String approverName) {
         ReceiveReceipt receipt = requirePendingReceipt(id);
         requireNotApplicant(receipt, approverUserId);
+        requireAssignee(receipt, approverUserId);
 
         List<ReceiveReceiptItem> items = listItems(id);
         String applicantDisplay = displayName(receipt.getApplicantUserId(), receipt.getApplicantName());
@@ -273,6 +285,7 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
     public ReceiveReceipt reject(Long id, String reason, Long approverUserId, String approverName) {
         ReceiveReceipt receipt = requirePendingReceipt(id);
         requireNotApplicant(receipt, approverUserId);
+        requireAssignee(receipt, approverUserId);
 
         List<ReceiveReceiptItem> items = listItems(id);
         ReceiptType type = ReceiptType.of(receipt.getType());
@@ -327,6 +340,27 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
     private void requireNotApplicant(ReceiveReceipt receipt, Long operatorUserId) {
         if (operatorUserId != null && operatorUserId.equals(receipt.getApplicantUserId())) {
             throw new BusinessException(403, "审批人与申请人不能是同一人");
+        }
+    }
+
+    /** 指定处理人门禁（B1）：assignee 非空时，审批人必须是 assignee；NULL=共享池保持现状 */
+    private void requireAssignee(ReceiveReceipt receipt, Long operatorUserId) {
+        if (receipt.getAssigneeUserId() != null && operatorUserId != null
+                && !operatorUserId.equals(receipt.getAssigneeUserId())) {
+            throw new BusinessException(403, "该单据已指定处理人，仅指定处理人可审批");
+        }
+    }
+
+    /** 提交时 assignee 校验（B1）：不能是申请人自己（死单防御），需存在于 comm_public_basic（未配置目录时降级跳过） */
+    private void validateAssignee(Long assigneeUserId, Long applicantUserId) {
+        if (assigneeUserId == null) {
+            return;
+        }
+        if (assigneeUserId.equals(applicantUserId)) {
+            throw new BusinessException(400, "指定处理人不能是申请人自己");
+        }
+        if (!userDirectory.exists(assigneeUserId)) {
+            throw new BusinessException(400, "指定处理人不存在（id=" + assigneeUserId + "）");
         }
     }
 

@@ -1,6 +1,7 @@
 package com.sk.asset.dto.change;
 
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Positive;
 import lombok.Data;
 
 import java.util.List;
@@ -37,4 +38,8 @@ public class ChangeApplyReq {
 
     /** 变更原因 */
     private String reason;
+
+    /** 指定处理人 ID（可选，NULL=共享池；变更允许发起人自审，可指定为自己，需存在于 comm_public_basic） */
+    @Positive(message = "指定处理人 ID 需为正整数")
+    private Long assigneeUserId;
 }

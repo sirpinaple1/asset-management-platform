@@ -27,6 +27,9 @@ public class ChangeResp {
     /** 发起人姓名（提交时快照，空时前端回退展示用户 ID） */
     private String applicantName;
 
+    /** 指定处理人 ID（NULL=共享池） */
+    private Long assigneeUserId;
+
     private String reason;
 
     /** 变更后使用人 ID（null = 不变更） */
@@ -78,6 +81,7 @@ public class ChangeResp {
         resp.setStatusLabel(ChangeStatus.of(entity.getStatus()).getLabel());
         resp.setApplicantUserId(entity.getApplicantUserId());
         resp.setApplicantName(entity.getApplicantName());
+        resp.setAssigneeUserId(entity.getAssigneeUserId());
         resp.setReason(entity.getReason());
         resp.setNewUserId(entity.getNewUserId());
         resp.setNewUserName(entity.getNewUserName());

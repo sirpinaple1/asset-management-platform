@@ -33,6 +33,9 @@ public class ReceiptResp {
     /** 申请人姓名（提交时快照，空时前端回退展示用户 ID） */
     private String applicantName;
 
+    /** 指定处理人 ID（NULL=共享池） */
+    private Long assigneeUserId;
+
     private String department;
 
     /** 领用区域 ID（审批通过后资产位置更新至此） */
@@ -72,6 +75,7 @@ public class ReceiptResp {
         resp.setTypeLabel(ReceiptType.of(entity.getType()).getLabel());
         resp.setApplicantUserId(entity.getApplicantUserId());
         resp.setApplicantName(entity.getApplicantName());
+        resp.setAssigneeUserId(entity.getAssigneeUserId());
         resp.setDepartment(entity.getDepartment());
         resp.setLocationId(entity.getLocationId());
         resp.setLocationName(entity.getLocationName());

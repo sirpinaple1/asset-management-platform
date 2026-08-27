@@ -3,6 +3,7 @@ package com.sk.asset.dto.receipt;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import lombok.Data;
 
 import java.util.List;
@@ -31,4 +32,8 @@ public class ReceiptApplyReq {
 
     @NotBlank(message = "领用事由不能为空")
     private String reason;
+
+    /** 指定处理人 ID（可选，NULL=共享池；不能是申请人自己，需存在于 comm_public_basic） */
+    @Positive(message = "指定处理人 ID 需为正整数")
+    private Long assigneeUserId;
 }

@@ -42,7 +42,7 @@ public class TransferOrderController {
 
     private final TransferOrderService transferService;
 
-    @Operation(summary = "调拨单列表（支持 status/source/userId/dept/date 筛选，含明细行与位置名称）")
+    @Operation(summary = "调拨单列表（支持 status/source/userId/assigneeUserId/unassigned/dept/date 筛选，含明细行与位置名称）")
     @SecurityRequirement(name = "BearerAuth")
     @GetMapping
     public Result<List<TransferResp>> list(
@@ -52,6 +52,10 @@ public class TransferOrderController {
             @RequestParam(required = false) String source,
             @Parameter(description = "发起人 ID")
             @RequestParam(required = false) Long userId,
+            @Parameter(description = "指定处理人 ID（精确匹配）")
+            @RequestParam(required = false) Long assigneeUserId,
+            @Parameter(description = "true=仅共享池单据（未指定处理人）")
+            @RequestParam(required = false) Boolean unassigned,
             @Parameter(description = "调入部门（模糊匹配）")
             @RequestParam(required = false) String dept,
             @Parameter(description = "申请日期（yyyy-MM-dd）")
@@ -66,6 +70,8 @@ public class TransferOrderController {
             query.setSource(TransferSource.of(source.trim()));
         }
         query.setUserId(userId);
+        query.setAssigneeUserId(assigneeUserId);
+        query.setUnassigned(unassigned);
         query.setDept(dept);
         query.setDate(date);
         List<TransferResp> respList = transferService.list(query).stream()

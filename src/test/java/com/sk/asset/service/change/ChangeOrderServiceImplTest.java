@@ -95,6 +95,9 @@ class ChangeOrderServiceImplTest {
     @Mock
     private AssetService assetService;
 
+    @Mock
+    private com.sk.asset.auth.UserDirectory userDirectory;
+
     @InjectMocks
     private ChangeOrderServiceImpl changeService;
 
@@ -182,6 +185,48 @@ class ChangeOrderServiceImplTest {
     }
 
     // ---- create ----
+
+    @Test
+    void create_shouldRejectWhenAssigneeNotExist() {
+        when(userDirectory.exists(999L)).thenReturn(false);
+        ChangeApplyReq req = applyReq(List.of(1L));
+        req.setAssigneeUserId(999L);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> changeService.create(req, 100L, "张三"));
+
+        assertEquals(400, exception.getCode());
+        assertTrue(exception.getMessage().contains("指定处理人不存在"));
+        verify(orderMapper, never()).insert(any(ChangeOrder.class));
+    }
+
+    @Test
+    void create_shouldAllowAssigneeEqualToApplicantAndPersist() {
+        // 变更允许发起人自审：assignee=申请人合法
+        when(userDirectory.exists(100L)).thenReturn(true);
+        AtomicReference<ChangeOrder> inserted = new AtomicReference<>();
+        when(assetMapper.selectBatchIds(any())).thenReturn(List.of(inUseAsset(1L)));
+        when(orderMapper.selectOne(any())).thenReturn(null);
+        when(locationMapper.selectById(20L)).thenReturn(location(20L, "B区"));
+        when(allocationMapper.selectList(any()))
+                .thenReturn(List.of(activeAllocation(1L, 100L, "张三")));
+        when(locationMapper.selectBatchIds(any()))
+                .thenReturn(List.of(location(10L, "A区"), location(20L, "B区")));
+        when(orderMapper.insert(any(ChangeOrder.class))).thenAnswer(invocation -> {
+            ChangeOrder order = invocation.getArgument(0);
+            order.setId(1L);
+            inserted.set(order);
+            return 1;
+        });
+        when(orderMapper.selectById(1L)).thenAnswer(inv -> inserted.get());
+        when(itemMapper.selectList(any())).thenReturn(List.of());
+
+        ChangeApplyReq req = applyReq(List.of(1L));
+        req.setAssigneeUserId(100L);
+        changeService.create(req, 100L, "张三");
+
+        assertEquals(100L, inserted.get().getAssigneeUserId());
+    }
 
     @Test
     void create_shouldInsertOrderAndItemRowsForChangedFieldsOnly() {
@@ -502,6 +547,38 @@ class ChangeOrderServiceImplTest {
 
         assertEquals("CONFIRMED", confirmed.getStatus());
         assertEquals(100L, confirmed.getConfirmerUserId());
+    }
+
+    // ---- confirm：B1 指定处理人门禁 ----
+
+    @Test
+    void confirm_shouldRejectWhenOperatorIsNotAssignee() {
+        ChangeOrder order = pendingOrder();
+        order.setAssigneeUserId(200L);
+        when(orderMapper.selectById(1L)).thenReturn(order);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> changeService.confirm(1L, 300L, "王五"));
+
+        assertEquals(403, exception.getCode());
+        assertTrue(exception.getMessage().contains("指定处理人"));
+        verify(orderMapper, never()).updateById(any(ChangeOrder.class));
+    }
+
+    @Test
+    void confirm_shouldAllowAssigneeToConfirm() {
+        ChangeOrder order = pendingOrder();
+        order.setAssigneeUserId(400L);
+        when(orderMapper.selectById(1L)).thenReturn(order);
+        when(itemMapper.selectList(any())).thenReturn(List.of(
+                item(1L, 1L, "user_id", "使用人", "张三", "李四")));
+        when(assetMapper.selectBatchIds(any())).thenReturn(List.of(inUseAsset(1L)));
+        when(allocationMapper.selectList(any()))
+                .thenReturn(List.of(activeAllocation(1L, 100L, "张三")));
+        when(orderMapper.updateById(any(ChangeOrder.class))).thenReturn(1);
+        when(locationMapper.selectBatchIds(any())).thenReturn(List.of());
+
+        assertEquals("CONFIRMED", changeService.confirm(1L, 400L, "赵六").getStatus());
     }
 
     @Test

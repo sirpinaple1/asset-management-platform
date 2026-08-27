@@ -74,3 +74,9 @@ app:
     required-role: asset-资产管理员
     # Excel 源文件目录与 comm_public_basic 库连接（auth-db-url/username/password）不入库
     log-cutoff: 2026-08-19T00:00:00
+  # 用户目录（B1 定向待办：用户搜索接口 + assignee 存在性校验，只读直连 comm_public_basic sys_user）。
+  # 连接串不入库（R3 红线）；未配置时用户搜索接口返回 503、assignee 存在性校验降级跳过。
+  user-directory:
+    # url: jdbc:mysql://127.0.0.1:3306/comm_public_basic?useSSL=false&serverTimezone=Asia/Shanghai
+    # username: readonly
+    # password: xxx

@@ -40,7 +40,7 @@ public class ChangeOrderController {
 
     private final ChangeOrderService changeOrderService;
 
-    @Operation(summary = "变更单列表（支持 status/userId/assetId/date 筛选，assetId 查某台资产的变更历史；含明细行变更前/后对比）")
+    @Operation(summary = "变更单列表（支持 status/userId/assigneeUserId/unassigned/assetId/date 筛选，assetId 查某台资产的变更历史；含明细行变更前/后对比）")
     @SecurityRequirement(name = "BearerAuth")
     @GetMapping
     public Result<List<ChangeResp>> list(
@@ -48,6 +48,10 @@ public class ChangeOrderController {
             @RequestParam(required = false) String status,
             @Parameter(description = "发起人 ID")
             @RequestParam(required = false) Long userId,
+            @Parameter(description = "指定处理人 ID（精确匹配）")
+            @RequestParam(required = false) Long assigneeUserId,
+            @Parameter(description = "true=仅共享池单据（未指定处理人）")
+            @RequestParam(required = false) Boolean unassigned,
             @Parameter(description = "资产 ID（查该资产的变更历史）")
             @RequestParam(required = false) Long assetId,
             @Parameter(description = "申请日期（yyyy-MM-dd）")
@@ -59,6 +63,8 @@ public class ChangeOrderController {
             query.setStatus(ChangeStatus.of(status.trim()));
         }
         query.setUserId(userId);
+        query.setAssigneeUserId(assigneeUserId);
+        query.setUnassigned(unassigned);
         query.setAssetId(assetId);
         query.setDate(date);
         List<ChangeResp> respList = changeOrderService.list(query).stream()
