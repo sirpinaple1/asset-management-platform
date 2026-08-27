@@ -19,6 +19,7 @@ import com.sk.asset.entity.transfer.TransferOrderItem;
 import com.sk.asset.enums.asset.AssetStatus;
 import com.sk.asset.enums.change.ChangeField;
 import com.sk.asset.enums.change.ChangeStatus;
+import com.sk.asset.enums.notification.NotificationType;
 import com.sk.asset.enums.receipt.ReceiptStatus;
 import com.sk.asset.enums.transfer.TransferStatus;
 import com.sk.asset.mapper.asset.AssetMapper;
@@ -32,6 +33,7 @@ import com.sk.asset.mapper.receipt.ReceiveReceiptMapper;
 import com.sk.asset.mapper.transfer.TransferOrderItemMapper;
 import com.sk.asset.mapper.transfer.TransferOrderMapper;
 import com.sk.asset.service.asset.AssetService;
+import com.sk.asset.service.notification.NotificationService;
 import com.sk.asset.service.change.ChangeOrderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -78,6 +80,7 @@ public class ChangeOrderServiceImpl implements ChangeOrderService {
     private final CompanyMapper companyMapper;
     private final AssetService assetService;
     private final UserDirectory userDirectory;
+    private final NotificationService notificationService;
 
     // ---- create ----
 
@@ -224,6 +227,14 @@ public class ChangeOrderServiceImpl implements ChangeOrderService {
         }
 
         // 变更不锁定资产状态（撤销资产不变），确认时才更新归属字段
+
+        // 定向提交通知处理人（B2）：assignee=申请人（自审）时不自我通知
+        if (req.getAssigneeUserId() != null && !req.getAssigneeUserId().equals(applicantUserId)) {
+            notificationService.notify(req.getAssigneeUserId(), NotificationType.DOC_SUBMITTED,
+                    applicantName + " 提交的变更单 " + serialNo + " 待你确认",
+                    "CHANGE", order.getId());
+        }
+
         return getById(order.getId());
     }
 
@@ -314,6 +325,13 @@ public class ChangeOrderServiceImpl implements ChangeOrderService {
         order.setConfirmerName(confirmerName);
         order.setConfirmTime(LocalDateTime.now());
         orderMapper.updateById(order);
+
+        // 通知发起人（B2）：自审（发起人=确认人）不自我通知
+        if (!confirmerUserId.equals(order.getApplicantUserId())) {
+            notificationService.notify(order.getApplicantUserId(), NotificationType.DOC_COMPLETED,
+                    "你发起的变更单 " + order.getSerialNo() + " 已执行（执行人：" + confirmerName + "）",
+                    "CHANGE", order.getId());
+        }
 
         return getById(id);
     }

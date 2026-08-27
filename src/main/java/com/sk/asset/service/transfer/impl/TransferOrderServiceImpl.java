@@ -17,6 +17,7 @@ import com.sk.asset.entity.transfer.TransferOrder;
 import com.sk.asset.entity.transfer.TransferOrderItem;
 import com.sk.asset.enums.asset.AssetStatus;
 import com.sk.asset.enums.change.ChangeStatus;
+import com.sk.asset.enums.notification.NotificationType;
 import com.sk.asset.enums.receipt.ReceiptStatus;
 import com.sk.asset.enums.transfer.TransferSource;
 import com.sk.asset.enums.transfer.TransferStatus;
@@ -30,6 +31,7 @@ import com.sk.asset.mapper.receipt.ReceiveReceiptMapper;
 import com.sk.asset.mapper.transfer.TransferOrderItemMapper;
 import com.sk.asset.mapper.transfer.TransferOrderMapper;
 import com.sk.asset.service.asset.AssetService;
+import com.sk.asset.service.notification.NotificationService;
 import com.sk.asset.service.transfer.TransferOrderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -72,6 +74,7 @@ public class TransferOrderServiceImpl implements TransferOrderService {
     private final LocationMapper locationMapper;
     private final AssetService assetService;
     private final UserDirectory userDirectory;
+    private final NotificationService notificationService;
 
     // ---- create ----
 
@@ -215,6 +218,14 @@ public class TransferOrderServiceImpl implements TransferOrderService {
         }
 
         // 调拨不锁定资产状态（撤销/拒绝资产不变），确认时才更新归属
+
+        // 定向发起通知处理人（B2；共享池单据无定向接收人，不通知）
+        if (req.getAssigneeUserId() != null) {
+            notificationService.notify(req.getAssigneeUserId(), NotificationType.DOC_SUBMITTED,
+                    applicantName + " 发起的调拨单 " + serialNo + " 待你确认",
+                    "TRANSFER", order.getId());
+        }
+
         return getById(order.getId());
     }
 
@@ -297,6 +308,11 @@ public class TransferOrderServiceImpl implements TransferOrderService {
         order.setConfirmTime(LocalDateTime.now());
         orderMapper.updateById(order);
 
+        // 通知发起人（B2）：确认人与发起人必不同人（requireNotApplicant），必通知
+        notificationService.notify(order.getApplicantUserId(), NotificationType.DOC_COMPLETED,
+                "你发起的调拨单 " + order.getSerialNo() + " 已确认完成（确认人：" + confirmerName + "）",
+                "TRANSFER", order.getId());
+
         return getById(id);
     }
 
@@ -314,6 +330,12 @@ public class TransferOrderServiceImpl implements TransferOrderService {
         order.setConfirmTime(LocalDateTime.now());
         order.setRejectReason(reason);
         orderMapper.updateById(order);
+
+        // 通知发起人（B2）：含拒绝原因
+        notificationService.notify(order.getApplicantUserId(), NotificationType.DOC_REJECTED,
+                "你发起的调拨单 " + order.getSerialNo() + " 已拒绝（确认人：" + confirmerName
+                        + "，原因：" + reason + "）",
+                "TRANSFER", order.getId());
 
         return getById(id);
     }

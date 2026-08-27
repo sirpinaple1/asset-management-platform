@@ -87,6 +87,9 @@ class TransferOrderServiceImplTest {
     @Mock
     private com.sk.asset.auth.UserDirectory userDirectory;
 
+    @Mock
+    private com.sk.asset.service.notification.NotificationService notificationService;
+
     @InjectMocks
     private TransferOrderServiceImpl transferService;
 
@@ -210,6 +213,10 @@ class TransferOrderServiceImplTest {
         transferService.create(req, 100L, "张三");
 
         assertEquals(200L, inserted.get().getAssigneeUserId());
+        // B2：定向发起应通知处理人
+        verify(notificationService).notify(eq(200L),
+                eq(com.sk.asset.enums.notification.NotificationType.DOC_SUBMITTED),
+                contains("ATR"), eq("TRANSFER"), eq(1L));
     }
 
     // ---- create ----
@@ -422,6 +429,10 @@ class TransferOrderServiceImplTest {
         assertEquals(400L, confirmed.getConfirmerUserId());
         assertEquals("赵六", confirmed.getConfirmerName());
         assertNotNull(confirmed.getConfirmTime());
+        // B2：确认完成通知发起人
+        verify(notificationService).notify(eq(100L),
+                eq(com.sk.asset.enums.notification.NotificationType.DOC_COMPLETED),
+                contains("ATR"), eq("TRANSFER"), eq(1L));
         // 旧持有关系闭环
         verify(allocationMapper).update(isNull(), any());
         // 资产归属更新

@@ -87,6 +87,9 @@ class ReceiveReceiptServiceImplTest {
     @Mock
     private com.sk.asset.auth.UserDirectory userDirectory;
 
+    @Mock
+    private com.sk.asset.service.notification.NotificationService notificationService;
+
     @InjectMocks
     private ReceiveReceiptServiceImpl receiptService;
 
@@ -303,6 +306,10 @@ class ReceiveReceiptServiceImplTest {
         ArgumentCaptor<ReceiveReceipt> captor = ArgumentCaptor.forClass(ReceiveReceipt.class);
         verify(receiptMapper).insert(captor.capture());
         assertEquals(200L, captor.getValue().getAssigneeUserId());
+        // B2：定向提交应通知处理人
+        verify(notificationService).notify(eq(200L),
+                eq(com.sk.asset.enums.notification.NotificationType.DOC_SUBMITTED),
+                contains("ARE"), eq("RECEIVE"), eq(1L));
     }
 
     @Test
@@ -435,6 +442,10 @@ class ReceiveReceiptServiceImplTest {
         assertTrue(updateCaptor.getValue().getSqlSet().contains("location_id"),
                 "审批应更新资产位置（location_id），实际 SET：" + updateCaptor.getValue().getSqlSet());
         verify(receiptMapper).updateById(any(ReceiveReceipt.class));
+        // B2：审批通过通知发起人
+        verify(notificationService).notify(eq(100L),
+                eq(com.sk.asset.enums.notification.NotificationType.DOC_APPROVED),
+                contains("ARE"), eq("RECEIVE"), eq(1L));
     }
 
     @Test

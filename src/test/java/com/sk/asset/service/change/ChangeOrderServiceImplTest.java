@@ -98,6 +98,9 @@ class ChangeOrderServiceImplTest {
     @Mock
     private com.sk.asset.auth.UserDirectory userDirectory;
 
+    @Mock
+    private com.sk.asset.service.notification.NotificationService notificationService;
+
     @InjectMocks
     private ChangeOrderServiceImpl changeService;
 
@@ -226,6 +229,8 @@ class ChangeOrderServiceImplTest {
         changeService.create(req, 100L, "张三");
 
         assertEquals(100L, inserted.get().getAssigneeUserId());
+        // B2：assignee=申请人（自审）不自我通知
+        verify(notificationService, never()).notify(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -547,6 +552,8 @@ class ChangeOrderServiceImplTest {
 
         assertEquals("CONFIRMED", confirmed.getStatus());
         assertEquals(100L, confirmed.getConfirmerUserId());
+        // B2：自审（发起人=确认人）不自我通知
+        verify(notificationService, never()).notify(any(), any(), any(), any(), any());
     }
 
     // ---- confirm：B1 指定处理人门禁 ----

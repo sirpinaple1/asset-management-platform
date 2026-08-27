@@ -17,6 +17,7 @@ import com.sk.asset.entity.transfer.TransferOrder;
 import com.sk.asset.entity.transfer.TransferOrderItem;
 import com.sk.asset.enums.asset.AssetStatus;
 import com.sk.asset.enums.change.ChangeStatus;
+import com.sk.asset.enums.notification.NotificationType;
 import com.sk.asset.enums.receipt.ReceiptStatus;
 import com.sk.asset.enums.receipt.ReceiptType;
 import com.sk.asset.enums.transfer.TransferStatus;
@@ -30,6 +31,7 @@ import com.sk.asset.mapper.receipt.ReceiveReceiptMapper;
 import com.sk.asset.mapper.transfer.TransferOrderItemMapper;
 import com.sk.asset.mapper.transfer.TransferOrderMapper;
 import com.sk.asset.service.asset.AssetService;
+import com.sk.asset.service.notification.NotificationService;
 import com.sk.asset.service.receipt.ReceiveReceiptService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -68,6 +70,7 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
     private final ChangeOrderItemMapper changeOrderItemMapper;
     private final AssetService assetService;
     private final UserDirectory userDirectory;
+    private final NotificationService notificationService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -183,6 +186,14 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
             assetService.changeStatus(assetId, AssetStatus.PENDING_CONFIRM, applicantUserId, type.getLabel(), note);
         }
 
+        // 6. 定向提交通知处理人（B2；共享池单据无定向接收人，不通知）
+        if (req.getAssigneeUserId() != null) {
+            notificationService.notify(req.getAssigneeUserId(), NotificationType.DOC_SUBMITTED,
+                    displayName(applicantUserId, applicantName) + " 提交的" + type.getLabel()
+                            + "单 " + serialNo + " 待你处理",
+                    type.name(), receipt.getId());
+        }
+
         return getById(receipt.getId());
     }
 
@@ -277,6 +288,12 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
         receipt.setApproveTime(LocalDateTime.now());
         receiptMapper.updateById(receipt);
 
+        // 通知发起人（B2）：审批人与申请人必不同人（requireNotApplicant），必通知
+        notificationService.notify(receipt.getApplicantUserId(), NotificationType.DOC_APPROVED,
+                "你发起的" + ReceiptType.of(receipt.getType()).getLabel() + "单 " + receipt.getSerialNo()
+                        + " 已通过（审批人：" + approverName + "）",
+                receipt.getType(), receipt.getId());
+
         return getById(id);
     }
 
@@ -302,6 +319,12 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
         receipt.setApproveTime(LocalDateTime.now());
         receipt.setApproveRemark(reason);
         receiptMapper.updateById(receipt);
+
+        // 通知发起人（B2）：含拒绝原因
+        notificationService.notify(receipt.getApplicantUserId(), NotificationType.DOC_REJECTED,
+                "你发起的" + type.getLabel() + "单 " + receipt.getSerialNo()
+                        + " 已拒绝（审批人：" + approverName + "，原因：" + reason + "）",
+                receipt.getType(), receipt.getId());
 
         return getById(id);
     }
