@@ -42,8 +42,12 @@ export interface Asset {
   homeLocationName?: string
   locationDetail?: string
   userId?: number
+  /** 使用人姓名（后端经 UserDirectory 实时反查 sys_user） */
+  userName?: string
   userDepartment?: string
   adminUserId?: number
+  /** 资产管理员姓名（后端经 UserDirectory 实时反查 sys_user） */
+  adminUserName?: string
   companyId?: number
   companyName?: string
   purchaseDate?: string

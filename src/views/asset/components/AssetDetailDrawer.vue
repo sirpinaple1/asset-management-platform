@@ -92,8 +92,9 @@ const formatAmount = (v?: number) =>
     ? '—'
     : `¥ ${Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-/** 使用人/管理员：M08 用户体系打通前仅展示 ID */
-const userText = (id?: number, label?: string) => label || (id ? `#${id}` : '—')
+/** 使用人/管理员/操作人：优先后端实时反查的姓名（userName/adminUserName/operatorLabel），未命中兜底 #id */
+const userText = (id?: number, label?: string) =>
+  label || (id ? `#${id}` : '—')
 
 /** 日志节点颜色（按操作类型；未知类型回退 info） */
 const LOG_TYPE_COLOR: Record<string, 'primary' | 'success' | 'warning' | 'danger' | 'info'> = {
@@ -143,9 +144,9 @@ const logColor = (t: string) => LOG_TYPE_COLOR[t] ?? 'info'
         <el-descriptions-item label="应归放位置">{{ dash(current.homeLocationName) }}</el-descriptions-item>
         <el-descriptions-item label="位置明细">{{ dash(current.locationDetail) }}</el-descriptions-item>
         <el-descriptions-item label="归属公司">{{ dash(current.companyName) }}</el-descriptions-item>
-        <el-descriptions-item label="使用人">{{ userText(current.userId) }}</el-descriptions-item>
+        <el-descriptions-item label="使用人">{{ userText(current.userId, current.userName) }}</el-descriptions-item>
         <el-descriptions-item label="使用人部门">{{ dash(current.userDepartment) }}</el-descriptions-item>
-        <el-descriptions-item label="资产管理员">{{ userText(current.adminUserId) }}</el-descriptions-item>
+        <el-descriptions-item label="资产管理员">{{ userText(current.adminUserId, current.adminUserName) }}</el-descriptions-item>
         <el-descriptions-item label="购置日期">{{ dash(current.purchaseDate) }}</el-descriptions-item>
         <el-descriptions-item label="购入金额">{{ formatAmount(current.amount) }}</el-descriptions-item>
         <el-descriptions-item label="备注" :span="2">{{ dash(current.remark) }}</el-descriptions-item>

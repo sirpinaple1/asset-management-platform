@@ -4,7 +4,7 @@
 
 /** 资产状态占比单块 */
 export interface AssetStatusSlice {
-  /** 'IDLE' | 'IN_USE' | 'PENDING_CONFIRM' | 'SCRAP' 等，服务端透传 */
+  /** 'IDLE' | 'IN_USE' | 'PENDING_CONFIRM' | 'DISCARD' 等，服务端透传 */
   status: string
   count: number
   /** 前端展示标签：闲置 / 在用 / 待确认 / 报废 等 */

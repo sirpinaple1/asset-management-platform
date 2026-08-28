@@ -262,8 +262,9 @@ const handleExport = async () => {
 const formatText = (_row: Asset, _column: unknown, cellValue: unknown) =>
   cellValue === undefined || cellValue === null || cellValue === '' ? '—' : cellValue
 
-/** 使用人（后端仅存用户 ID，名称待用户体系打通后补充） */
-const userText = (row: Asset) => (row.userId ? `#${row.userId}` : '—')
+/** 使用人：后端经 UserDirectory 实时反查 sys_user 返回 userName；未命中兜底 #id */
+const userText = (row: Asset) =>
+  row.userId ? row.userName ?? `#${row.userId}` : '—'
 
 /* ---------------- 输入与触发：右键菜单 / 键盘导航 / 快捷键 ---------------- */
 const tableRef = ref<TableInstance>()
