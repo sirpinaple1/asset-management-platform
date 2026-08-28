@@ -8,6 +8,7 @@ import type { Asset, AssetStatus } from '@/api/interface/asset'
 import { ASSET_STATUS_META, DISCARDABLE_STATUSES } from '@/api/interface/asset'
 import { useAssetStore } from '@/stores/asset'
 import { useBasedataStore } from '@/stores/basedata'
+import { useUserStore } from '@/stores/user'
 import { useTabsStore } from '@/stores/tabs'
 import { useListInteractions, type ContextMenuItem } from '@/composables/useListInteractions'
 import { buildTree } from '@/utils/tree'
@@ -24,6 +25,7 @@ const router = useRouter()
 const tabsStore = useTabsStore()
 const store = useAssetStore()
 const basedataStore = useBasedataStore()
+const userStore = useUserStore()
 
 const assets = computed(() => store.assets)
 const total = computed(() => store.total)
@@ -58,6 +60,10 @@ const filterCategoryId = ref<number>()
 const filterLocationId = ref<number>()
 const filterCompanyId = ref<number>()
 
+/** "我的持有"开关：仅查当前登录用户名下的资产（userId = me） */
+const onlyMine = ref(false)
+const filterUserId = computed(() => (onlyMine.value ? userStore.me?.userId : undefined))
+
 const categoryTree = computed(() => buildTree<Category>(basedataStore.categories))
 const locationTree = computed(() => buildTree<Location>(basedataStore.locations))
 
@@ -74,12 +80,13 @@ const buildQuery = () => ({
   categoryId: filterCategoryId.value || undefined,
   locationId: filterLocationId.value || undefined,
   companyId: filterCompanyId.value || undefined,
+  userId: filterUserId.value,
 })
 
 const fetchCurrent = () => store.fetchAssets(buildQuery())
 
 /** 筛选维度变化：回第 1 页（页码本就是 1 时直接拉取） */
-watch([activeTab, searchKeyword, filterCategoryId, filterLocationId, filterCompanyId], () => {
+watch([activeTab, searchKeyword, filterCategoryId, filterLocationId, filterCompanyId, onlyMine], () => {
   if (currentPage.value === 1) fetchCurrent()
   else currentPage.value = 1 /* 页码变化触发下方 watcher 拉取 */
 })
@@ -90,6 +97,14 @@ watch([currentPage, pageSize], () => fetchCurrent())
 /* keep-alive：首次挂载拉取；切回本页刷新（状态可能已被单据流转变更） */
 let firstActivation = true
 onMounted(async () => {
+  /* 确保当前用户信息已加载（onlyMine 过滤依赖 me.userId） */
+  void userStore.loadMe()
+
+  /* 深链 ?me=hold → 自动开启"我的持有"过滤 */
+  if (route.query.me === 'hold') {
+    onlyMine.value = true
+  }
+
   fetchCurrent()
   void basedataStore.fetchCategories()
   void basedataStore.fetchLocations()
@@ -134,6 +149,8 @@ watch(
     if (loc !== filterLocationId.value) filterLocationId.value = loc
     const co = toId(q.co)
     if (co !== filterCompanyId.value) filterCompanyId.value = co
+    const mineFlag = q.me === 'hold'
+    if (mineFlag !== onlyMine.value) onlyMine.value = mineFlag
     const p = Number(q.page)
     if (Number.isInteger(p) && p >= 1 && p !== currentPage.value) currentPage.value = p
   },
@@ -141,7 +158,7 @@ watch(
 )
 
 watch(
-  [activeTab, searchKeyword, currentPage, filterCategoryId, filterLocationId, filterCompanyId],
+  [activeTab, searchKeyword, currentPage, filterCategoryId, filterLocationId, filterCompanyId, onlyMine],
   () => {
     if (route.name !== 'assets-list') return
     const query: Record<string, string> = {}
@@ -150,6 +167,7 @@ watch(
     if (filterCategoryId.value) query.cat = String(filterCategoryId.value)
     if (filterLocationId.value) query.loc = String(filterLocationId.value)
     if (filterCompanyId.value) query.co = String(filterCompanyId.value)
+    if (onlyMine.value) query.me = 'hold'
     if (currentPage.value > 1) query.page = String(currentPage.value)
     const current = JSON.stringify(route.query)
     const next = JSON.stringify(query)
@@ -333,6 +351,13 @@ const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown
             <span>新增资产</span>
           </el-button>
           <el-button :loading="exporting" @click="handleExport">导出</el-button>
+          <el-button
+            :type="onlyMine ? 'primary' : 'default'"
+            :plain="onlyMine"
+            @click="onlyMine = !onlyMine"
+          >
+            {{ onlyMine ? '✓ 我的持有' : '我的持有' }}
+          </el-button>
         </div>
         <div class="toolbar-filters">
           <el-tree-select
