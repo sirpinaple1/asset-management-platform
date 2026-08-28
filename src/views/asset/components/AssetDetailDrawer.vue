@@ -2,8 +2,11 @@
 import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { assetApi } from '@/api/modules/asset'
+import { receiptApi } from '@/api/modules/receipt'
+import type { Allocation } from '@/api/interface/receipt'
 import type { Asset, AssetLog, AssetStatus } from '@/api/interface/asset'
 import { ASSET_STATUS_META, DISCARDABLE_STATUSES } from '@/api/interface/asset'
+import { useUserStore } from '@/stores/user'
 
 const props = defineProps<{
   visible: boolean
@@ -14,7 +17,10 @@ const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void
   (e: 'edit', asset: Asset): void
   (e: 'discarded'): void
+  (e: 'returned'): void
 }>()
+
+const userStore = useUserStore()
 
 /** 内部展示副本：报废后本地刷新状态与日志，不依赖父组件重传 */
 const current = ref<Asset>()
@@ -28,6 +34,7 @@ watch(
     if (!visible) return
     current.value = props.asset
     if (props.asset) void loadLogs(props.asset.id)
+    if (props.asset) void loadMyAllocation(props.asset.id)
   },
   { immediate: true },
 )
@@ -52,6 +59,65 @@ const handleEdit = () => {
 const canDiscard = computed(
   () => !!current.value && DISCARDABLE_STATUSES.includes(current.value.status),
 )
+
+/* ---------------- 退库 / 归还（仅本人持有的领用/借用资产） ---------------- */
+/** 当前登录用户在该资产上的活跃持有关系（领用/借用；调拨产生的 TRANSFER 不允许从详情退） */
+const myAllocation = ref<Allocation | null>(null)
+const returning = ref(false)
+
+const loadMyAllocation = async (assetId: number) => {
+  myAllocation.value = null
+  try {
+    const list = await receiptApi.getAllocations({
+      assetId,
+      userId: userStore.me?.userId,
+      active: true,
+    })
+    myAllocation.value = list.find(
+      (a) => a.active && (a.type === 'RECEIVE' || a.type === 'BORROW'),
+    ) ?? null
+  } catch {
+    /* 查询失败不阻塞详情展示，按钮不出现 */
+  }
+}
+
+/** 可退：当前用户本人持有的领用（退库）或借用（归还）资产 */
+const canReturn = computed(() => !!myAllocation.value && !returning.value)
+const returnLabel = computed(() =>
+  myAllocation.value?.type === 'BORROW' ? '归还' : '退库',
+)
+
+const handleReturn = async () => {
+  const alloc = myAllocation.value
+  if (!alloc || returning.value) return
+  const asset = current.value
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `确认对资产「${alloc.assetBarcode || ''} ${alloc.assetName || asset?.name || ''}」执行${returnLabel.value}吗？${returnLabel.value}后资产回闲置。`,
+      `${returnLabel.value}确认`,
+      {
+        confirmButtonText: returnLabel.value,
+        cancelButtonText: '取消',
+        inputPlaceholder: '备注（选填）',
+        inputValidator: () => true,
+      },
+    )
+    returning.value = true
+    await receiptApi.returnAllocation(alloc.id, value.trim() || undefined)
+    ElMessage.success(`${returnLabel.value}成功`)
+    /* 本地刷新详情与持有关系；父组件收到 returned 后刷新列表 */
+    if (asset) {
+      current.value = await assetApi.getAssetById(asset.id)
+      void loadLogs(asset.id)
+      void loadMyAllocation(asset.id)
+    }
+    emit('returned')
+  } catch {
+    /* 用户取消或错误已由拦截器提示 */
+  } finally {
+    returning.value = false
+  }
+}
 
 const handleDiscard = async () => {
   if (!current.value || discarding.value) return
@@ -176,6 +242,14 @@ const logColor = (t: string) => LOG_TYPE_COLOR[t] ?? 'info'
     <template #footer>
       <el-button @click="handleClose">关闭</el-button>
       <el-button type="primary" plain :disabled="!current" @click="handleEdit">编辑</el-button>
+      <el-button
+        v-if="canReturn"
+        type="warning"
+        :loading="returning"
+        @click="handleReturn"
+      >
+        {{ returnLabel }}
+      </el-button>
       <el-button
         v-if="canDiscard"
         type="danger"

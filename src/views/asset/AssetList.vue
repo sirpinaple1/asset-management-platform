@@ -693,12 +693,13 @@ const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown
     <!-- 新增/编辑 -->
     <AssetModal v-model:visible="modalVisible" :data="editingAsset" @success="handleSaved" />
 
-    <!-- 详情（含操作日志/编辑/报废入口） -->
+    <!-- 详情（含操作日志/编辑/退库/报废入口） -->
     <AssetDetailDrawer
       v-model:visible="drawerVisible"
       :asset="currentAsset"
       @edit="handleEditFromDrawer"
       @discarded="handleDiscarded"
+      @returned="handleDiscarded"
     />
   </div>
 </template>
