@@ -122,7 +122,7 @@ const displayValue = computed(() => props.modelValue)
     class="user-selector full-width"
     @update:model-value="handleChange"
     @visible-change="(v: boolean) => { if (v && !keyword) handleRemoteQuery('') }"
-    @remote-method="handleRemoteQuery"
+    :remote-method="handleRemoteQuery"
   >
     <el-option
       v-for="opt in options"
