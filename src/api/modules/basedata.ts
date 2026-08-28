@@ -12,6 +12,9 @@ import type {
   LocationForm,
   AssetModel,
   AssetModelForm,
+  ApprovalConfig,
+  ApprovalConfigForm,
+  ApprovalConfigType,
 } from '@/api/interface/basedata'
 import type { PageResp } from '@/api/interface/common'
 
@@ -76,4 +79,14 @@ export const basedataApi = {
     request<AssetModel>({ url: '/v1/models', method: 'post', data }),
   updateModel: (id: number, data: AssetModelForm) =>
     request<AssetModel>({ url: `/v1/models/${id}`, method: 'put', data }),
+
+  // 审批链配置（两级审批人路由，仅 systemAdmin；后端 403 门禁，前端菜单同步隐藏）
+  getApprovalConfigs: (params?: { page?: number; size?: number; type?: ApprovalConfigType; keyword?: string }) =>
+    request<PageResp<ApprovalConfig>>({ url: '/v1/approval-configs', method: 'get', params }),
+  createApprovalConfig: (data: ApprovalConfigForm) =>
+    request<ApprovalConfig>({ url: '/v1/approval-configs', method: 'post', data }),
+  updateApprovalConfig: (id: number, data: ApprovalConfigForm) =>
+    request<ApprovalConfig>({ url: `/v1/approval-configs/${id}`, method: 'put', data }),
+  deleteApprovalConfig: (id: number) =>
+    request<void>({ url: `/v1/approval-configs/${id}`, method: 'delete' }),
 }

@@ -49,15 +49,22 @@ const approvalsTabActive = (key: string) =>
   route.path === '/approvals' && (String(route.query.tab || 'todo') === key)
 
 /** 二级侧边栏：基础设置菜单（对齐原型：厂商/供应商/分类/位置/型号 + 公司主体） */
-const basedataMenus = [
-  { path: '/basedata/companies', title: '公司主体' },
-  { path: '/basedata/manufacturers', title: '厂商管理' },
-  { path: '/basedata/suppliers', title: '供应商管理' },
-  { path: '/basedata/categories', title: '分类管理' },
-  { path: '/basedata/locations', title: '位置管理' },
-  { path: '/basedata/models', title: '型号管理' },
-  { path: '/basedata/migration', title: '数据迁移' },
-]
+const basedataMenus = computed(() => {
+  const base = [
+    { path: '/basedata/companies', title: '公司主体' },
+    { path: '/basedata/manufacturers', title: '厂商管理' },
+    { path: '/basedata/suppliers', title: '供应商管理' },
+    { path: '/basedata/categories', title: '分类管理' },
+    { path: '/basedata/locations', title: '位置管理' },
+    { path: '/basedata/models', title: '型号管理' },
+    { path: '/basedata/migration', title: '数据迁移' },
+  ]
+  /* 组织架构管理（审批链配置）仅超管可见 */
+  if (userStore.me?.roles?.includes('systemAdmin')) {
+    base.push({ path: '/basedata/approval-configs', title: '组织架构管理' })
+  }
+  return base
+})
 
 /** 分组折叠状态（localStorage 持久化，刷新不丢） */
 const COLLAPSE_KEY = 'asset.sidebar.collapsed'

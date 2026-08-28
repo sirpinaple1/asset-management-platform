@@ -75,6 +75,12 @@ const router = createRouter({
           meta: { title: '数据迁移' }
         },
         {
+          path: 'basedata/approval-configs',
+          name: 'basedata-approval-configs',
+          component: () => import('@/views/basedata/ApprovalConfigList.vue'),
+          meta: { title: '组织架构管理' }
+        },
+        {
           path: 'receipts/receive',
           name: 'receipts-receive',
           component: () => import('@/views/receipt/ReceiveList.vue'),

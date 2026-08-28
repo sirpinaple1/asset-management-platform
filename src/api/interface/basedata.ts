@@ -145,3 +145,32 @@ export interface AssetModelForm {
   eolMonths?: number
   notes?: string
 }
+
+/* ============ 审批链配置（两级审批人路由，仅超管） ============ */
+
+/** 配置类型：DEPT_SUPERVISOR-部门主管（键=部门路径） WAREHOUSE_KEEPER-领料仓管理员（键=位置 id） */
+export type ApprovalConfigType = 'DEPT_SUPERVISOR' | 'WAREHOUSE_KEEPER'
+
+/** 审批链配置（契约：ApprovalConfigController，仅 systemAdmin 可管理） */
+export interface ApprovalConfig {
+  id: number
+  configType: ApprovalConfigType
+  configTypeLabel?: string
+  /** DEPT=部门路径字符串；WAREHOUSE=位置 id（字符串） */
+  configKey: string
+  /** 展示名：DEPT=部门路径原文；WAREHOUSE=位置名称 */
+  configKeyLabel?: string
+  approverUserId: number
+  approverUserName?: string
+  remark?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+/** 审批链配置新增/编辑表单 */
+export interface ApprovalConfigForm {
+  configType: ApprovalConfigType
+  configKey: string
+  approverUserId: number
+  remark?: string
+}
