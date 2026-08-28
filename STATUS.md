@@ -6,7 +6,11 @@
 
 ## 当前阶段
 
-**Phase 4 支撑功能**：审批中心后端 B1/B2/B3（定向待办/通知中心/统计聚合）已实现，测试 372/372；前端 F3/F4 适配待做。M08 历史数据迁移仍待执行验证（POST /api/v1/migration/run）。
+**Phase 4 收尾 + 规范对齐**：
+- 后端：B1/B2/B3（定向待办/通知中心/统计聚合）+ M07 盘点 + CI 自动部署均已落地；分类两级结构重构 + 资产"细则"字段（V20260832）代码完成（工作区待提交，测试 400/400）
+- 前端：feat/m02-basedata 已上线分类管理/位置管理页 + 资产"细则"字段（vue-tsc 零错误），后端契约已对齐（2026-08-28 第二批）；审批中心前端 F3/F4 适配仍待做
+- CI/CD：任意分支 push → verify（编译+全量单测）→ 自动部署演练沙箱 193.112.174.178 + Pipeline 页手动一键回滚
+- 待执行：M08 历史数据迁移（POST /api/v1/migration/run）；V20260832 等迁移脚本需在测试库 172.16.5.247 手动执行
 
 ## 已完成
 
@@ -187,6 +191,32 @@
   - `stats/` 上下文：StatsService 纯 count 聚合，无缓存；简单索引列等值查询
   - 测试 372/372（`mvn test` 全量通过）；Flyway V20260830/V20260831 本地库实测落地
 
+- [x] **CI/CD：push 自动部署演练沙箱 + 一键回滚**（2026-08-28，commit 44b52e8）：
+  - `.gitlab-ci.yml` 扩展为两阶段：`verify`（mvn clean verify，纯 Mockito/MockMvc 单测无 DB 依赖）→ `deploy`（任意分支 push 自动触发）
+  - 部署目标：演练沙箱 **193.112.174.178**（Lighthouse）；流程 = mvn package → 备份沙箱当前 jar 到 `/srv/backups/asset-backend.jar.prev` → scp 推新 jar → `docker compose up -d --build asset-backend` 重建容器 → 探活（sleep 20s + `/actuator/health` UP 才算成功）
+  - **一键回滚**：`rollback` 任务 `when: manual`（Pipeline 页手动触发），恢复 `.jar.prev` 并重建容器；首次部署前无备份时明确报错退出
+  - Runner 为 sirpinaple 本机 shell executor（Mac），复用本机 Maven 仓库；非交互 shell 统一补齐 PATH（brew/sdkman/nvm）+ JAVA_HOME；SSH 免密 `id_ed25519`
+  - **注意**：任意分支 push 都会部署沙箱——功能未完成时慎 push（或接受沙箱短暂处于半成品状态，可 rollback 回退）
+
+- [x] **方案文档两份**（docs/，2026-08-27/28）：
+  - [资产台账OA完整解决方案.md](./docs/资产台账OA完整解决方案.md)：责任到人的全生命周期台账 OA 方案 v1.0（持有关系双轨制/离职对账/双链路留痕等核心设计），对外讲解与评审用总纲
+  - [资产数据流转说明.md](./docs/资产数据流转说明.md)：领用/退库/调拨的完整数据流转（依据 M04/M05/B1/B2 实际代码，含状态机与两条不变式），前后端联调与测试用对照文档
+  - 两文档均为未跟踪文件，随下批业务改动一并提交
+
+- [x] **分类两级结构重构 + 资产"细则"字段**（2026-08-28，依据《资产规范.docx》，工作区待提交）：
+  - 迁移 `V20260832__category_tree_and_asset_spec.sql`（本地库已实测应用）：
+    - 分类重构为两级：4 大类（房屋建筑 SKFW / 办公设施 SKBG / 运输设备 SKYS / 生产设备 SKSC，sort 1-4）+ 子类（办公设施：IT数码 SKBGIT / 空调 SKBGKT / 辅助办公 SKBGFZ / 家具 SKBGJJ；生产设备：镀膜 SKSCDM / 清洗 SKSCQX / 移印 SKSCYX / 烘箱 SKSCHX / 检测 SKSCJC / 辅助 SKSCFZ / 虚拟资产 SKSCXN）；复用原 9 行中 8 行挂树（566 条资产零换绑），新增清洗/移印/家具 3 子类；「A资产」7 条资产引用迁至辅助设备后逻辑删除；全类前缀覆盖（含大类，资产直挂大类不再回退 SK）
+    - asset 表新增 `spec`（细则，varchar(500)）：同品牌型号的配置差异（如内存大小）；Asset 实体/AssetReq(@Size 500)/AssetResp/AssetExportRow（导出列"细则"）全链贯通
+  - `generateBarcode` 前缀向上继承：分类自身无 prefix 沿 parent 链取最近非空值（防回退 SK）
+  - CategoryServiceImpl 健壮性（页面维护分类的护栏）：名称必填 + 同级重名 400 + 父分类必须存在且为一级（两级上限）+ 不得把自己设为父（防环）+ 带子分类不得再挂父 + code 冲突友好 400（预检 + DuplicateKeyException 兜底，逻辑删除行占用也覆盖）+ 删除保护（有子分类/被资产引用 400，删除时释放 code 供重建）；CategoryController 补 POST/PUT/DELETE 端点（前端 M02 页面契约早已调用）；CategoryReq 补 barcodePrefix
+  - 验证：mvn compile 通过；测试 392/392（CategoryServiceImplTest 重写 17 个覆盖全部校验分支 + CategoryControllerTest 补 7 个增删改用例）；本地库迁移后核对：分类树两级 15 行活跃、资产 category_id 悬空引用 0、前缀全覆盖、辅助设备 100 条（93+7 迁入）
+  - **待跟进**：V20260832 需在测试库 172.16.5.247 手动执行；本地 6006 需重启加载新代码（spec 字段 + 分类写端点）；前端适配已完成（feat/m02-basedata：资产弹窗/列表"细则"字段 + 分类页两级树）
+- [x] **前端 feat/m02-basedata 契约对齐**（2026-08-28 第二批，工作区待提交）：
+  - 分类：code 后端自动生成（`CAT{id}`，前端契约不提交 code）；update 修复误清存量 code（请求 code 为空时保持库中原值，如 V20260832 的 COATING）
+  - 位置：LocationServiceImpl 补同级重名拦截（save/update，400 带原因）；删除保护错误码 409→400 对齐前端契约（有子位置/被资产当前位置或应归放位置引用，countAssetRefs 已覆盖 location_id OR home_location_id）；code 后端自动生成（`LOC{id}`）；LocationReq.sortOrder 已有无需改
+  - 资产 spec：上批已全链贯通（Req/Resp/导出"细则"列），AssetQuery 不支持 spec 搜索（前端仅展示，符合预期）
+  - 验证：全量测试 400/400（位置服务 +6 用例、分类服务 +2 用例）
+
 ## 进行中
 
 - [ ] **M08-A/B 历史数据迁移执行验证**（代码完成 2026-08-24，已提交 76a3604，测试 340/340）：
@@ -219,8 +249,10 @@
 
 ### Phase 4 — 支撑功能（Phase 3 完成后）
 12. ~~**M07** 盘点（Stocktake）：扫码核对 + 差异处理 + 触发调拨~~（已完成，2026-08-24）
-13. **M09** 折旧（低优先级，需 asset.amount 有真实数据才有意义）
-14. CI 流水线：GitHub Actions（编译 + 测试）
+13. ~~CI 流水线：编译 + 测试~~（已完成，2026-08-20 GitLab CI verify；2026-08-28 扩展为 verify + 自动部署沙箱 + 手动回滚，见"CI/CD"条目）
+14. **M09** 折旧（低优先级，需 asset.amount 有真实数据才有意义）
+15. 审批中心前端 F3/F4 适配（后端 B1/B2/B3 已就绪：待办列表/通知中心/工作台统计）
+16. PDA 扫码前端（uni-app，M07 盘点移动端入口，独立会话实现）
 
 ## 关键决策记录
 
@@ -237,8 +269,9 @@
 
 - （无。原两项阻塞已于 2026-08-19 解除，核实结论见"M01-B 前置阻塞项解除"条目）
 
-## 本地开发环境备忘（M01-A/M01-B 实测，2026-08-19）
+## 本地开发环境备忘（M01-A/M01-B 实测，2026-08-19；CI/沙箱 2026-08-28 补充）
 
+- **演练沙箱**：193.112.174.178（Lighthouse），`/srv/app/asset-backend/` + `/srv/docker-compose.yml`（容器 asset-backend）；部署与回滚全由 GitLab CI 代劳（push 即部署，Pipeline 页手动 rollback），**不要手工改沙箱 jar**——会被下次 CI 部署覆盖，且丢失备份链
 - 后端端口 **6006**；本地库 `db_sk_asset`（127.0.0.1:3306，实际为 MySQL 9.6 Homebrew 版，非 MariaDB）
 - `application-local.yml`（gitignore）存连接信息 + comm_public_basic 地址（127.0.0.1:6002），模板 `application-local.yml.example`
 - comm_public_basic 本地（私改版）：端口 6002，库 `db_comm_public_basic`（127.0.0.1:3306），token TTL -1 永久；登录 `POST /login/check` 密码需 RSA 公钥加密（PKCS#1 v1.5，公钥见其 application.yml；openssl 命令：`printf '密码' | openssl pkeyutl -encrypt -pubin -inkey pub.pem | base64`，公钥包 X.509 PEM 头尾）
@@ -258,5 +291,5 @@
 
 ---
 
-**最后更新**：2026-08-27（审批中心后端 B1/B2/B3 落地：assignee 定向待办 + 通知中心 + 统计聚合，测试 372/372，Flyway 本地实测落地；前端 F3/F4 适配待做）
+**最后更新**：2026-08-28（补登 CI 自动部署演练沙箱 + 一键回滚、OA 方案/数据流转两份文档；分类两级重构 + spec 字段 + 前端契约对齐归档为已完成（工作区待提交）；刷新当前阶段与 Phase 4 待办）
 **当前阶段负责人**：待指派
