@@ -21,10 +21,10 @@ const title = computed(() => String(route.meta.title || '页面'))
 
 <style scoped>
 .page-container {
-  background: #ffffff;
-  border-radius: 12px;
+  background: var(--color-bg-2);
+  border-radius: var(--radius-xl);
   padding: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-md);
 }
 
 .page-header {
@@ -32,9 +32,9 @@ const title = computed(() => String(route.meta.title || '页面'))
 }
 
 .page-title {
-  font-size: 20px;
+  font-size: var(--text-lg);
   font-weight: 700;
-  color: #111827;
+  color: var(--color-text-1);
   margin: 0;
 }
 

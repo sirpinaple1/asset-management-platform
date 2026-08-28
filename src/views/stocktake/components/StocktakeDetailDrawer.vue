@@ -665,13 +665,13 @@ const diffColumns = computed(() => [
 .detail-status {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   margin-bottom: 16px;
 }
 
 .detail-type {
-  font-size: 13px;
-  color: #86909c;
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
 }
 
 .detail-desc {
@@ -687,23 +687,23 @@ const diffColumns = computed(() => [
 }
 
 .stat-card {
-  background: #fafbfc;
-  border: 1px solid #f0f2f5;
-  border-radius: 8px;
-  padding: 10px 4px;
+  background: var(--color-bg-3);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  padding: 8px 4px;
   text-align: center;
 }
 
 .stat-value {
-  font-size: 20px;
+  font-size: var(--text-lg);
   font-weight: 700;
-  color: #1d2129;
+  color: var(--color-text-1);
   line-height: 26px;
 }
 
 .stat-label {
-  font-size: 12px;
-  color: #86909c;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
   margin-top: 2px;
 }
 
@@ -733,46 +733,46 @@ const diffColumns = computed(() => [
 
 .item-tab {
   height: 30px;
-  padding: 0 10px;
-  border-radius: 6px;
+  padding: 0 8px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 13px;
-  background: #f3f4f6;
-  color: #6b7280;
+  font-size: var(--text-sm);
+  background: var(--color-bg-3);
+  color: var(--color-text-2);
   cursor: pointer;
   user-select: none;
 }
 
 .item-tab.active {
-  background: #165dff;
-  color: #ffffff;
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
 }
 
 .item-tab-count {
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 .item-pagination {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .pagination-info {
-  font-size: 13px;
-  color: #6b7280;
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
 }
 
 .op-done {
-  color: #c9cdd4;
+  color: var(--color-text-4);
 }
 
 /* 位置不符：实际位置高亮 */
 .mismatch-actual {
-  color: #e6a23c;
+  color: var(--color-warning-text);
   font-weight: 600;
 }
 
@@ -780,13 +780,13 @@ const diffColumns = computed(() => [
 .report-status {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
 .report-complete {
-  font-size: 13px;
-  color: #86909c;
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
 }
 
 .report-loading {
@@ -794,10 +794,10 @@ const diffColumns = computed(() => [
 }
 
 .items-title {
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 600;
-  color: #1d2129;
-  margin: 16px 0 10px;
+  color: var(--color-text-1);
+  margin: 16px 0 8px;
 }
 
 .items-title:first-of-type {
@@ -808,26 +808,26 @@ const diffColumns = computed(() => [
 .confirm-asset {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
-  background: #fafbfc;
-  border-radius: 6px;
-  padding: 10px 12px;
-  margin-bottom: 14px;
+  background: var(--color-bg-3);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  margin-bottom: 16px;
 }
 
 .confirm-barcode {
   font-weight: 600;
-  color: #1d2129;
+  color: var(--color-text-1);
 }
 
 .confirm-name {
-  color: #4e5969;
+  color: var(--color-text-2);
 }
 
 .confirm-expected {
-  font-size: 13px;
-  color: #86909c;
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
 }
 
 .full-width {
@@ -835,8 +835,8 @@ const diffColumns = computed(() => [
 }
 
 .form-tip {
-  font-size: 12px;
-  color: #86909c;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
   line-height: 18px;
   margin: -4px 0 0;
   padding-left: 96px;

@@ -114,8 +114,8 @@ const tableRef = ref<TableInstance>()
         <el-input v-model="keyword" class="search-box" placeholder="搜索位置名称" clearable>
           <template #prefix>
             <svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="9" cy="9" r="6" stroke="#9CA3AF" stroke-width="1.5" />
-              <line x1="13.5" y1="13.5" x2="17" y2="17" stroke="#9CA3AF" stroke-width="1.5" stroke-linecap="round" />
+              <circle cx="9" cy="9" r="6" style="stroke: var(--color-text-4)" stroke-width="1.5" />
+              <line x1="13.5" y1="13.5" x2="17" y2="17" style="stroke: var(--color-text-4)" stroke-width="1.5" stroke-linecap="round" />
             </svg>
           </template>
         </el-input>
@@ -162,10 +162,10 @@ const tableRef = ref<TableInstance>()
 
 <style scoped>
 .page-container {
-  background: #ffffff;
-  border-radius: 12px;
+  background: var(--color-bg-2);
+  border-radius: var(--radius-xl);
   padding: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-md);
 }
 
 .page-header {
@@ -176,23 +176,23 @@ const tableRef = ref<TableInstance>()
 }
 
 .page-title {
-  font-size: 20px;
+  font-size: var(--text-lg);
   font-weight: 700;
-  color: #111827;
+  color: var(--color-text-1);
   margin: 0;
 }
 
 .page-subtitle {
-  font-size: 13px;
-  color: #86909c;
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
 }
 
 /* 工具栏（对齐原型：浅底圆角条） */
 .toolbar {
   min-height: 60px;
-  padding: 14px;
-  background: #fafbfc;
-  border-radius: 8px;
+  padding: 16px;
+  background: var(--color-bg-3);
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   justify-content: space-between;

@@ -265,8 +265,8 @@ onActivated(() => {
         >
           <template #prefix>
             <svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="9" cy="9" r="6" stroke="#9CA3AF" stroke-width="1.5" />
-              <line x1="13.5" y1="13.5" x2="17" y2="17" stroke="#9CA3AF" stroke-width="1.5" stroke-linecap="round" />
+              <circle cx="9" cy="9" r="6" style="stroke: var(--color-text-4)" stroke-width="1.5" />
+              <line x1="13.5" y1="13.5" x2="17" y2="17" style="stroke: var(--color-text-4)" stroke-width="1.5" stroke-linecap="round" />
             </svg>
           </template>
         </el-input>
@@ -341,10 +341,10 @@ onActivated(() => {
 
 <style scoped>
 .page-container {
-  background: #ffffff;
-  border-radius: 12px;
+  background: var(--color-bg-2);
+  border-radius: var(--radius-xl);
   padding: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-md);
 }
 
 .page-header {
@@ -352,9 +352,9 @@ onActivated(() => {
 }
 
 .page-title {
-  font-size: 20px;
+  font-size: var(--text-lg);
   font-weight: 700;
-  color: #111827;
+  color: var(--color-text-1);
   margin: 0;
 }
 
@@ -368,28 +368,28 @@ onActivated(() => {
 .tab {
   height: 34px;
   padding: 0 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 14px;
-  background: #f3f4f6;
-  color: #6b7280;
+  font-size: var(--text-base);
+  background: var(--color-bg-3);
+  color: var(--color-text-2);
   cursor: pointer;
   user-select: none;
 }
 
 .tab.active {
-  background: #165dff;
-  color: #ffffff;
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
 }
 
 /* 工具栏（对齐原型：浅底圆角条） */
 .toolbar {
   min-height: 60px;
-  padding: 14px;
-  background: #fafbfc;
-  border-radius: 8px;
+  padding: 16px;
+  background: var(--color-bg-3);
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -422,8 +422,8 @@ onActivated(() => {
 }
 
 .pagination-info {
-  font-size: 13px;
-  color: #6b7280;
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
 }
 
 /* 双击行可编辑：指针光标提示可交互 */
@@ -433,7 +433,7 @@ onActivated(() => {
 
 /* 表格键盘导航时焦点可见 */
 :deep(.el-table):focus-visible {
-  outline: 2px solid #165dff;
+  outline: 2px solid var(--color-primary);
   outline-offset: -2px;
 }
 </style>

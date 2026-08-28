@@ -8,6 +8,18 @@
   </head>
   <body>
     <div id="app"></div>
+    <script>
+      // 暗色模式：跟随系统偏好，同步 html.dark 类（Element Plus 暗色变量依赖该类）
+      // 内联在首屏执行，避免暗色用户看到白色闪烁
+      ;(function () {
+        var mq = window.matchMedia('(prefers-color-scheme: dark)')
+        var apply = function (dark) {
+          document.documentElement.classList.toggle('dark', dark)
+        }
+        apply(mq.matches)
+        mq.addEventListener('change', function (e) { apply(e.matches) })
+      })()
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -166,10 +166,10 @@ const durationSeconds = computed(() => {
 
 <style scoped>
 .page-container {
-  background: #ffffff;
-  border-radius: 12px;
+  background: var(--color-bg-2);
+  border-radius: var(--radius-xl);
   padding: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-md);
   max-width: 960px;
 }
 
@@ -178,15 +178,15 @@ const durationSeconds = computed(() => {
 }
 
 .page-title {
-  font-size: 20px;
+  font-size: var(--text-lg);
   font-weight: 700;
-  color: #111827;
+  color: var(--color-text-1);
   margin: 0 0 4px;
 }
 
 .page-desc {
-  font-size: 13px;
-  color: #86909c;
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
   margin: 0;
 }
 
@@ -196,7 +196,7 @@ const durationSeconds = computed(() => {
 
 .intro-list p {
   margin: 2px 0;
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 22px;
 }
 
@@ -208,18 +208,18 @@ const durationSeconds = computed(() => {
 }
 
 .role-hint {
-  font-size: 13px;
-  color: #e6a23c;
+  font-size: var(--text-sm);
+  color: var(--color-warning-text);
 }
 
 .running-hint {
-  font-size: 13px;
-  color: #86909c;
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
 }
 
 .result-meta {
-  font-size: 13px;
-  color: #4e5969;
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
   margin-bottom: 12px;
 }
 
@@ -228,9 +228,9 @@ const durationSeconds = computed(() => {
 }
 
 .section-title {
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 500;
-  color: #1d2129;
+  color: var(--color-text-1);
   margin-bottom: 8px;
   display: flex;
   align-items: baseline;
@@ -238,9 +238,9 @@ const durationSeconds = computed(() => {
 }
 
 .section-sub {
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 400;
-  color: #86909c;
+  color: var(--color-text-3);
 }
 
 .user-tags {
@@ -253,7 +253,7 @@ const durationSeconds = computed(() => {
 }
 
 .user-tag {
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .warning-list {
@@ -262,7 +262,7 @@ const durationSeconds = computed(() => {
 }
 
 .warning-item {
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 22px;
   word-break: break-all;
 }

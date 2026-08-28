@@ -185,7 +185,7 @@ const formatTime = (s: string) => {
     <!-- 铃铛按钮 + 角标 -->
     <el-button class="bell-btn" circle text @click="drawerVisible = true" aria-label="通知中心">
       <el-badge :value="badgeCount" :hidden="badgeCount <= 0" :max="99" class="bell-badge">
-        <el-icon :size="18" color="#4e5969">
+        <el-icon :size="18" color="var(--color-text-2)">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
             <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
@@ -299,7 +299,7 @@ const formatTime = (s: string) => {
   transition: background 0.15s ease;
 }
 .bell-btn:hover {
-  background: #f2f3f5;
+  background: var(--color-bg-3);
 }
 
 .bell-badge :deep(.el-badge__content) {
@@ -314,15 +314,15 @@ const formatTime = (s: string) => {
   gap: 8px;
 }
 .drawer-title {
-  font-size: 16px;
+  font-size: var(--text-md);
   font-weight: 600;
-  color: #111827;
+  color: var(--color-text-1);
   flex: 0 0 auto;
   margin-right: 8px;
 }
 .all-read-tip {
-  font-size: 12px;
-  color: #00b42a;
+  font-size: var(--text-xs);
+  color: var(--color-success-text);
   margin-right: 4px;
 }
 
@@ -337,38 +337,38 @@ const formatTime = (s: string) => {
   display: inline-flex;
   gap: 4px;
   padding: 4px;
-  background: #f7f8fa;
-  border-radius: 8px;
+  background: var(--color-bg-1);
+  border-radius: var(--radius-lg);
   align-self: flex-start;
 }
 
 .scope-btn {
   border: none;
   background: transparent;
-  padding: 6px 10px;
-  border-radius: 6px;
-  font-size: 13px;
-  color: #6b7280;
+  padding: 8px 8px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
 .scope-btn:hover {
-  color: #165dff;
+  color: var(--color-primary);
 }
 .scope-btn.active {
-  background: #ffffff;
-  color: #165dff;
+  background: var(--color-bg-2);
+  color: var(--color-primary);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-sm);
 }
 .scope-count {
-  font-size: 12px;
-  color: #86909c;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
 }
 .scope-btn.active .scope-count {
-  color: #165dff;
+  color: var(--color-primary);
 }
 
 /* ---------- 通知列表 ---------- */
@@ -383,18 +383,18 @@ const formatTime = (s: string) => {
 
 .notif-item {
   padding: 12px 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 .notif-item:hover {
-  border-color: #b8d4ff;
-  background: #f5faff;
+  border-color: var(--color-primary-border);
+  background: var(--color-primary-bg);
 }
 .notif-item.unread {
-  border-color: #e5c28a;
-  background: #fff9f0;
+  border-color: var(--color-warning-border);
+  background: var(--color-warning-bg);
   position: relative;
 }
 .notif-item.unread::before {
@@ -404,11 +404,11 @@ const formatTime = (s: string) => {
   left: 6px;
   width: 6px;
   height: 6px;
-  background: #f53f3f;
+  background: var(--color-error);
   border-radius: 50%;
 }
 .notif-item.unread {
-  padding-left: 18px;
+  padding-left: 16px;
 }
 .notif-item.dim {
   opacity: 0.75;
@@ -418,16 +418,16 @@ const formatTime = (s: string) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 .notif-time {
-  font-size: 12px;
-  color: #86909c;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
 }
 
 .notif-title {
-  font-size: 14px;
-  color: #111827;
+  font-size: var(--text-base);
+  color: var(--color-text-1);
   line-height: 20px;
   margin-bottom: 4px;
 }
@@ -436,8 +436,8 @@ const formatTime = (s: string) => {
 }
 
 .notif-content {
-  font-size: 13px;
-  color: #4e5969;
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
   line-height: 18px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -448,11 +448,11 @@ const formatTime = (s: string) => {
 .notif-empty {
   list-style: none;
   text-align: center;
-  color: #86909c;
-  font-size: 13px;
+  color: var(--color-text-3);
+  font-size: var(--text-sm);
   padding: 40px 0;
-  border: 1px dashed #e5e7eb;
-  border-radius: 8px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg);
 }
 
 /* ---------- 加载更多 ---------- */
@@ -461,8 +461,8 @@ const formatTime = (s: string) => {
 }
 .no-more {
   text-align: center;
-  color: #86909c;
-  font-size: 12px;
+  color: var(--color-text-3);
+  font-size: var(--text-xs);
   padding: 12px 0;
 }
 </style>

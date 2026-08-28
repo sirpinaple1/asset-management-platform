@@ -42,10 +42,10 @@ const emit = defineEmits<{ (e: 'select', key: string): void }>()
   z-index: 3000;
   min-width: 140px;
   padding: 4px;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  background: var(--color-bg-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
 }
 
 .ctx-menu__item {
@@ -54,23 +54,23 @@ const emit = defineEmits<{ (e: 'select', key: string): void }>()
   height: 32px;
   padding: 0 12px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: none;
-  font-size: 13px;
-  color: #4b5563;
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
   text-align: left;
   cursor: pointer;
 }
 
 .ctx-menu__item:hover {
-  background: #f3f4f6;
+  background: var(--color-bg-3);
 }
 
 .ctx-menu__item.is-danger {
-  color: #f53f3f;
+  color: var(--color-error-text);
 }
 
 .ctx-menu__item.is-danger:hover {
-  background: #fef0f0;
+  background: var(--color-error-bg);
 }
 </style>

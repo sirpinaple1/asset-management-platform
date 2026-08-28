@@ -154,18 +154,18 @@ const displayValue = computed(() => props.modelValue)
 }
 .user-opt-name {
   font-weight: 600;
-  color: #1d2129;
+  color: var(--color-text-1);
 }
 .user-opt-uname {
-  color: #4e5969;
-  font-size: 12px;
-  background: #f2f3f5;
-  border-radius: 4px;
-  padding: 1px 6px;
+  color: var(--color-text-2);
+  font-size: var(--text-xs);
+  background: var(--color-bg-3);
+  border-radius: var(--radius-sm);
+  padding: 1px 8px;
 }
 .user-opt-dept {
-  color: #86909c;
-  font-size: 12px;
+  color: var(--color-text-3);
+  font-size: var(--text-xs);
   margin-left: auto;
   max-width: 220px;
   overflow: hidden;
@@ -173,8 +173,8 @@ const displayValue = computed(() => props.modelValue)
   white-space: nowrap;
 }
 .empty-tip {
-  color: #86909c;
-  font-size: 12px;
+  color: var(--color-text-3);
+  font-size: var(--text-xs);
   padding: 0 8px;
 }
 .full-width {

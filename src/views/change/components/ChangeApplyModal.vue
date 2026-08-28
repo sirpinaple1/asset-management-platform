@@ -273,8 +273,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
           >
             <template #prefix>
               <svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="9" cy="9" r="6" stroke="#9CA3AF" stroke-width="1.5" />
-                <line x1="13.5" y1="13.5" x2="17" y2="17" stroke="#9CA3AF" stroke-width="1.5" stroke-linecap="round" />
+                <circle cx="9" cy="9" r="6" style="stroke: var(--color-text-4)" stroke-width="1.5" />
+                <line x1="13.5" y1="13.5" x2="17" y2="17" style="stroke: var(--color-text-4)" stroke-width="1.5" stroke-linecap="round" />
               </svg>
             </template>
           </el-input>
@@ -425,7 +425,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .picker-search {
@@ -436,12 +436,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .picker-total {
-  font-size: 13px;
-  color: #86909c;
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
 }
 
 /* 右侧表单与已选清单 */
@@ -455,8 +455,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
 }
 
 .form-tip {
-  font-size: 12px;
-  color: #86909c;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
   line-height: 18px;
   margin: -4px 0 8px;
 }
@@ -465,19 +465,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 600;
-  color: #1d2129;
-  margin: 4px 0 10px;
+  color: var(--color-text-1);
+  margin: 4px 0 8px;
 }
 
 .selected-list {
   min-height: 100px;
   max-height: 160px;
   overflow: auto;
-  padding: 10px;
-  background: #fafbfc;
-  border-radius: 6px;
+  padding: 8px;
+  background: var(--color-bg-3);
+  border-radius: var(--radius-md);
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -487,8 +487,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
 .selected-empty {
   width: 100%;
   text-align: center;
-  color: #86909c;
-  font-size: 13px;
+  color: var(--color-text-3);
+  font-size: var(--text-sm);
   padding: 34px 0;
 }
 

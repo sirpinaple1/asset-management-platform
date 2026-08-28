@@ -202,14 +202,14 @@ const logColor = (t: string) => LOG_TYPE_COLOR[t] ?? 'info'
 }
 
 .asset-name {
-  font-size: 16px;
+  font-size: var(--text-md);
   font-weight: 600;
-  color: #111827;
+  color: var(--color-text-1);
 }
 
 .asset-barcode {
-  font-size: 13px;
-  color: #86909c;
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -219,9 +219,9 @@ const logColor = (t: string) => LOG_TYPE_COLOR[t] ?? 'info'
 
 .section-title {
   margin: 20px 0 12px;
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 600;
-  color: #111827;
+  color: var(--color-text-1);
 }
 
 .logs {
@@ -231,26 +231,26 @@ const logColor = (t: string) => LOG_TYPE_COLOR[t] ?? 'info'
 .logs-empty {
   padding: 24px 0;
   text-align: center;
-  font-size: 13px;
-  color: #86909c;
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
 }
 
 .log-type {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #111827;
+  color: var(--color-text-1);
 }
 
 .log-content {
   margin-top: 2px;
-  font-size: 13px;
-  color: #4b5563;
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
   line-height: 1.6;
 }
 
 .log-operator {
   margin-top: 2px;
-  font-size: 12px;
-  color: #9ca3af;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
 }
 </style>

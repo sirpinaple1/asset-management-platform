@@ -75,8 +75,7 @@ const comingSoon = () => {
   import('element-plus').then(({ ElMessage }) => ElMessage.info('功能建设中，敬请期待'))
 }
 
-/** 顶栏图标色（active 白色） */
-const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
+/** 顶栏图标色由 .nav-item 的 color（currentColor）控制 */
 </script>
 
 <template>
@@ -122,9 +121,9 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
         <el-tooltip content="工作台" placement="right" :show-after="300">
           <router-link to="/dashboard" class="nav-item" :class="{ active: activeNav === 'dashboard' }">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="2" y="8" width="4" height="9" rx="1" :stroke="navStroke(activeNav === 'dashboard')" stroke-width="1.5" />
-              <rect x="8" y="5" width="4" height="12" rx="1" :stroke="navStroke(activeNav === 'dashboard')" stroke-width="1.5" />
-              <rect x="14" y="10" width="4" height="7" rx="1" :stroke="navStroke(activeNav === 'dashboard')" stroke-width="1.5" />
+              <rect x="2" y="8" width="4" height="9" rx="1" stroke="currentColor" stroke-width="1.5" />
+              <rect x="8" y="5" width="4" height="12" rx="1" stroke="currentColor" stroke-width="1.5" />
+              <rect x="14" y="10" width="4" height="7" rx="1" stroke="currentColor" stroke-width="1.5" />
             </svg>
           </router-link>
         </el-tooltip>
@@ -133,12 +132,12 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
           <router-link to="/approvals" class="nav-item" :class="{ active: activeNav === 'approvals-center' }">
             <span v-if="approvalStore.todoCount > 0" class="red-dot"></span>
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M3 5L6 8L9 5" :stroke="navStroke(activeNav === 'approvals-center')" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-              <line x1="11" y1="6.5" x2="17" y2="6.5" :stroke="navStroke(activeNav === 'approvals-center')" stroke-width="1.5" stroke-linecap="round" />
-              <path d="M3 10L6 13L9 10" :stroke="navStroke(activeNav === 'approvals-center')" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-              <line x1="11" y1="11.5" x2="17" y2="11.5" :stroke="navStroke(activeNav === 'approvals-center')" stroke-width="1.5" stroke-linecap="round" />
-              <circle cx="5" cy="16" r="1.2" :stroke="navStroke(activeNav === 'approvals-center')" stroke-width="1.5" />
-              <line x1="11" y1="16" x2="17" y2="16" :stroke="navStroke(activeNav === 'approvals-center')" stroke-width="1.5" stroke-linecap="round" />
+              <path d="M3 5L6 8L9 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+              <line x1="11" y1="6.5" x2="17" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+              <path d="M3 10L6 13L9 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+              <line x1="11" y1="11.5" x2="17" y2="11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+              <circle cx="5" cy="16" r="1.2" stroke="currentColor" stroke-width="1.5" />
+              <line x1="11" y1="16" x2="17" y2="16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
             </svg>
           </router-link>
         </el-tooltip>
@@ -146,10 +145,10 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
         <el-tooltip content="资产管理" placement="right" :show-after="300">
           <router-link to="/assets" class="nav-item" :class="{ active: isAssetModule }">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="3" y="6" width="14" height="11" rx="1.5" :stroke="navStroke(isAssetModule)" stroke-width="1.5" />
-              <path d="M3 9.5L10 6L17 9.5" :stroke="navStroke(isAssetModule)" stroke-width="1.5" stroke-linejoin="round" />
-              <line x1="10" y1="6" x2="10" y2="17" :stroke="navStroke(isAssetModule)" stroke-width="1.5" />
-              <rect x="7" y="3" width="6" height="3" rx="0.5" :fill="navStroke(isAssetModule)" />
+              <rect x="3" y="6" width="14" height="11" rx="1.5" stroke="currentColor" stroke-width="1.5" />
+              <path d="M3 9.5L10 6L17 9.5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+              <line x1="10" y1="6" x2="10" y2="17" stroke="currentColor" stroke-width="1.5" />
+              <rect x="7" y="3" width="6" height="3" rx="0.5" fill="currentColor" />
             </svg>
           </router-link>
         </el-tooltip>
@@ -157,9 +156,9 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
         <el-tooltip content="库存管理（待接入）" placement="right" :show-after="300">
           <div class="nav-item" @click="comingSoon">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="3" y="11" width="6" height="6" rx="1" stroke="#86909C" stroke-width="1.5" />
-              <rect x="11" y="11" width="6" height="6" rx="1" stroke="#86909C" stroke-width="1.5" />
-              <rect x="7" y="3" width="6" height="6" rx="1" stroke="#86909C" stroke-width="1.5" />
+              <rect x="3" y="11" width="6" height="6" rx="1" style="stroke: var(--color-text-4)" stroke-width="1.5" />
+              <rect x="11" y="11" width="6" height="6" rx="1" style="stroke: var(--color-text-4)" stroke-width="1.5" />
+              <rect x="7" y="3" width="6" height="6" rx="1" style="stroke: var(--color-text-4)" stroke-width="1.5" />
             </svg>
           </div>
         </el-tooltip>
@@ -171,9 +170,9 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
           <el-tooltip content="帮助（待接入）" placement="right" :show-after="300">
             <div class="bottom-nav-item">
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="10" cy="10" r="7.5" stroke="#86909C" stroke-width="1.5" />
-                <path d="M8 8C8 6.89543 8.89543 6 10 6C11.1046 6 12 6.89543 12 8C12 8.73638 11.5977 9.37205 11 9.7324V11" stroke="#86909C" stroke-width="1.5" stroke-linecap="round" />
-                <circle cx="10" cy="13.5" r="0.75" fill="#86909C" />
+                <circle cx="10" cy="10" r="7.5" style="stroke: var(--color-text-4)" stroke-width="1.5" />
+                <path d="M8 8C8 6.89543 8.89543 6 10 6C11.1046 6 12 6.89543 12 8C12 8.73638 11.5977 9.37205 11 9.7324V11" style="stroke: var(--color-text-4)" stroke-width="1.5" stroke-linecap="round" />
+                <circle cx="10" cy="13.5" r="0.75" style="fill: var(--color-text-4)" />
               </svg>
             </div>
           </el-tooltip>
@@ -295,15 +294,15 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #f5f6fa;
+  background: var(--color-bg-1);
   min-width: 1200px;
 }
 
 /* 顶部导航栏 */
 .topbar {
   height: 56px;
-  background: #ffffff;
-  border-bottom: 1px solid #e5e7eb;
+  background: var(--color-bg-2);
+  border-bottom: 1px solid var(--color-border);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -320,10 +319,10 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
 .logo-image {
   width: 32px;
   height: 32px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: linear-gradient(135deg, #00d4aa 0%, #00b894 100%);
-  color: #ffffff;
-  font-size: 20px;
+  color: var(--color-text-inverse);
+  font-size: var(--text-lg);
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -336,16 +335,16 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
 }
 
 .logo-text {
-  font-size: 16px;
+  font-size: var(--text-md);
   font-weight: 600;
-  color: #111827;
+  color: var(--color-text-1);
   white-space: nowrap;
   line-height: 22px;
 }
 
 .logo-subtitle {
   font-size: 11px;
-  color: #6b7280;
+  color: var(--color-text-2);
   font-weight: 400;
   white-space: nowrap;
   line-height: 16px;
@@ -354,21 +353,21 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
 .user-area {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .user-trigger {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   cursor: pointer;
   outline: none;
 }
 
 .user-name {
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 400;
-  color: #111827;
+  color: var(--color-text-1);
   line-height: 22px;
 }
 
@@ -376,12 +375,12 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: #4f7ff7;
+  background: var(--color-primary);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
-  font-size: 14px;
+  color: var(--color-text-inverse);
+  font-size: var(--text-base);
   font-weight: 500;
   line-height: 22px;
 }
@@ -394,9 +393,9 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
 .user-panel-name {
   font-size: 15px;
   font-weight: 600;
-  color: #1d2129;
+  color: var(--color-text-1);
   padding-bottom: 8px;
-  border-bottom: 1px solid #f0f2f5;
+  border-bottom: 1px solid var(--color-border-light);
   margin-bottom: 8px;
 }
 
@@ -404,13 +403,13 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
   display: flex;
   justify-content: space-between;
   gap: 24px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 24px;
-  color: #4e5969;
+  color: var(--color-text-2);
 }
 
 .user-panel-row span:first-child {
-  color: #86909c;
+  color: var(--color-text-3);
 }
 
 /* 主区三栏布局 */
@@ -423,7 +422,7 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
 /* 全局侧边栏 */
 .sidebar {
   width: 64px;
-  background: #ffffff;
+  background: var(--color-bg-2);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -443,14 +442,17 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
   transition: background 0.15s ease;
   border-radius: 0;
   position: relative;
+  color: var(--color-text-4);
 }
 
 .nav-item:hover {
-  background: #f7f8fa;
+  background: var(--color-bg-1);
+  color: var(--color-text-3);
 }
 
 .nav-item.active {
-  background: #165dff;
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
 }
 
 .sidebar-spacer {
@@ -492,13 +494,13 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #f53f3f;
+  background: var(--color-error);
 }
 
 /* 二级子侧边栏 */
 .sub-sidebar {
   width: 240px;
-  background: #ffffff;
+  background: var(--color-bg-2);
   box-shadow: 1px 0 3px rgba(0, 0, 0, 0.05);
   display: flex;
   flex-direction: column;
@@ -511,14 +513,14 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
   padding: 0 20px;
   display: flex;
   align-items: center;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--color-bg-3);
   flex-shrink: 0;
 }
 
 .sidebar-title {
   font-size: 18px;
   font-weight: 700;
-  color: #111827;
+  color: var(--color-text-1);
   margin: 0;
 }
 
@@ -545,16 +547,16 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 500;
-  color: #9ca3af;
+  color: var(--color-text-3);
   cursor: pointer;
   user-select: none;
   width: 100%;
 }
 
 .section-title:hover {
-  color: #6b7280;
+  color: var(--color-text-2);
 }
 
 .section-title-static {
@@ -562,16 +564,16 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
   padding: 0 8px 4px;
   display: flex;
   align-items: center;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 500;
-  color: #9ca3af;
+  color: var(--color-text-3);
   user-select: none;
 }
 
 .collapse-icon {
-  font-size: 12px;
+  font-size: var(--text-xs);
   transition: transform 0.2s ease;
-  color: #9ca3af;
+  color: var(--color-text-3);
 }
 
 .collapse-icon.collapsed {
@@ -586,25 +588,25 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
 
 .menu-item {
   height: 40px;
-  padding: 0 10px;
-  border-radius: 8px;
+  padding: 0 8px;
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   gap: 12px;
   cursor: pointer;
-  font-size: 14px;
-  color: #4b5563;
+  font-size: var(--text-base);
+  color: var(--color-text-2);
   transition: background 0.15s ease;
   text-decoration: none;
 }
 
 .menu-item:hover:not(.active) {
-  background: #f9fafb;
+  background: var(--color-bg-1);
 }
 
 .menu-item.active {
-  background: #eef2ff;
-  color: #165dff;
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
   font-weight: 600;
 }
 
@@ -624,7 +626,7 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: #f5f6fa;
+  background: var(--color-bg-1);
 }
 
 .content-scroll {

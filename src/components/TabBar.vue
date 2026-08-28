@@ -102,8 +102,8 @@ const onTabContextmenu = (e: MouseEvent) => {
 <style scoped>
 .tabbar {
   height: 40px;
-  background: #ffffff;
-  border-bottom: 1px solid #e5e7eb;
+  background: var(--color-bg-2);
+  border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: stretch;
   justify-content: space-between;
@@ -124,25 +124,25 @@ const onTabContextmenu = (e: MouseEvent) => {
 .tab {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 0 12px;
-  font-size: 13px;
-  color: #4b5563;
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
   cursor: pointer;
   white-space: nowrap;
-  border-right: 1px solid #f3f4f6;
+  border-right: 1px solid var(--color-bg-3);
   position: relative;
   user-select: none;
 }
 
 .tab:hover {
-  background: #f9fafb;
+  background: var(--color-bg-1);
 }
 
 .tab.active {
-  color: #165dff;
+  color: var(--color-primary);
   font-weight: 600;
-  background: #f0f5ff;
+  background: var(--color-primary-bg);
 }
 
 .tab.active::after {
@@ -152,24 +152,24 @@ const onTabContextmenu = (e: MouseEvent) => {
   right: 0;
   bottom: 0;
   height: 2px;
-  background: #165dff;
+  background: var(--color-primary);
 }
 
 .tab-dirty {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #ff7d00;
+  background: var(--color-warning);
 }
 
 .tab-close {
   width: 18px;
   height: 18px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: none;
-  color: #9ca3af;
-  font-size: 14px;
+  color: var(--color-text-3);
+  font-size: var(--text-base);
   line-height: 1;
   cursor: pointer;
   display: flex;
@@ -179,8 +179,8 @@ const onTabContextmenu = (e: MouseEvent) => {
 }
 
 .tab-close:hover {
-  background: #e5e7eb;
-  color: #4b5563;
+  background: var(--color-border);
+  color: var(--color-text-2);
 }
 
 .tab:not(.active) .tab-close {
@@ -201,8 +201,8 @@ const onTabContextmenu = (e: MouseEvent) => {
 }
 
 .breadcrumb {
-  font-size: 12px;
-  color: #86909c;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
   white-space: nowrap;
 }
 
@@ -210,10 +210,10 @@ const onTabContextmenu = (e: MouseEvent) => {
   width: 24px;
   height: 24px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: none;
-  color: #6b7280;
-  font-size: 14px;
+  color: var(--color-text-2);
+  font-size: var(--text-base);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -222,7 +222,7 @@ const onTabContextmenu = (e: MouseEvent) => {
 }
 
 .more-btn:hover {
-  background: #f3f4f6;
-  color: #111827;
+  background: var(--color-bg-3);
+  color: var(--color-text-1);
 }
 </style>

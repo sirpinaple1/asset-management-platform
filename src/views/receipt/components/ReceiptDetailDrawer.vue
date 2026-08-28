@@ -180,13 +180,13 @@ const dash = (v?: string | null) => (v === undefined || v === null || v === '' ?
 .detail-status {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   margin-bottom: 16px;
 }
 
 .detail-type {
-  font-size: 13px;
-  color: #86909c;
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
 }
 
 .detail-desc {
@@ -194,9 +194,9 @@ const dash = (v?: string | null) => (v === undefined || v === null || v === '' ?
 }
 
 .items-title {
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 600;
-  color: #1d2129;
-  margin-bottom: 10px;
+  color: var(--color-text-1);
+  margin-bottom: 8px;
 }
 </style>

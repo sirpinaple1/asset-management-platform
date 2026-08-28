@@ -123,16 +123,16 @@ const pieSegments = computed(() => {
 const pieColor = (c: string) => {
   switch (c) {
     case 'primary':
-      return '#165DFF'
+      return 'var(--color-primary)'
     case 'success':
-      return '#00B42A'
+      return 'var(--color-success)'
     case 'warning':
-      return '#FF7D00'
+      return 'var(--color-warning)'
     case 'danger':
-      return '#F53F3F'
+      return 'var(--color-error)'
     case 'info':
     default:
-      return '#86909C'
+      return 'var(--color-text-4)'
   }
 }
 
@@ -206,9 +206,9 @@ const formatPercent = (p: number) => {
                 <div class="recent-icon">
                   <component :is="iconOf(r.path)" v-if="iconOf(r.path) !== 'doc'" :size="22" />
                   <svg v-else width="22" height="22" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M5 2.5H12L16 6.5V17.5H5V2.5Z" stroke="#165DFF" stroke-width="1.5" stroke-linejoin="round" />
-                    <path d="M12 2.5V6.5H16" stroke="#165DFF" stroke-width="1.5" stroke-linejoin="round" />
-                    <path d="M7.5 10H12.5M7.5 13H12.5" stroke="#165DFF" stroke-width="1.5" stroke-linecap="round" />
+                    <path d="M5 2.5H12L16 6.5V17.5H5V2.5Z" style="stroke: var(--color-primary)" stroke-width="1.5" stroke-linejoin="round" />
+                    <path d="M12 2.5V6.5H16" style="stroke: var(--color-primary)" stroke-width="1.5" stroke-linejoin="round" />
+                    <path d="M7.5 10H12.5M7.5 13H12.5" style="stroke: var(--color-primary)" stroke-width="1.5" stroke-linecap="round" />
                   </svg>
                 </div>
                 <div class="recent-meta">
@@ -276,7 +276,7 @@ const formatPercent = (p: number) => {
                 <el-popover placement="bottom" :width="150" trigger="hover">
                   <template #reference>
                     <div class="todo-item">
-                      <div class="todo-item-icon" style="background: #f5e8ff; color: #722ed1">+</div>
+                      <div class="todo-item-icon" style="background: var(--color-purple-bg); color: var(--color-purple)">+</div>
                       <span class="todo-item-text">发起流程</span>
                     </div>
                   </template>
@@ -311,10 +311,10 @@ const formatPercent = (p: number) => {
               <div class="app-item" @click="router.push('/assets')">
                 <div class="app-icon-wrap">
                   <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="24" cy="12" r="6.5" stroke="#165DFF" stroke-width="2.6" />
-                    <path d="M24 19V32" stroke="#165DFF" stroke-width="2.6" stroke-linecap="round" />
-                    <path d="M16 40L24 31L32 40" stroke="#165DFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" />
-                    <path d="M15 25L24 21L33 25" stroke="#165DFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" />
+                    <circle cx="24" cy="12" r="6.5" style="stroke: var(--color-primary)" stroke-width="2.6" />
+                    <path d="M24 19V32" style="stroke: var(--color-primary)" stroke-width="2.6" stroke-linecap="round" />
+                    <path d="M16 40L24 31L32 40" style="stroke: var(--color-primary)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M15 25L24 21L33 25" style="stroke: var(--color-primary)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" />
                   </svg>
                 </div>
                 <span class="app-label">资产管理</span>
@@ -322,10 +322,10 @@ const formatPercent = (p: number) => {
               <div class="app-item">
                 <div class="app-icon-wrap">
                   <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="10" y="10" width="28" height="16" rx="2" stroke="#14C9C9" stroke-width="2.4" />
-                    <rect x="10" y="26" width="28" height="12" rx="2" stroke="#14C9C9" stroke-width="2.4" />
-                    <rect x="14" y="16" width="20" height="2" rx="1" fill="#14C9C9" />
-                    <rect x="14" y="31" width="20" height="2" rx="1" fill="#14C9C9" />
+                    <rect x="10" y="10" width="28" height="16" rx="2" style="stroke: var(--color-secondary)" stroke-width="2.4" />
+                    <rect x="10" y="26" width="28" height="12" rx="2" style="stroke: var(--color-secondary)" stroke-width="2.4" />
+                    <rect x="14" y="16" width="20" height="2" rx="1" style="fill: var(--color-secondary)" />
+                    <rect x="14" y="31" width="20" height="2" rx="1" style="fill: var(--color-secondary)" />
                   </svg>
                 </div>
                 <span class="app-label">库存管理</span>
@@ -381,7 +381,7 @@ const formatPercent = (p: number) => {
                         cy="50"
                         r="42"
                         fill="none"
-                        stroke="#f2f3f5"
+                        style="stroke: var(--color-bg-3)"
                         stroke-width="12"
                       />
                       <circle
@@ -391,7 +391,7 @@ const formatPercent = (p: number) => {
                         cy="50"
                         r="42"
                         fill="none"
-                        :stroke="pieColor(seg.color)"
+                        :style="{ stroke: pieColor(seg.color) }"
                         stroke-width="12"
                         :stroke-dasharray="seg.dashArray"
                         :stroke-dashoffset="seg.dashOffset"
@@ -481,15 +481,15 @@ const formatPercent = (p: number) => {
 }
 
 .card {
-  background: #ffffff;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(217, 222, 232, 0.3);
+  background: var(--color-bg-2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
 
 .card-title {
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 500;
-  color: #1d2129;
+  color: var(--color-text-1);
   line-height: 22px;
 }
 
@@ -500,9 +500,9 @@ const formatPercent = (p: number) => {
 }
 
 .title-row .action {
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 400;
-  color: #165dff;
+  color: var(--color-primary);
   line-height: 20px;
   cursor: pointer;
 }
@@ -510,20 +510,20 @@ const formatPercent = (p: number) => {
 .empty-state {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .empty-text {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 400;
-  color: #86909c;
+  color: var(--color-text-3);
   line-height: 22px;
 }
 
 .empty-action {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 400;
-  color: #165dff;
+  color: var(--color-primary);
   line-height: 22px;
   cursor: pointer;
 }
@@ -549,23 +549,23 @@ const formatPercent = (p: number) => {
 .recent-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 8px;
+  gap: 8px;
+  padding: 8px 8px;
   margin: 0 -8px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
 }
 
 .recent-item:hover {
-  background: #f7f8fa;
+  background: var(--color-bg-1);
 }
 
 .recent-icon {
   width: 36px;
   height: 36px;
-  border-radius: 8px;
-  background: #f2f6ff;
-  color: #165dff;
+  border-radius: var(--radius-lg);
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -580,9 +580,9 @@ const formatPercent = (p: number) => {
 }
 
 .recent-text {
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 400;
-  color: #4e5969;
+  color: var(--color-text-2);
   line-height: 22px;
   white-space: nowrap;
   overflow: hidden;
@@ -590,8 +590,8 @@ const formatPercent = (p: number) => {
 }
 
 .recent-time {
-  font-size: 12px;
-  color: #a6adb8;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
   line-height: 18px;
 }
 
@@ -614,23 +614,23 @@ const formatPercent = (p: number) => {
   height: 38px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 0 8px;
   margin: 0 -8px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
 }
 
 .quick-item:hover {
-  background: #f7f8fa;
+  background: var(--color-bg-1);
 }
 
 .quick-icon {
   width: 30px;
   height: 30px;
-  border-radius: 6px;
-  background: #eef4ff;
-  color: #165dff;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -638,14 +638,14 @@ const formatPercent = (p: number) => {
 }
 
 .quick-label {
-  font-size: 14px;
-  color: #4e5969;
+  font-size: var(--text-base);
+  color: var(--color-text-2);
   flex: 1;
 }
 
 .quick-arrow {
-  font-size: 12px;
-  color: #c0c6cf;
+  font-size: var(--text-xs);
+  color: var(--color-text-4);
 }
 
 /* 右列 */
@@ -683,21 +683,21 @@ const formatPercent = (p: number) => {
 .todo-icon {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
-  background: #165dff;
+  border-radius: var(--radius-lg);
+  background: var(--color-primary);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
-  font-size: 20px;
+  color: var(--color-text-inverse);
+  font-size: var(--text-lg);
   font-weight: 700;
   line-height: 28px;
 }
 
 .todo-title {
-  font-size: 16px;
+  font-size: var(--text-md);
   font-weight: 500;
-  color: #1d2129;
+  color: var(--color-text-1);
   line-height: 24px;
 }
 
@@ -720,20 +720,20 @@ const formatPercent = (p: number) => {
 
 .todo-item:hover .todo-count,
 .todo-item:hover .todo-item-text {
-  color: #165dff;
+  color: var(--color-primary);
 }
 
 .todo-count {
   font-size: 26px;
   font-weight: 600;
-  color: #1d2129;
+  color: var(--color-text-1);
   line-height: 32px;
   font-variant-numeric: tabular-nums;
   transition: color 0.15s ease;
 }
 
 .todo-count.hot {
-  color: #f53f3f;
+  color: var(--color-error-text);
 }
 
 .todo-item-icon {
@@ -743,15 +743,15 @@ const formatPercent = (p: number) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: var(--text-md);
   font-weight: 700;
   line-height: 24px;
 }
 
 .todo-item-text {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 400;
-  color: #4e5969;
+  color: var(--color-text-2);
   line-height: 22px;
   transition: color 0.15s ease;
 }
@@ -764,8 +764,8 @@ const formatPercent = (p: number) => {
 }
 
 .todo-sub {
-  font-size: 12px;
-  color: #f53f3f;
+  font-size: var(--text-xs);
+  color: var(--color-error-text);
   font-weight: 500;
   line-height: 16px;
 }
@@ -773,14 +773,14 @@ const formatPercent = (p: number) => {
 /* 进行中盘点提示行（仅 N>0 渲染） */
 .stocktake-line {
   height: 40px;
-  border-radius: 8px;
-  background: #fff7e8;
-  padding: 0 14px;
+  border-radius: var(--radius-lg);
+  background: var(--color-warning-bg);
+  padding: 0 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 13px;
-  color: #d25f00;
+  font-size: var(--text-sm);
+  color: var(--color-warning-text);
   cursor: pointer;
 }
 
@@ -798,16 +798,16 @@ const formatPercent = (p: number) => {
 }
 
 .app-title {
-  font-size: 16px;
+  font-size: var(--text-md);
   font-weight: 500;
-  color: #1d2129;
+  color: var(--color-text-1);
   line-height: 24px;
 }
 
 .app-section-title {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 400;
-  color: #86909c;
+  color: var(--color-text-3);
   line-height: 22px;
 }
 
@@ -840,23 +840,23 @@ const formatPercent = (p: number) => {
 }
 
 .app-label {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 400;
-  color: #1d2129;
+  color: var(--color-text-1);
   line-height: 22px;
 }
 
 /* 登录信息面板（M-FE01 鉴权验证） */
 .me-panel {
   margin-top: auto;
-  border-top: 1px solid #f0f2f5;
+  border-top: 1px solid var(--color-border-light);
   padding-top: 16px;
 }
 
 .me-panel-title {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 400;
-  color: #86909c;
+  color: var(--color-text-3);
   line-height: 22px;
   margin-bottom: 12px;
 }
@@ -874,14 +874,14 @@ const formatPercent = (p: number) => {
 }
 
 .me-label {
-  font-size: 12px;
-  color: #86909c;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
   line-height: 20px;
 }
 
 .me-value {
-  font-size: 14px;
-  color: #1d2129;
+  font-size: var(--text-base);
+  color: var(--color-text-1);
   line-height: 22px;
 }
 
@@ -899,7 +899,7 @@ const formatPercent = (p: number) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 /* ---------- F4 数据概览卡 ---------- */
@@ -928,8 +928,8 @@ const formatPercent = (p: number) => {
 }
 
 .pie-title {
-  font-size: 13px;
-  color: #86909c;
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
   line-height: 18px;
 }
 
@@ -957,16 +957,16 @@ const formatPercent = (p: number) => {
 }
 
 .pie-num {
-  font-size: 20px;
+  font-size: var(--text-lg);
   font-weight: 700;
-  color: #1d2129;
+  color: var(--color-text-1);
   line-height: 24px;
   font-variant-numeric: tabular-nums;
 }
 
 .pie-num-label {
-  font-size: 12px;
-  color: #86909c;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
   line-height: 16px;
 }
 
@@ -978,16 +978,16 @@ const formatPercent = (p: number) => {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .legend-row {
   display: grid;
   grid-template-columns: 12px 1fr auto;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: #4e5969;
+  gap: 8px;
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
   line-height: 20px;
 }
 
@@ -999,17 +999,17 @@ const formatPercent = (p: number) => {
 }
 
 .legend-label {
-  color: #4e5969;
+  color: var(--color-text-2);
 }
 
 .legend-val {
-  color: #1d2129;
+  color: var(--color-text-1);
   font-variant-numeric: tabular-nums;
 }
 
 .legend-empty {
-  font-size: 13px;
-  color: #86909c;
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
   padding: 12px 0;
   text-align: center;
 }
@@ -1025,7 +1025,7 @@ const formatPercent = (p: number) => {
 
 .mini-card {
   border-radius: 10px;
-  padding: 14px 16px;
+  padding: 16px 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1034,18 +1034,18 @@ const formatPercent = (p: number) => {
 }
 
 .holding-card-mini {
-  background: linear-gradient(135deg, #eef4ff 0%, #f5faff 100%);
-  border: 1px solid #d6e4ff;
+  background: linear-gradient(135deg, var(--color-primary-bg) 0%, var(--color-primary-bg) 100%);
+  border: 1px solid var(--color-primary-border);
 }
 
 .stocktake-card-mini {
-  background: linear-gradient(135deg, #e8ffea 0%, #f3fff4 100%);
-  border: 1px solid #c9f2cf;
+  background: linear-gradient(135deg, var(--color-success-bg) 0%, var(--color-success-bg) 100%);
+  border: 1px solid var(--color-success-border);
 }
 
 .mini-title {
-  font-size: 13px;
-  color: #86909c;
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
   line-height: 18px;
 }
 
@@ -1059,34 +1059,34 @@ const formatPercent = (p: number) => {
 .mini-num {
   font-size: 28px;
   font-weight: 700;
-  color: #1d2129;
+  color: var(--color-text-1);
   line-height: 32px;
   font-variant-numeric: tabular-nums;
 }
 
 .mini-num-unit {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 400;
-  color: #86909c;
+  color: var(--color-text-3);
   margin-left: 2px;
 }
 
 .mini-sub {
-  font-size: 12px;
-  color: #4e5969;
+  font-size: var(--text-xs);
+  color: var(--color-text-2);
   line-height: 18px;
   padding-bottom: 4px;
 }
 .mini-sub strong {
-  color: #1d2129;
+  color: var(--color-text-1);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .mini-link {
   align-self: flex-start;
-  font-size: 12px;
-  color: #165dff;
+  font-size: var(--text-xs);
+  color: var(--color-primary);
   line-height: 18px;
   cursor: pointer;
   font-weight: 500;
@@ -1120,17 +1120,17 @@ const formatPercent = (p: number) => {
   height: 34px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 10px;
-  margin: 0 -6px;
-  border-radius: 6px;
-  font-size: 13px;
-  color: #4e5969;
+  gap: 8px;
+  padding: 0 8px;
+  margin: 0 -8px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
   cursor: pointer;
 }
 
 .compose-item:hover {
-  background: #f2f6ff;
-  color: #165dff;
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
 }
 </style>

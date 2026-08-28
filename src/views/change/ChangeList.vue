@@ -314,10 +314,10 @@ const assetCount = (row: ChangeOrder) =>
 
 <style scoped>
 .page-container {
-  background: #ffffff;
-  border-radius: 12px;
+  background: var(--color-bg-2);
+  border-radius: var(--radius-xl);
   padding: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-md);
 }
 
 .page-header {
@@ -328,15 +328,15 @@ const assetCount = (row: ChangeOrder) =>
 }
 
 .page-title {
-  font-size: 20px;
+  font-size: var(--text-lg);
   font-weight: 700;
-  color: #111827;
+  color: var(--color-text-1);
   margin: 0;
 }
 
 .page-subtitle {
-  font-size: 13px;
-  color: #86909c;
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
   flex: 1;
 }
 
@@ -350,32 +350,32 @@ const assetCount = (row: ChangeOrder) =>
 .tab {
   height: 34px;
   padding: 0 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 14px;
-  background: #f3f4f6;
-  color: #6b7280;
+  font-size: var(--text-base);
+  background: var(--color-bg-3);
+  color: var(--color-text-2);
   cursor: pointer;
   user-select: none;
 }
 
 .tab.active {
-  background: #165dff;
-  color: #ffffff;
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
 }
 
 .tab-count {
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 /* 工具栏 */
 .toolbar {
   min-height: 60px;
-  padding: 14px;
-  background: #fafbfc;
-  border-radius: 8px;
+  padding: 16px;
+  background: var(--color-bg-3);
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -409,8 +409,8 @@ const assetCount = (row: ChangeOrder) =>
 }
 
 .pagination-info {
-  font-size: 13px;
-  color: #6b7280;
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
 }
 
 /* 双击行可查看详情：指针光标提示可交互 */

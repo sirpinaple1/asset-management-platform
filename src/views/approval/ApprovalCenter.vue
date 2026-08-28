@@ -427,10 +427,10 @@ const emptyText = computed(() =>
 
 <style scoped>
 .page-container {
-  background: #ffffff;
-  border-radius: 12px;
+  background: var(--color-bg-2);
+  border-radius: var(--radius-xl);
   padding: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-md);
 }
 
 .page-header {
@@ -441,15 +441,15 @@ const emptyText = computed(() =>
 }
 
 .page-title {
-  font-size: 20px;
+  font-size: var(--text-lg);
   font-weight: 700;
-  color: #111827;
+  color: var(--color-text-1);
   margin: 0;
 }
 
 .page-subtitle {
-  font-size: 13px;
-  color: #86909c;
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
   flex: 1;
 }
 
@@ -463,32 +463,32 @@ const emptyText = computed(() =>
 .tab {
   height: 34px;
   padding: 0 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 14px;
-  background: #f3f4f6;
-  color: #6b7280;
+  font-size: var(--text-base);
+  background: var(--color-bg-3);
+  color: var(--color-text-2);
   cursor: pointer;
   user-select: none;
 }
 
 .tab.active {
-  background: #165dff;
-  color: #ffffff;
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
 }
 
 .tab-count {
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 /* 工具栏：类型 chips + 搜索 */
 .toolbar {
   min-height: 56px;
-  padding: 12px 14px;
-  background: #fafbfc;
-  border-radius: 8px;
+  padding: 12px 16px;
+  background: var(--color-bg-3);
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -506,23 +506,23 @@ const emptyText = computed(() =>
   height: 30px;
   padding: 0 12px;
   border-radius: 15px;
-  border: 1px solid #e5e7eb;
-  background: #ffffff;
-  font-size: 13px;
-  color: #6b7280;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .type-chip:hover {
-  color: #165dff;
-  border-color: #b8d4ff;
+  color: var(--color-primary);
+  border-color: var(--color-primary-border);
 }
 
 .type-chip.active {
-  background: #e8f3ff;
-  border-color: #165dff;
-  color: #165dff;
+  background: var(--color-primary-bg);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
   font-weight: 500;
 }
 
@@ -535,8 +535,8 @@ const emptyText = computed(() =>
 .biz-cell {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  color: #4e5969;
+  gap: 4px;
+  color: var(--color-text-2);
 }
 
 /* 分页 */
@@ -548,7 +548,7 @@ const emptyText = computed(() =>
 }
 
 .pagination-info {
-  font-size: 13px;
-  color: #6b7280;
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
 }
 </style>

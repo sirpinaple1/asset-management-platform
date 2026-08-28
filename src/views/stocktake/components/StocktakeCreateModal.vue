@@ -166,8 +166,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
 }
 
 .form-tip {
-  font-size: 12px;
-  color: #86909c;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
   line-height: 18px;
   margin: -4px 0 0;
   padding-left: 96px;

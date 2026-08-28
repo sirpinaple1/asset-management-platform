@@ -23,33 +23,48 @@ body {
     'Microsoft YaHei',
     Arial,
     sans-serif;
-  background: #f5f6fa;
+  background: var(--color-bg-1);
+  color: var(--color-text-1);
+  font-size: var(--text-base);
   -webkit-font-smoothing: antialiased;
 }
 
-/* Element Plus 主题变量对齐设计规范（品牌蓝 #165DFF，功能色同规范） */
+/* Element Plus 主题变量对齐设计 token（品牌蓝 + 功能色） */
 :root {
-  --el-color-primary: #165dff;
-  --el-color-primary-light-3: #4080ff;
+  --el-color-primary: var(--color-primary);
+  --el-color-primary-light-3: var(--color-primary-hover);
   --el-color-primary-light-5: #8baeff;
   --el-color-primary-light-7: #b9ceff;
   --el-color-primary-light-8: #d0deff;
-  --el-color-primary-light-9: #e8f3ff;
-  --el-color-primary-dark-2: #114acc;
-  --el-color-success: #00b42a;
-  --el-color-warning: #ff7d00;
-  --el-color-danger: #f53f3f;
-  --el-color-error: #f53f3f;
-  --el-color-info: #86909c;
+  --el-color-primary-light-9: var(--color-primary-bg);
+  --el-color-primary-dark-2: var(--color-primary-active);
+  --el-color-success: var(--color-success);
+  --el-color-warning: var(--color-warning);
+  --el-color-danger: var(--color-error-text);
+  --el-color-error: var(--color-error-text);
+  --el-color-info: var(--color-text-3);
+  --el-text-color-placeholder: var(--color-text-4);
+  --el-border-color: var(--color-border);
+  --el-border-color-light: var(--color-border);
+  --el-border-color-lighter: var(--color-border);
+  --el-bg-color: var(--color-bg-2);
+  --el-bg-color-page: var(--color-bg-1);
+  --el-fill-color-light: var(--color-bg-3);
 }
 
 /* 键盘可达性：Tab 遍历时焦点可见 */
 :focus-visible {
-  outline: 2px solid rgba(22, 93, 255, 0.7);
+  outline: 2px solid var(--color-primary);
   outline-offset: 1px;
 }
 
 /* 请求进行中：等待光标 */
 .el-button.is-loading {
   cursor: wait;
+}
+
+/* 状态传达冗余：表单校验错误不止用红色，前置图标提示（色盲可达性） */
+.el-form-item__error::before {
+  content: '⚠ ';
+  font-size: 12px;
 }
