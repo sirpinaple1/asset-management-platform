@@ -37,7 +37,7 @@ deploy:
     # 4. 沙箱重建后端容器（Dockerfile COPY 新 jar → 新镜像 → 容器重建）
     - ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_HOST" 'cd /srv && docker compose -f /srv/docker-compose.yml up -d --build asset-backend'
     # 5. 探活确认（等 20s 让 Spring Boot 起来，health=UP 才算成功）
-    - ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_HOST" 'sleep 20; docker compose -f /srv/docker-compose.yml ps --format "table {{.Name}}\t{{.Status}}" | grep asset-backend; curl -sk https://127.0.0.1/actuator/health'
+    - ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_HOST" 'sleep 20; docker compose -f /srv/docker-compose.yml ps | grep asset-backend; curl -sk https://127.0.0.1/actuator/health'
 
 # 一键回滚：Pipeline 页面手动点击触发，恢复到上一次部署前的 jar
 rollback:
@@ -46,10 +46,10 @@ rollback:
   when: manual
   script:
     # 1. 检查备份是否存在
-    - ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_HOST" 'test -f /srv/backups/asset-backend.jar.prev || { echo "ERROR: 没有可回滚的备份版本（首次部署前无 prev）"; exit 1; }'
+    - ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_HOST" 'test -f /srv/backups/asset-backend.jar.prev || (echo "没有可回滚的备份版本（首次部署前无 prev）"; exit 1)'
     # 2. 恢复 prev jar
     - ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_HOST" 'cp -f /srv/backups/asset-backend.jar.prev /srv/app/asset-backend/target/asset-backend.jar && echo "jar restored from prev"'
     # 3. 重建容器
     - ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_HOST" 'cd /srv && docker compose -f /srv/docker-compose.yml up -d --build asset-backend'
     # 4. 探活
-    - ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_HOST" 'sleep 20; docker compose -f /srv/docker-compose.yml ps --format "table {{.Name}}\t{{.Status}}" | grep asset-backend; curl -sk https://127.0.0.1/actuator/health'
+    - ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_HOST" 'sleep 20; docker compose -f /srv/docker-compose.yml ps | grep asset-backend; curl -sk https://127.0.0.1/actuator/health'
