@@ -5,6 +5,7 @@ import type { FormInstance, FormRules, InputInstance } from 'element-plus'
 import { assetApi } from '@/api/modules/asset'
 import type { Asset, AssetForm } from '@/api/interface/asset'
 import { useBasedataStore } from '@/stores/basedata'
+import { useUserStore } from '@/stores/user'
 import { buildTree } from '@/utils/tree'
 import type { Category, Location } from '@/api/interface/basedata'
 
@@ -19,12 +20,31 @@ const emit = defineEmits<{
 }>()
 
 const basedataStore = useBasedataStore()
+const userStore = useUserStore()
 
 const formRef = ref<FormInstance>()
 const barcodeInputRef = ref<InputInstance>()
 const nameInputRef = ref<InputInstance>()
 const loading = ref(false)
 const isEdit = ref(false)
+
+/* ---------------- 编辑态字段权限（仅编辑生效，新增不控制） ---------------- */
+
+/** 超级管理员（systemAdmin 角色；me 未加载时按普通用户处理，fail-closed） */
+const isSuperAdmin = computed(() => userStore.me?.roles?.includes('systemAdmin') ?? false)
+
+/**
+ * 身份字段锁定（编辑时对所有人生效，含超管）：
+ * 一物一码均由系统生成、身份信息一旦建立不可修改——
+ * 编码/名称/序列号/细则/分类/型号/供应商/归属公司/使用人/管理员/购置日期/金额。
+ */
+const identityLocked = computed(() => isEdit.value)
+
+/**
+ * 运营字段锁定（编辑时仅超管可改）：
+ * 当前位置/应归放位置必须随调拨单、领用单、借用单单据驱动变更。
+ */
+const operationalLocked = computed(() => isEdit.value && !isSuperAdmin.value)
 
 /** 表单状态（字段与后端 AssetReq 一一对应；状态不开放编辑） */
 const formData = reactive<AssetForm>({
@@ -126,26 +146,41 @@ watch(
 
 const handleClose = () => emit('update:visible', false)
 
-/** 组装提交载荷：文本 trim，空值归一为 undefined（不发空串/0 金额）；新增不发 barcode（服务端生成） */
-const buildPayload = (): AssetForm => ({
-  barcode: isEdit.value ? formData.barcode?.trim() : undefined,
-  name: formData.name.trim(),
-  sn: formData.sn?.trim() || undefined,
-  spec: formData.spec?.trim() || undefined,
-  categoryId: formData.categoryId || undefined,
-  modelId: formData.modelId || undefined,
-  supplierId: formData.supplierId || undefined,
-  locationId: formData.locationId || undefined,
-  homeLocationId: formData.homeLocationId || undefined,
-  locationDetail: formData.locationDetail?.trim() || undefined,
-  userId: formData.userId || undefined,
-  userDepartment: formData.userDepartment?.trim() || undefined,
-  adminUserId: formData.adminUserId || undefined,
-  companyId: formData.companyId || undefined,
-  purchaseDate: formData.purchaseDate || undefined,
-  amount: formData.amount ?? undefined,
-  remark: formData.remark?.trim() || undefined,
-})
+/**
+ * 组装提交载荷：文本 trim，空值归一为 undefined（不发空串/0 金额）；新增不发 barcode（服务端生成）。
+ * 权限防线：普通用户编辑时仅提交允许字段（备注/位置明细 + 后端必填的编码/名称原值），
+ * 身份/运营字段不发——updateById 跳过 null 列保持原值，杜绝绕过禁用控件篡改。
+ */
+const buildPayload = (): AssetForm => {
+  const full: AssetForm = {
+    barcode: isEdit.value ? formData.barcode?.trim() : undefined,
+    name: formData.name.trim(),
+    sn: formData.sn?.trim() || undefined,
+    spec: formData.spec?.trim() || undefined,
+    categoryId: formData.categoryId || undefined,
+    modelId: formData.modelId || undefined,
+    supplierId: formData.supplierId || undefined,
+    locationId: formData.locationId || undefined,
+    homeLocationId: formData.homeLocationId || undefined,
+    locationDetail: formData.locationDetail?.trim() || undefined,
+    userId: formData.userId || undefined,
+    userDepartment: formData.userDepartment?.trim() || undefined,
+    adminUserId: formData.adminUserId || undefined,
+    companyId: formData.companyId || undefined,
+    purchaseDate: formData.purchaseDate || undefined,
+    amount: formData.amount ?? undefined,
+    remark: formData.remark?.trim() || undefined,
+  }
+  if (isEdit.value && !isSuperAdmin.value) {
+    return {
+      barcode: full.barcode,
+      name: full.name,
+      locationDetail: full.locationDetail,
+      remark: full.remark,
+    }
+  }
+  return full
+}
 
 const handleSubmit = async () => {
   if (loading.value) return /* 防重复提交 */
@@ -200,28 +235,47 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
       label-width="96px"
       @submit.prevent="handleSubmit"
     >
+      <!-- 编辑态字段权限提示（新增不控制） -->
+      <el-alert
+        v-if="isEdit && !isSuperAdmin"
+        type="info"
+        :closable="false"
+        show-icon
+        title="身份信息与运营字段不可直接修改"
+        description="资产编码等身份信息建立后锁定；当前位置/应归放位置随调拨、领用、借用单据自动变更；如需修正请联系超级管理员。可填写备注与位置明细反馈现场信息。"
+        class="edit-perm-alert"
+      />
+      <el-alert
+        v-else-if="isEdit"
+        type="info"
+        :closable="false"
+        show-icon
+        title="身份信息建立后锁定；当前位置/应归放位置可直改（常规变更请走单据）"
+        class="edit-perm-alert"
+      />
       <div class="form-grid">
         <!-- 基本信息 -->
-        <!-- 新增：编码由服务端自动生成（分类前缀-日期-序号），不开放录入；编辑：可改码 -->
+        <!-- 新增：编码由服务端自动生成（分类前缀-日期-序号），不开放录入；编辑：身份字段锁定（一物一码由系统生成） -->
         <el-form-item v-if="isEdit" label="资产编码" prop="barcode">
           <el-input
             ref="barcodeInputRef"
             v-model="formData.barcode"
             placeholder="请输入资产编码（唯一）"
             :maxlength="100"
+            :disabled="identityLocked"
           />
         </el-form-item>
         <el-form-item v-else label="资产编码">
           <el-input model-value="" disabled placeholder="提交后系统自动生成" />
         </el-form-item>
         <el-form-item label="资产名称" prop="name">
-          <el-input ref="nameInputRef" v-model="formData.name" placeholder="请输入资产名称" :maxlength="200" />
+          <el-input ref="nameInputRef" v-model="formData.name" placeholder="请输入资产名称" :maxlength="200" :disabled="identityLocked" />
         </el-form-item>
         <el-form-item label="序列号" prop="sn">
-          <el-input v-model="formData.sn" placeholder="请输入序列号" :maxlength="100" />
+          <el-input v-model="formData.sn" placeholder="请输入序列号" :maxlength="100" :disabled="identityLocked" />
         </el-form-item>
         <el-form-item label="细则" prop="spec">
-          <el-input v-model="formData.spec" placeholder="如：16G内存/512G固态" :maxlength="500" />
+          <el-input v-model="formData.spec" placeholder="如：16G内存/512G固态" :maxlength="500" :disabled="identityLocked" />
         </el-form-item>
         <el-form-item label="分类" prop="categoryId">
           <el-tree-select
@@ -234,6 +288,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
             filterable
             placeholder="请选择分类"
             class="full-width"
+            :disabled="identityLocked"
           />
         </el-form-item>
         <el-form-item label="型号" prop="modelId">
@@ -244,6 +299,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
             placeholder="请选择型号"
             class="full-width"
             no-data-text="该分类下暂无型号"
+            :disabled="identityLocked"
           >
             <el-option
               v-for="m in modelOptions"
@@ -260,6 +316,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
             filterable
             placeholder="请选择供应商"
             class="full-width"
+            :disabled="identityLocked"
           >
             <el-option
               v-for="s in basedataStore.suppliers"
@@ -270,7 +327,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
           </el-select>
         </el-form-item>
 
-        <!-- 位置 -->
+        <!-- 位置（当前位置/应归放位置：编辑时仅超管可改，常规变更走调拨/领用/借用单据） -->
         <el-form-item label="当前位置" prop="locationId">
           <el-tree-select
             v-model="formData.locationId"
@@ -282,6 +339,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
             filterable
             placeholder="请选择当前位置"
             class="full-width"
+            :disabled="operationalLocked"
           />
         </el-form-item>
         <el-form-item label="应归放位置" prop="homeLocationId">
@@ -295,6 +353,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
             filterable
             placeholder="请选择应归放位置"
             class="full-width"
+            :disabled="operationalLocked"
           />
         </el-form-item>
         <el-form-item label="位置明细" prop="locationDetail">
@@ -309,6 +368,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
             filterable
             placeholder="请选择归属公司"
             class="full-width"
+            :disabled="identityLocked"
           >
             <el-option
               v-for="c in basedataStore.companies"
@@ -321,6 +381,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
         <el-form-item label="使用人" prop="userId">
           <el-input-number
             v-model="formData.userId"
+            :disabled="identityLocked"
             :min="1"
             :precision="0"
             :controls="false"
@@ -329,11 +390,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
           />
         </el-form-item>
         <el-form-item label="使用人部门" prop="userDepartment">
-          <el-input v-model="formData.userDepartment" placeholder="请输入使用人部门" :maxlength="100" />
+          <el-input v-model="formData.userDepartment" placeholder="请输入使用人部门" :maxlength="100" :disabled="identityLocked" />
         </el-form-item>
         <el-form-item label="资产管理员" prop="adminUserId">
           <el-input-number
             v-model="formData.adminUserId"
+            :disabled="identityLocked"
             :min="1"
             :precision="0"
             :controls="false"
@@ -348,6 +410,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
             v-model="formData.purchaseDate"
             type="date"
             value-format="YYYY-MM-DD"
+            :disabled="identityLocked"
             placeholder="请选择购置日期"
             class="full-width"
             :disabled-date="(d: Date) => d.getTime() > Date.now()"
@@ -356,6 +419,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
         <el-form-item label="购入金额" prop="amount">
           <el-input-number
             v-model="formData.amount"
+            :disabled="identityLocked"
             :min="0"
             :precision="2"
             :step="100"
@@ -398,6 +462,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
 
 .span-2 {
   grid-column: span 2;
+}
+
+/* 编辑态权限提示条 */
+.edit-perm-alert {
+  margin-bottom: 16px;
 }
 
 .full-width {
