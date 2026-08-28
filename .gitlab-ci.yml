@@ -27,13 +27,13 @@ deploy:
     # 3. 构建（vue-tsc 类型检查 + vite build）
     - npm run build
     # 4. 备份沙箱当前 dist（供 rollback 使用；首次无则跳过）
-    - ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_HOST" 'if [ -d /srv/app/asset-frontend/dist ] && [ "$(ls -A /srv/app/asset-frontend/dist)" ]; then rm -rf /srv/backups/asset-frontend-dist.prev && cp -r /srv/app/asset-frontend/dist /srv/backups/asset-frontend-dist.prev && echo "dist backup ok"; else echo "no current dist to backup"; fi'
+    - ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_HOST" 'if test -d /srv/app/asset-frontend/dist && test -n "$(ls -A /srv/app/asset-frontend/dist)"; then rm -rf /srv/backups/asset-frontend-dist.prev; cp -r /srv/app/asset-frontend/dist /srv/backups/asset-frontend-dist.prev; echo "dist backup ok"; else echo "no current dist to backup"; fi'
     # 5. 推送新 dist 到沙箱（--delete 保证与本地产物一致）
     - rsync -az --delete -e "ssh -i $SSH_KEY -o StrictHostKeyChecking=no" dist/ "$DEPLOY_HOST:/srv/app/asset-frontend/dist/"
     # 6. 沙箱重建前端容器
     - ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_HOST" 'cd /srv && docker compose -f /srv/docker-compose.yml up -d --build asset-frontend'
     # 7. 探活确认
-    - ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_HOST" 'sleep 8; docker compose -f /srv/docker-compose.yml ps --format "table {{.Name}}\t{{.Status}}" | grep asset-frontend; curl -sk -o /dev/null -w "frontend_http=%{http_code}\n" https://127.0.0.1/'
+    - ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_HOST" 'sleep 8; docker compose -f /srv/docker-compose.yml ps | grep asset-frontend; curl -sk -o /dev/null -w "frontend_http=%{http_code}\n" https://127.0.0.1/'
 
 # 一键回滚：Pipeline 页面手动点击触发，恢复到上一次部署前的 dist
 rollback:
@@ -42,10 +42,10 @@ rollback:
   when: manual
   script:
     # 1. 检查备份是否存在
-    - ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_HOST" 'test -d /srv/backups/asset-frontend-dist.prev || { echo "ERROR: 没有可回滚的备份版本（首次部署前无 prev）"; exit 1; }'
+    - ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_HOST" 'test -d /srv/backups/asset-frontend-dist.prev || (echo "没有可回滚的备份版本（首次部署前无 prev）"; exit 1)'
     # 2. 恢复 prev dist
     - ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_HOST" 'rm -rf /srv/app/asset-frontend/dist && cp -r /srv/backups/asset-frontend-dist.prev /srv/app/asset-frontend/dist && echo "dist restored from prev"'
     # 3. 重建容器
     - ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_HOST" 'cd /srv && docker compose -f /srv/docker-compose.yml up -d --build asset-frontend'
     # 4. 探活
-    - ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_HOST" 'sleep 8; docker compose -f /srv/docker-compose.yml ps --format "table {{.Name}}\t{{.Status}}" | grep asset-frontend; curl -sk -o /dev/null -w "frontend_http=%{http_code}\n" https://127.0.0.1/'
+    - ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_HOST" 'sleep 8; docker compose -f /srv/docker-compose.yml ps | grep asset-frontend; curl -sk -o /dev/null -w "frontend_http=%{http_code}\n" https://127.0.0.1/'
