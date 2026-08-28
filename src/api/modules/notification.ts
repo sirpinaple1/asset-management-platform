@@ -1,4 +1,4 @@
-import request from '@/utils/request'
+import { request } from '@/api/config/request'
 import type {
   NotificationItem,
   NotificationListReq,
@@ -10,14 +10,17 @@ import type {
 export const notificationApi = {
   /** 列表（默认只拉未读） */
   list: (params: NotificationListReq) =>
-    request.get<any, NotificationListResp>('/api/v1/notifications', { params }),
+    request<NotificationListResp>({ url: '/v1/notifications', method: 'get', params }),
 
   /** 未读计数（铃铛角标，60s 轮询调用） */
-  unreadCount: () => request.get<any, NotificationUnreadResp>('/api/v1/notifications/unread-count'),
+  unreadCount: () =>
+    request<NotificationUnreadResp>({ url: '/v1/notifications/unread-count', method: 'get' }),
 
   /** 单条标记已读（点击详情时调用） */
-  markRead: (id: number) => request.patch<any, NotificationItem>(`/api/v1/notifications/${id}/read`),
+  markRead: (id: number) =>
+    request<NotificationItem>({ url: `/v1/notifications/${id}/read`, method: 'patch' }),
 
   /** 批量标记全部已读（右上角按钮） */
-  markAllRead: () => request.patch<any, { readCount: number }>('/api/v1/notifications/mark-all-read'),
+  markAllRead: () =>
+    request<{ readCount: number }>({ url: '/v1/notifications/mark-all-read', method: 'patch' }),
 }
