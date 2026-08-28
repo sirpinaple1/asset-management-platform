@@ -89,6 +89,17 @@ export interface Category {
   children?: Category[]
 }
 
+/** 分类新增/编辑表单（契约：CategoryController CRUD；code 由后端生成不可编辑） */
+export interface CategoryForm {
+  name: string
+  /** 父分类 ID（仅一级分类可选为父；空 = 顶级分类） */
+  parentId?: number
+  /** 资产编码前缀（空则回退 SK） */
+  barcodePrefix?: string
+  sortOrder?: number
+  remark?: string
+}
+
 /** 资产位置（树形结构） */
 export interface Location {
   id: number
@@ -101,10 +112,12 @@ export interface Location {
   children?: Location[]
 }
 
-/** 位置新增表单 */
+/** 位置新增/编辑表单（契约：LocationController CRUD；code/path 由后端生成不可编辑） */
 export interface LocationForm {
   name: string
+  /** 父位置 ID（空 = 顶级位置） */
   parentId?: number
+  sortOrder?: number
   remark?: string
 }
 

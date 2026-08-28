@@ -7,6 +7,7 @@ import type {
   Supplier,
   SupplierForm,
   Category,
+  CategoryForm,
   Location,
   LocationForm,
   AssetModel,
@@ -49,6 +50,12 @@ export const basedataApi = {
   // 分类（树形结构）
   getCategories: () => request<Category[]>({ url: '/v1/categories', method: 'get' }),
   getCategoryById: (id: number) => request<Category>({ url: `/v1/categories/${id}`, method: 'get' }),
+  createCategory: (data: CategoryForm) =>
+    request<Category>({ url: '/v1/categories', method: 'post', data }),
+  updateCategory: (id: number, data: CategoryForm) =>
+    request<Category>({ url: `/v1/categories/${id}`, method: 'put', data }),
+  deleteCategory: (id: number) =>
+    request<void>({ url: `/v1/categories/${id}`, method: 'delete' }),
 
   // 位置（树形结构）
   getLocations: (parentId?: number) =>
@@ -56,6 +63,10 @@ export const basedataApi = {
   getLocationById: (id: number) => request<Location>({ url: `/v1/locations/${id}`, method: 'get' }),
   createLocation: (data: LocationForm) =>
     request<Location>({ url: '/v1/locations', method: 'post', data }),
+  updateLocation: (id: number, data: LocationForm) =>
+    request<Location>({ url: `/v1/locations/${id}`, method: 'put', data }),
+  deleteLocation: (id: number) =>
+    request<void>({ url: `/v1/locations/${id}`, method: 'delete' }),
 
   // 型号
   getModels: (categoryId?: number) =>

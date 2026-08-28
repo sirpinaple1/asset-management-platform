@@ -135,6 +135,7 @@ const logColor = (t: string) => LOG_TYPE_COLOR[t] ?? 'info'
       <!-- 全字段详情 -->
       <el-descriptions :column="2" border size="small" class="desc">
         <el-descriptions-item label="序列号">{{ dash(current.sn) }}</el-descriptions-item>
+        <el-descriptions-item label="细则">{{ dash(current.spec) }}</el-descriptions-item>
         <el-descriptions-item label="分类">{{ dash(current.categoryName) }}</el-descriptions-item>
         <el-descriptions-item label="型号">{{ dash(current.modelName) }}</el-descriptions-item>
         <el-descriptions-item label="供应商">{{ dash(current.supplierName) }}</el-descriptions-item>

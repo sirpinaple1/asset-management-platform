@@ -31,6 +31,7 @@ const formData = reactive<AssetForm>({
   barcode: '',
   name: '',
   sn: '',
+  spec: '',
   categoryId: undefined,
   modelId: undefined,
   supplierId: undefined,
@@ -59,6 +60,7 @@ const rules = computed<FormRules>(() => ({
     { max: 200, message: '资产名称长度不能超过 200', trigger: 'blur' },
   ],
   sn: [{ max: 100, message: '序列号长度不能超过 100', trigger: 'blur' }],
+  spec: [{ max: 500, message: '细则长度不能超过 500', trigger: 'blur' }],
   locationDetail: [{ max: 200, message: '存放位置明细长度不能超过 200', trigger: 'blur' }],
   userDepartment: [{ max: 100, message: '使用人部门长度不能超过 100', trigger: 'blur' }],
   remark: [{ max: 500, message: '备注长度不能超过 500', trigger: 'blur' }],
@@ -96,6 +98,7 @@ watch(
       barcode: props.data?.barcode ?? '',
       name: props.data?.name ?? '',
       sn: props.data?.sn ?? '',
+      spec: props.data?.spec ?? '',
       categoryId: props.data?.categoryId,
       modelId: props.data?.modelId,
       supplierId: props.data?.supplierId,
@@ -128,6 +131,7 @@ const buildPayload = (): AssetForm => ({
   barcode: isEdit.value ? formData.barcode?.trim() : undefined,
   name: formData.name.trim(),
   sn: formData.sn?.trim() || undefined,
+  spec: formData.spec?.trim() || undefined,
   categoryId: formData.categoryId || undefined,
   modelId: formData.modelId || undefined,
   supplierId: formData.supplierId || undefined,
@@ -215,6 +219,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
         </el-form-item>
         <el-form-item label="序列号" prop="sn">
           <el-input v-model="formData.sn" placeholder="请输入序列号" :maxlength="100" />
+        </el-form-item>
+        <el-form-item label="细则" prop="spec">
+          <el-input v-model="formData.spec" placeholder="如：16G内存/512G固态" :maxlength="500" />
         </el-form-item>
         <el-form-item label="分类" prop="categoryId">
           <el-tree-select

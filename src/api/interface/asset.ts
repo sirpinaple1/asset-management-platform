@@ -26,6 +26,8 @@ export interface Asset {
   name: string
   /** 序列号 */
   sn?: string
+  /** 细则（区分同品牌型号但配置不同的资产，如 16G内存/512G固态） */
+  spec?: string
   status: AssetStatus
   statusLabel: string
   categoryId?: number
@@ -61,6 +63,8 @@ export interface AssetForm {
   /** 资产名称（必填） */
   name: string
   sn?: string
+  /** 细则（区分同品牌型号但配置不同的资产） */
+  spec?: string
   categoryId?: number
   modelId?: number
   supplierId?: number

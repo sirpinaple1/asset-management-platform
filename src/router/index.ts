@@ -53,13 +53,13 @@ const router = createRouter({
         {
           path: 'basedata/categories',
           name: 'basedata-categories',
-          component: () => import('@/views/basedata/ComingSoon.vue'),
+          component: () => import('@/views/basedata/CategoryList.vue'),
           meta: { title: '分类管理' }
         },
         {
           path: 'basedata/locations',
           name: 'basedata-locations',
-          component: () => import('@/views/basedata/ComingSoon.vue'),
+          component: () => import('@/views/basedata/LocationList.vue'),
           meta: { title: '位置管理' }
         },
         {

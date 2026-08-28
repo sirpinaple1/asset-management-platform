@@ -158,6 +158,9 @@ export const useBasedataStore = defineStore('basedata', () => {
     }
   }
 
+  /** 删除分类（有子分类/有资产引用时后端 400 拦截；树形结构由调用方重拉） */
+  const deleteCategory = (id: number) => basedataApi.deleteCategory(id)
+
   const fetchLocations = async (parentId?: number) => {
     loading.value.locations = true
     try {
@@ -166,6 +169,9 @@ export const useBasedataStore = defineStore('basedata', () => {
       loading.value.locations = false
     }
   }
+
+  /** 删除位置（有子位置/有资产引用时后端 400 拦截；树形结构由调用方重拉） */
+  const deleteLocation = (id: number) => basedataApi.deleteLocation(id)
 
   const fetchModels = async (categoryId?: number) => {
     loading.value.models = true
@@ -194,7 +200,9 @@ export const useBasedataStore = defineStore('basedata', () => {
     fetchManufacturers,
     fetchSuppliers,
     fetchCategories,
+    deleteCategory,
     fetchLocations,
+    deleteLocation,
     fetchModels,
     deleteManufacturersOptimistic: manufacturerOps.optimisticDelete,
     undoDeleteManufacturers: manufacturerOps.undoDelete,

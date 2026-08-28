@@ -431,6 +431,7 @@ const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown
         <el-table-column prop="barcode" label="资产编码" min-width="150" show-overflow-tooltip />
         <el-table-column prop="name" label="资产名称" min-width="170" show-overflow-tooltip />
         <el-table-column prop="sn" label="序列号" min-width="130" show-overflow-tooltip :formatter="formatText" />
+        <el-table-column prop="spec" label="细则" min-width="140" show-overflow-tooltip :formatter="formatText" />
         <el-table-column label="状态" width="90" align="center">
           <template #default="{ row }">
             <el-tag :type="ASSET_STATUS_META[row.status as AssetStatus].tagType" effect="light">
