@@ -6,11 +6,14 @@ import { useApprovalStore } from '@/stores/approval'
 import { useTabsStore } from '@/stores/tabs'
 import TabBar from '@/components/TabBar.vue'
 import NotificationBell from '@/components/NotificationBell.vue'
+import CommandPalette from '@/components/CommandPalette.vue'
 
 const route = useRoute()
 const userStore = useUserStore()
 const approvalStore = useApprovalStore()
 const tabsStore = useTabsStore()
+
+const commandPaletteRef = ref<InstanceType<typeof CommandPalette>>()
 
 /* 多页签工作台：路由变化登记页签（fullPath 含 query），keep-alive 缓存已打开页签 */
 watch(
@@ -91,6 +94,14 @@ const comingSoon = () => {
       </div>
 
       <div class="user-area">
+        <button class="cmdk-trigger" type="button" title="命令面板（Ctrl+K）" @click="commandPaletteRef?.open()">
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="1.5" />
+            <line x1="13.5" y1="13.5" x2="17" y2="17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+          <span>搜索</span>
+          <kbd>⌘K</kbd>
+        </button>
         <NotificationBell />
         <el-dropdown trigger="click">
           <div class="user-trigger">
@@ -286,6 +297,9 @@ const comingSoon = () => {
         <el-backtop target=".content-scroll" :right="32" :bottom="32" />
       </div>
     </div>
+
+    <!-- 命令面板（⌘K / Ctrl+K 全局呼出） -->
+    <CommandPalette ref="commandPaletteRef" />
   </div>
 </template>
 
@@ -354,6 +368,36 @@ const comingSoon = () => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* 命令面板入口按钮（⌘K） */
+.cmdk-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-2);
+  color: var(--color-text-3);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.cmdk-trigger:hover {
+  border-color: var(--color-primary);
+  color: var(--color-text-2);
+}
+
+.cmdk-trigger kbd {
+  font-family: inherit;
+  font-size: var(--text-xs);
+  color: var(--color-text-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 1px 4px;
+  line-height: 1.4;
 }
 
 .user-trigger {

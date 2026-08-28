@@ -11,10 +11,12 @@ import { useBasedataStore } from '@/stores/basedata'
 import { useUserStore } from '@/stores/user'
 import { useTabsStore } from '@/stores/tabs'
 import { useListInteractions, type ContextMenuItem } from '@/composables/useListInteractions'
+import { useColumnConfig, type ColumnDef } from '@/composables/useColumnConfig'
 import { buildTree } from '@/utils/tree'
 import type { Category, Location } from '@/api/interface/basedata'
 import AssetModal from './components/AssetModal.vue'
 import AssetDetailDrawer from './components/AssetDetailDrawer.vue'
+import ColumnConfigPopover from './components/ColumnConfigPopover.vue'
 import ContextMenu from '@/components/ContextMenu.vue'
 
 /** 与路由 name 一致：多页签 keep-alive 缓存键 */
@@ -53,7 +55,10 @@ watch(keyword, (val) => {
     searchKeyword.value = val.trim()
   }, 300)
 })
-onBeforeUnmount(() => searchTimer && clearTimeout(searchTimer))
+onBeforeUnmount(() => {
+  if (searchTimer) clearTimeout(searchTimer)
+  narrowMql?.removeEventListener('change', onNarrowChange)
+})
 
 /* ---------------- 高级筛选（分类/位置/公司，服务端过滤） ---------------- */
 const filterCategoryId = ref<number>()
@@ -71,6 +76,14 @@ const locationTree = computed(() => buildTree<Location>(basedataStore.locations)
 const pageSize = ref(20)
 const currentPage = ref(1)
 
+/* ---------------- 服务端排序（表头点击，orderBy/orderDir 透传后端） ---------------- */
+const sortState = ref<{ orderBy?: string; orderDir?: 'asc' | 'desc' }>({})
+
+const onSortChange = ({ prop, order }: { prop?: string; order?: 'ascending' | 'descending' | null }) => {
+  if (!prop || !order) sortState.value = {}
+  else sortState.value = { orderBy: prop, orderDir: order === 'ascending' ? 'asc' : 'desc' }
+}
+
 /** 组装当前查询条件（可选维度统一归一为 undefined，避免发送空参数） */
 const buildQuery = () => ({
   page: currentPage.value,
@@ -81,12 +94,14 @@ const buildQuery = () => ({
   locationId: filterLocationId.value || undefined,
   companyId: filterCompanyId.value || undefined,
   userId: filterUserId.value,
+  orderBy: sortState.value.orderBy,
+  orderDir: sortState.value.orderDir,
 })
 
 const fetchCurrent = () => store.fetchAssets(buildQuery())
 
 /** 筛选维度变化：回第 1 页（页码本就是 1 时直接拉取） */
-watch([activeTab, searchKeyword, filterCategoryId, filterLocationId, filterCompanyId, onlyMine], () => {
+watch([activeTab, searchKeyword, filterCategoryId, filterLocationId, filterCompanyId, onlyMine, sortState], () => {
   if (currentPage.value === 1) fetchCurrent()
   else currentPage.value = 1 /* 页码变化触发下方 watcher 拉取 */
 })
@@ -97,6 +112,11 @@ watch([currentPage, pageSize], () => fetchCurrent())
 /* keep-alive：首次挂载拉取；切回本页刷新（状态可能已被单据流转变更） */
 let firstActivation = true
 onMounted(async () => {
+  /* 窄屏检测：表格 ↔ 卡片列表切换 */
+  narrowMql = window.matchMedia('(max-width: 768px)')
+  isNarrow.value = narrowMql.matches
+  narrowMql.addEventListener('change', onNarrowChange)
+
   /* 确保当前用户信息已加载（onlyMine 过滤依赖 me.userId） */
   void userStore.loadMe()
 
@@ -266,6 +286,104 @@ const formatText = (_row: Asset, _column: unknown, cellValue: unknown) =>
 const userText = (row: Asset) =>
   row.userId ? row.userName ?? `#${row.userId}` : '—'
 
+/* ---------------- 列配置：显隐 / 拖拽排序 / localStorage 记住偏好 ---------------- */
+const COLUMN_DEFAULTS: ColumnDef[] = [
+  { key: 'barcode', label: '资产编码', visible: true },
+  { key: 'name', label: '资产名称', visible: true },
+  { key: 'sn', label: '序列号', visible: true },
+  { key: 'spec', label: '细则', visible: true },
+  { key: 'status', label: '状态', visible: true },
+  { key: 'categoryName', label: '分类', visible: true },
+  { key: 'modelName', label: '型号', visible: true },
+  { key: 'locationName', label: '当前位置', visible: true },
+  { key: 'user', label: '使用人', visible: true },
+  { key: 'companyName', label: '归属公司', visible: true },
+  { key: 'purchaseDate', label: '购置日期', visible: true },
+]
+const { columns, visibleColumns, toggle: toggleColumn, reset: resetColumns, move: moveColumn } =
+  useColumnConfig('asset.columns.config.v1', COLUMN_DEFAULTS)
+
+/** 列 key → 单元格取值（user/status 为派生字段） */
+const columnValue = (row: Asset, key: string): string => {
+  if (key === 'user') return userText(row)
+  if (key === 'status') return row.statusLabel
+  const v = (row as unknown as Record<string, unknown>)[key]
+  return v === undefined || v === null || v === '' ? '' : String(v)
+}
+
+/* ---------------- 行多选 + 批量操作 ---------------- */
+const selectedRows = ref<Asset[]>([])
+const batchDiscarding = ref(false)
+
+const onSelectionChange = (rows: Asset[]) => {
+  selectedRows.value = rows
+}
+const toggleRowSelection = (row: Asset) => {
+  tableRef.value?.toggleRowSelection(row)
+}
+const clearSelection = () => {
+  tableRef.value?.clearSelection()
+}
+
+/** CSV 单元格转义（逗号/引号/换行） */
+const csvCell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
+
+/** 导出选中行（可见列 → CSV，带 BOM 防 Excel 乱码） */
+const exportSelected = () => {
+  if (!selectedRows.value.length) return
+  const cols = visibleColumns.value
+  const header = cols.map((c) => csvCell(c.label)).join(',')
+  const lines = selectedRows.value.map((row) => cols.map((c) => csvCell(columnValue(row, c.key))).join(','))
+  const csv = `\uFEFF${header}\n${lines.join('\n')}`
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `资产选中导出_${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/** 批量报废：逐项调报废端点（有确认框；不可报废项自动跳过并汇总） */
+const handleBatchDiscard = async () => {
+  const targets = selectedRows.value.filter(canDiscard)
+  if (!targets.length) {
+    ElMessage.warning('选中资产均不可报废（待确认/已报废）')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确认报废选中的 ${targets.length} 项资产？报废后不可恢复。`,
+      '批量报废确认',
+      { type: 'warning', confirmButtonText: '报废', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  batchDiscarding.value = true
+  let ok = 0
+  let fail = 0
+  for (const row of targets) {
+    try {
+      await assetApi.discardAsset(row.id)
+      ok++
+    } catch {
+      fail++
+    }
+  }
+  batchDiscarding.value = false
+  ElMessage.success(`批量报废完成：成功 ${ok}${fail ? `，失败 ${fail}` : ''}`)
+  clearSelection()
+  fetchCurrent()
+}
+
+/* ---------------- 响应式：窄屏表格转卡片列表 ---------------- */
+const isNarrow = ref(false)
+let narrowMql: MediaQueryList | null = null
+const onNarrowChange = (e: MediaQueryListEvent) => {
+  isNarrow.value = e.matches
+}
+
 /* ---------------- 输入与触发：右键菜单 / 键盘导航 / 快捷键 ---------------- */
 const tableRef = ref<TableInstance>()
 const searchInputRef = ref<InputInstance>()
@@ -293,7 +411,7 @@ const handleCopyRow = async (row: Asset) => {
   }
 }
 
-/** 资产右键菜单：详情/编辑/复制/报废（无批量删除，Delete 快捷键空挂） */
+/** 资产右键菜单：详情/编辑/复制/报废 */
 const CTX_MENU_ITEMS: ContextMenuItem[] = [
   { key: 'detail', label: '详情' },
   { key: 'edit', label: '编辑' },
@@ -301,20 +419,21 @@ const CTX_MENU_ITEMS: ContextMenuItem[] = [
   { key: 'discard', label: '报废', danger: true },
 ]
 
-const noSelection = ref<Asset[]>([])
 const anyOverlayOpen = computed(() => modalVisible.value || drawerVisible.value)
 
 const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown, onCurrentChange } =
   useListInteractions<Asset>({
     pageRows: assets,
-    selectedRows: noSelection,
+    selectedRows,
     isModalOpen: anyOverlayOpen,
     tableRef,
     searchInputRef,
     onEditRow: handleEdit,
+    onOpenRow: openDetail,
+    onSpaceRow: toggleRowSelection,
     onCopyRow: handleCopyRow,
     onDeleteRow: () => {},
-    onBatchDelete: () => {},
+    onBatchDelete: handleBatchDiscard,
     ctxMenuItems: CTX_MENU_ITEMS,
     onCtxAction: (key, row) => {
       if (key === 'detail') openDetail(row)
@@ -359,6 +478,19 @@ const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown
           >
             {{ onlyMine ? '✓ 我的持有' : '我的持有' }}
           </el-button>
+          <!-- 列配置：显隐 + 拖拽排序（偏好存 localStorage） -->
+          <el-popover placement="bottom-start" :width="240" trigger="click">
+            <template #reference>
+              <el-button>列配置</el-button>
+            </template>
+            <ColumnConfigPopover
+              :columns="columns"
+              :visible-count="visibleColumns.length"
+              @toggle="toggleColumn"
+              @move="moveColumn"
+              @reset="resetColumns"
+            />
+          </el-popover>
         </div>
         <div class="toolbar-filters">
           <el-tree-select
@@ -414,8 +546,9 @@ const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown
         </div>
       </div>
 
-      <!-- 资产表格：双击行开详情 / 右键菜单 / 方向键导航 -->
+      <!-- 资产表格：多选批量 / 双击开详情 / 右键菜单 / 方向键+Space+Enter 键盘导航 / 表头排序 -->
       <el-table
+        v-if="!isNarrow"
         ref="tableRef"
         v-loading="loading"
         :data="assets"
@@ -428,26 +561,58 @@ const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown
         @row-contextmenu="onRowContextmenu"
         @current-change="onCurrentChange"
         @keydown="onTableKeydown"
+        @selection-change="onSelectionChange"
+        @sort-change="onSortChange"
       >
-        <el-table-column prop="barcode" label="资产编码" min-width="150" show-overflow-tooltip />
-        <el-table-column prop="name" label="资产名称" min-width="170" show-overflow-tooltip />
-        <el-table-column prop="sn" label="序列号" min-width="130" show-overflow-tooltip :formatter="formatText" />
-        <el-table-column prop="spec" label="细则" min-width="140" show-overflow-tooltip :formatter="formatText" />
-        <el-table-column label="状态" width="90" align="center">
-          <template #default="{ row }">
-            <el-tag :type="ASSET_STATUS_META[row.status as AssetStatus].tagType" effect="light">
-              {{ ASSET_STATUS_META[row.status as AssetStatus].label }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="categoryName" label="分类" min-width="110" show-overflow-tooltip :formatter="formatText" />
-        <el-table-column prop="modelName" label="型号" min-width="120" show-overflow-tooltip :formatter="formatText" />
-        <el-table-column prop="locationName" label="当前位置" min-width="130" show-overflow-tooltip :formatter="formatText" />
-        <el-table-column label="使用人" width="100" align="center">
-          <template #default="{ row }">{{ userText(row) }}</template>
-        </el-table-column>
-        <el-table-column prop="companyName" label="归属公司" min-width="160" show-overflow-tooltip :formatter="formatText" />
-        <el-table-column prop="purchaseDate" label="购置日期" width="110" :formatter="formatText" />
+        <el-table-column type="selection" width="46" fixed="left" :reserve-selection="true" />
+        <template v-for="col in visibleColumns" :key="col.key">
+          <el-table-column
+            v-if="col.key === 'barcode'"
+            prop="barcode" label="资产编码" min-width="150" sortable="custom" show-overflow-tooltip
+          />
+          <el-table-column
+            v-else-if="col.key === 'name'"
+            prop="name" label="资产名称" min-width="170" sortable="custom" show-overflow-tooltip
+          />
+          <el-table-column
+            v-else-if="col.key === 'sn'"
+            prop="sn" label="序列号" min-width="130" show-overflow-tooltip :formatter="formatText"
+          />
+          <el-table-column
+            v-else-if="col.key === 'spec'"
+            prop="spec" label="细则" min-width="140" show-overflow-tooltip :formatter="formatText"
+          />
+          <el-table-column v-else-if="col.key === 'status'" label="状态" width="100" align="center" sortable="custom" prop="status">
+            <template #default="{ row }">
+              <el-tag :type="ASSET_STATUS_META[row.status as AssetStatus].tagType" effect="light">
+                {{ ASSET_STATUS_META[row.status as AssetStatus].label }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column
+            v-else-if="col.key === 'categoryName'"
+            prop="categoryName" label="分类" min-width="110" show-overflow-tooltip :formatter="formatText"
+          />
+          <el-table-column
+            v-else-if="col.key === 'modelName'"
+            prop="modelName" label="型号" min-width="120" show-overflow-tooltip :formatter="formatText"
+          />
+          <el-table-column
+            v-else-if="col.key === 'locationName'"
+            prop="locationName" label="当前位置" min-width="130" show-overflow-tooltip :formatter="formatText"
+          />
+          <el-table-column v-else-if="col.key === 'user'" label="使用人" width="100" align="center">
+            <template #default="{ row }">{{ userText(row) }}</template>
+          </el-table-column>
+          <el-table-column
+            v-else-if="col.key === 'companyName'"
+            prop="companyName" label="归属公司" min-width="160" show-overflow-tooltip :formatter="formatText"
+          />
+          <el-table-column
+            v-else-if="col.key === 'purchaseDate'"
+            prop="purchaseDate" label="购置日期" width="110" sortable="custom" :formatter="formatText"
+          />
+        </template>
         <el-table-column label="操作" width="170" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openDetail(row)">详情</el-button>
@@ -465,6 +630,43 @@ const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown
         </el-table-column>
       </el-table>
 
+      <!-- 窄屏（≤768px）：表格降级为卡片列表，避免横向滚动崩溃 -->
+      <div v-else v-loading="loading" class="asset-cards">
+        <div v-if="!assets.length" class="cards-empty">暂无资产数据</div>
+        <div
+          v-for="row in assets"
+          :key="row.id"
+          class="asset-card"
+          @click="openDetail(row)"
+          @contextmenu.prevent="onRowContextmenu(row, null, $event)"
+        >
+          <div class="card-head">
+            <span class="card-name">{{ row.name }}</span>
+            <el-tag :type="ASSET_STATUS_META[row.status as AssetStatus].tagType" effect="light">
+              {{ ASSET_STATUS_META[row.status as AssetStatus].label }}
+            </el-tag>
+          </div>
+          <div class="card-barcode">{{ row.barcode }}</div>
+          <div class="card-meta">
+            <span>分类：{{ row.categoryName || '—' }}</span>
+            <span>位置：{{ row.locationName || '—' }}</span>
+            <span>使用人：{{ userText(row) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 浮动批量操作条：勾选后出现 -->
+      <transition name="batch-bar-slide">
+        <div v-if="selectedRows.length" class="batch-bar">
+          <span class="batch-bar__count">已选 {{ selectedRows.length }} 项</span>
+          <el-button size="small" @click="exportSelected">导出选中</el-button>
+          <el-button size="small" type="danger" :loading="batchDiscarding" @click="handleBatchDiscard">
+            批量报废{{ selectedRows.filter(canDiscard).length ? `（${selectedRows.filter(canDiscard).length}）` : '' }}
+          </el-button>
+          <el-button size="small" text @click="clearSelection">取消选择</el-button>
+        </div>
+      </transition>
+
       <!-- 分页（服务端分页） -->
       <div class="pagination">
         <span class="pagination-info">共 {{ total }} 条</span>
@@ -472,7 +674,7 @@ const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
           :total="total"
-          :page-sizes="[10, 20, 50, 100]"
+          :page-sizes="[10, 20, 50, 100, 200]"
           layout="sizes, prev, pager, next"
           background
         />
@@ -627,5 +829,109 @@ const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown
 :deep(.el-table):focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: -2px;
+}
+
+/* ---------------- 浮动批量操作条 ---------------- */
+.batch-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--color-bg-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.batch-bar__count {
+  font-size: var(--text-sm);
+  color: var(--color-text-1);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.batch-bar-slide-enter-active,
+.batch-bar-slide-leave-active {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.batch-bar-slide-enter-from,
+.batch-bar-slide-leave-to {
+  transform: translateX(-50%) translateY(16px);
+  opacity: 0;
+}
+
+/* ---------------- 窄屏卡片列表 ---------------- */
+.asset-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 120px;
+}
+
+.cards-empty {
+  padding: 32px 0;
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--color-text-4);
+}
+
+.asset-card {
+  background: var(--color-bg-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 12px 16px;
+  cursor: pointer;
+}
+
+.asset-card:active {
+  background: var(--color-bg-3);
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.card-name {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-barcode {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  margin: 4px 0;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+}
+
+.card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-xs);
+  color: var(--color-text-2);
+}
+
+/* 窄屏：搜索框占满一行，筛选下拉收窄 */
+@media (max-width: 768px) {
+  .search-box {
+    width: 100%;
+  }
+
+  .filter-select {
+    width: 128px;
+  }
 }
 </style>

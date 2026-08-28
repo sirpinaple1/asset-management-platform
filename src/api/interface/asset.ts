@@ -102,6 +102,10 @@ export interface AssetPageQuery {
   adminUserId?: number
   /** 关键词（资产编码/名称/序列号模糊匹配） */
   keyword?: string
+  /** 排序字段（camelCase 属性名：barcode/name/purchaseDate 等，待后端支持） */
+  orderBy?: string
+  /** 排序方向 */
+  orderDir?: 'asc' | 'desc'
 }
 
 /** 资产操作日志（AssetLogResp：新增/领用/归还/调拨/实物信息变更/盘点处理/报废） */

@@ -34,6 +34,10 @@ interface Options<T extends { id: number }> {
   onCopyRow: (row: T) => void
   onDeleteRow: (row: T) => void
   onBatchDelete: () => void
+  /** Enter 打开行（缺省回落到编辑） */
+  onOpenRow?: (row: T) => void
+  /** Space 切换行勾选（页面有选择列时传入） */
+  onSpaceRow?: (row: T) => void
   /** 自定义右键菜单项（缺省：编辑/复制信息/删除） */
   ctxMenuItems?: ContextMenuItem[]
   /** 内置 key（edit/copy/delete）之外的自定义菜单项回调 */
@@ -95,7 +99,14 @@ export function useListInteractions<T extends { id: number }>(options: Options<T
       const row = pageRows.value[currentRowIndex]
       if (row) {
         e.preventDefault()
-        options.onEditRow(row)
+        ;(options.onOpenRow ?? options.onEditRow)(row)
+      }
+    } else if (e.key === ' ' || e.code === 'Space') {
+      /* Space：切换当前行勾选（多选批量场景，参考 Airtable/Notion DB） */
+      const row = pageRows.value[currentRowIndex]
+      if (row && options.onSpaceRow) {
+        e.preventDefault()
+        options.onSpaceRow(row)
       }
     }
   }
