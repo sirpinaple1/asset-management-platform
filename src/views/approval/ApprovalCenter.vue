@@ -89,18 +89,18 @@ watch(keyword, (val) => {
 })
 onBeforeUnmount(() => searchTimer && clearTimeout(searchTimer))
 
-/* ---------------- 前端过滤 + 分页（待我处理分 TO_ME / SHARED_POOL 两池） ---------------- */
+/* ---------------- 前端过滤 + 分页（待我处理分 directed / pool 两池） ---------------- */
 const PAGE_SIZE = 10
 const currentPage = ref(1)
 
 const todoToMe = computed<ApprovalItem[]>(() =>
   items.value.filter(
-    (it) => isTodoFor(it, meUserId.value) && todoBucketOf(it, meUserId.value) === 'TO_ME',
+    (it) => isTodoFor(it, meUserId.value) && todoBucketOf(it, meUserId.value) === 'directed',
   ),
 )
 const todoSharedPool = computed<ApprovalItem[]>(() =>
   items.value.filter(
-    (it) => isTodoFor(it, meUserId.value) && todoBucketOf(it, meUserId.value) === 'SHARED_POOL',
+    (it) => isTodoFor(it, meUserId.value) && todoBucketOf(it, meUserId.value) === 'pool',
   ),
 )
 
@@ -285,10 +285,7 @@ const statusTagOf = (row: ApprovalItem) => approvalStatusTag(row)
 /** 定向标签：待我处理 tab 下按 assignee 展示，@我 或 指定给xxx 或共享池 */
 const todoBucketTag = (row: ApprovalItem) => {
   const bucket = todoBucketOf(row, meUserId.value)
-  if (bucket === 'TO_ME') return { label: '指定处理人是我', type: 'warning' as const }
-  if (row.assigneeUserId && row.assigneeUserName) {
-    return { label: `定向给：${row.assigneeUserName}`, type: 'info' as const }
-  }
+  if (bucket === 'directed') return { label: '指定处理人是我', type: 'warning' as const }
   return { label: '共享池', type: 'info' as const }
 }
 

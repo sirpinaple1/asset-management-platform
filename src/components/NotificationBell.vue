@@ -8,7 +8,6 @@ import type {
   NotificationItem,
 } from '@/api/interface/notification'
 import { NOTIFICATION_CATEGORY_META } from '@/api/interface/notification'
-import { APPROVAL_BIZ_META } from '@/api/interface/approval'
 
 /**
  * 通知铃铛（右上角）：
@@ -115,16 +114,23 @@ const categoryLabel = (c: NotificationCategory) => NOTIFICATION_CATEGORY_META[c]
 /* ---------------- 点击单条：标记已读 + 深链跳转 ---------------- */
 const actingId = ref<number>()
 
+/** 单据类型 → 列表页路径映射（含审批四类 + 盘点） */
+const BIZ_LIST_PATHS: Record<string, string> = {
+  RECEIVE: '/receipts/receive',
+  BORROW: '/receipts/borrow',
+  TRANSFER: '/transfers',
+  CHANGE: '/changes',
+  STOCKTAKE: '/stocktakes',
+}
+
 const jumpPath = (row: NotificationItem) => {
-  if (row.refOrderBiz && APPROVAL_BIZ_META[row.refOrderBiz as keyof typeof APPROVAL_BIZ_META]) {
-    const { listPath } =
-      APPROVAL_BIZ_META[row.refOrderBiz as keyof typeof APPROVAL_BIZ_META]
-    if (row.refOrderId) {
-      return { path: listPath, query: { id: String(row.refOrderId) } }
-    }
-    return { path: listPath }
+  if (!row.refOrderBiz) return null
+  const listPath = BIZ_LIST_PATHS[row.refOrderBiz]
+  if (!listPath) return null
+  if (row.refOrderId) {
+    return { path: listPath, query: { id: String(row.refOrderId) } }
   }
-  return null
+  return { path: listPath }
 }
 
 const handleClick = async (row: NotificationItem) => {

@@ -393,21 +393,6 @@ const formatPercent = (p: number) => {
                         fill="none"
                         :stroke="pieColor(seg.color)"
                         stroke-width="12"
-                        stroke-dasharray="263.89"
-                        :stroke-dashoffset="0"
-                        transform="rotate(-90 50 50)"
-                        style="pointer-events: none"
-                      />
-                      <!-- 第二个叠层，用于按 dashArray 分块渲染（避免 SVG 渲染歧义） -->
-                      <circle
-                        v-for="seg in pieSegments"
-                        :key="'p2-' + seg.status"
-                        cx="50"
-                        cy="50"
-                        r="42"
-                        fill="none"
-                        :stroke="pieColor(seg.color)"
-                        stroke-width="12"
                         :stroke-dasharray="seg.dashArray"
                         :stroke-dashoffset="seg.dashOffset"
                         :stroke-linecap="'butt'"

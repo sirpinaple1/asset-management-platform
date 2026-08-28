@@ -48,8 +48,10 @@ export type TodoBucket = 'directed' | 'pool'
  * - assigneeUserId = me   → directed
  * - assigneeUserId != me 但不为空 → 不属于我（调用方通常已过滤）
  * - 其他情况 → pool
+ * meUserId 为 undefined 时返回 pool（调用方应已用 isTodoFor 过滤）。
  */
-export function todoBucketOf(item: ApprovalItem, meUserId: number): TodoBucket {
+export function todoBucketOf(item: ApprovalItem, meUserId?: number): TodoBucket {
+  if (meUserId === undefined) return 'pool'
   return item.assigneeUserId === meUserId ? 'directed' : 'pool'
 }
 
