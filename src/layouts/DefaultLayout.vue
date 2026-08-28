@@ -167,15 +167,7 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
         <div class="sidebar-spacer"></div>
 
         <div class="bottom-nav">
-          <el-tooltip content="通知（待接入）" placement="right" :show-after="300">
-            <div class="bottom-nav-item">
-              <span class="red-dot"></span>
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M8 17C8 18.1046 8.89543 19 10 19C11.1046 19 12 18.1046 12 17" stroke="#86909C" stroke-width="1.5" />
-                <path d="M15 12V8C15 5.23858 12.7614 3 10 3C7.23858 3 5 5.23858 5 8V12L3 14H17L15 12Z" stroke="#86909C" stroke-width="1.5" stroke-linejoin="round" />
-              </svg>
-            </div>
-          </el-tooltip>
+          <NotificationBell class="bottom-nav-bell" />
           <el-tooltip content="帮助（待接入）" placement="right" :show-after="300">
             <div class="bottom-nav-item">
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -473,6 +465,14 @@ const navStroke = (active: boolean) => (active ? '#FFFFFF' : '#86909C')
   align-items: center;
   gap: 8px;
   padding-bottom: 16px;
+}
+
+.bottom-nav-bell {
+  width: 64px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .bottom-nav-item {
