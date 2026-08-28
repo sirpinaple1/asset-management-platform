@@ -28,6 +28,9 @@ public class AssetExportRow {
     @ExcelProperty("序列号")
     private String sn;
 
+    @ExcelProperty("细则")
+    private String spec;
+
     @ExcelProperty("分类")
     private String categoryName;
 
@@ -71,6 +74,7 @@ public class AssetExportRow {
             row.setBarcode(entity.getBarcode());
             row.setName(entity.getName());
             row.setSn(entity.getSn());
+            row.setSpec(entity.getSpec());
             row.setCategoryName(entity.getCategoryName());
             row.setModelName(entity.getModelName());
             row.setSupplierName(entity.getSupplierName());

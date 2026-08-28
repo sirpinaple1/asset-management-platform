@@ -260,19 +260,15 @@ public class AssetServiceImpl implements AssetService {
     /**
      * 生成资产编码：分类前缀-yyyyMMdd-4位序号（如 SKSCDM-20260821-0001）。
      * 前缀取 asset_category.barcode_prefix（沿用旧系统编码约定，见 M08 迁移文档），
-     * 分类未配置前缀或未选分类时回退 SK；日期段与旧资产编码（前缀-序号）命名空间隔离，
-     * M08 历史迁移 upsert 不冲突。序号取号与 ARE/BOR 单号同模式：
+     * 分类自身未配置前缀时沿 parent 链向上继承最近的大类前缀
+     * （V20260832 两级分类后，资产直接挂大类时用大类前缀如 SKBG/SKSC，
+     * 不至于回退 SK）；全链为空或未选分类时回退 SK；日期段与旧资产编码
+     * （前缀-序号）命名空间隔离，M08 历史迁移 upsert 不冲突。
+     * 序号取号与 ARE/BOR 单号同模式：
      * likeRight + orderByDesc + LIMIT 1 FOR UPDATE 锁定读串行，uk_asset_barcode 兜底。
      */
     private String generateBarcode(Long categoryId) {
-        String prefix = "SK";
-        if (categoryId != null) {
-            Category category = categoryMapper.selectById(categoryId);
-            if (category != null && category.getBarcodePrefix() != null
-                    && !category.getBarcodePrefix().isBlank()) {
-                prefix = category.getBarcodePrefix();
-            }
-        }
+        String prefix = resolveBarcodePrefix(categoryId);
         String datePart = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         String scope = prefix + "-" + datePart + "-";
         Asset latest = assetMapper.selectOne(new LambdaQueryWrapper<Asset>()
@@ -285,6 +281,26 @@ public class AssetServiceImpl implements AssetService {
             next = Integer.parseInt(latest.getBarcode().substring(scope.length())) + 1;
         }
         return scope + String.format("%04d", next);
+    }
+
+    /**
+     * 解析分类编码前缀：分类自身 barcode_prefix 为空时沿 parent 链向上取最近的非空值，
+     * 全链为空或未选分类回退 SK。分类树强制两级（CategoryServiceImpl 校验），
+     * 深度上限仅作防御（页面数据异常时不死循环）。
+     */
+    private String resolveBarcodePrefix(Long categoryId) {
+        Long id = categoryId;
+        for (int depth = 0; id != null && depth < 5; depth++) {
+            Category category = categoryMapper.selectById(id);
+            if (category == null) {
+                break;
+            }
+            if (category.getBarcodePrefix() != null && !category.getBarcodePrefix().isBlank()) {
+                return category.getBarcodePrefix();
+            }
+            id = category.getParentId();
+        }
+        return "SK";
     }
 
     private void validateBarcodeUnique(String barcode, Long excludeId) {

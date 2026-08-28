@@ -19,6 +19,9 @@ public class AssetResp {
     private String name;
     private String sn;
 
+    /** 细则（同品牌型号的配置差异，如内存大小） */
+    private String spec;
+
     /** 状态编码（IDLE/IN_USE/PENDING_CONFIRM/DISCARD） */
     private String status;
 
@@ -53,6 +56,7 @@ public class AssetResp {
         resp.setBarcode(entity.getBarcode());
         resp.setName(entity.getName());
         resp.setSn(entity.getSn());
+        resp.setSpec(entity.getSpec());
         resp.setStatus(entity.getStatus());
         resp.setStatusLabel(AssetStatus.of(entity.getStatus()).getLabel());
         resp.setCategoryId(entity.getCategoryId());

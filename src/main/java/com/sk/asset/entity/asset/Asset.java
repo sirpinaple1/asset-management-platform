@@ -25,6 +25,9 @@ public class Asset {
     /** 序列号（SN） */
     private String sn;
 
+    /** 细则（同品牌型号的配置差异，如内存大小） */
+    private String spec;
+
     /** 状态：IDLE-闲置 IN_USE-在用 DISCARD-报废 PENDING_CONFIRM-待确认（对应 AssetStatus 枚举） */
     private String status;
 

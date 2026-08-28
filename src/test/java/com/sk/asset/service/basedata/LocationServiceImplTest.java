@@ -1,6 +1,7 @@
 package com.sk.asset.service.basedata;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.sk.asset.common.BusinessException;
 import com.sk.asset.entity.basedata.Location;
 import com.sk.asset.mapper.basedata.LocationMapper;
 import com.sk.asset.service.basedata.impl.LocationServiceImpl;
@@ -100,5 +101,122 @@ class LocationServiceImplTest {
 
         // Then
         verify(locationMapper, times(1)).insert(location);
+    }
+
+    @Test
+    void save_shouldRejectDuplicateNameInSameLevel() {
+        Location parent = new Location();
+        parent.setId(1L);
+        parent.setName("森科");
+        parent.setPath("/1/");
+
+        Location location = new Location();
+        location.setName("森科物料仓");
+        location.setParentId(1L);
+
+        // validateParent 先于重名校验执行，需打桩父节点存在
+        when(locationMapper.selectById(1L)).thenReturn(parent);
+        when(locationMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> locationService.save(location));
+        assertEquals(400, ex.getCode());
+        assertTrue(ex.getMessage().contains("同级已存在同名位置"));
+        verify(locationMapper, never()).insert(any(Location.class));
+    }
+
+    @Test
+    void save_shouldGenerateCodeFromIdWhenNotSpecified() {
+        Location location = new Location();
+        location.setName("新位置");
+
+        // insert 回填主键（模拟 MyBatis-Plus IdType.AUTO 行为）
+        when(locationMapper.insert(location)).thenAnswer(inv -> {
+            location.setId(7L);
+            return 1;
+        });
+
+        locationService.save(location);
+
+        assertEquals("LOC7", location.getCode());
+        assertEquals("/7/", location.getPath());
+        verify(locationMapper, times(1)).updateById(location);
+    }
+
+    @Test
+    void update_shouldRejectDuplicateNameInSameLevel() {
+        Location existing = new Location();
+        existing.setId(2L);
+        existing.setName("物料仓");
+        existing.setParentId(1L);
+        existing.setPath("/1/2/");
+
+        Location update = new Location();
+        update.setId(2L);
+        update.setName("设备仓");
+        update.setParentId(1L);
+
+        when(locationMapper.selectById(2L)).thenReturn(existing);
+        // selectCount：同级重名校验（排除自己后仍有 1 条同名）
+        when(locationMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> locationService.updateById(update));
+        assertEquals(400, ex.getCode());
+        assertTrue(ex.getMessage().contains("同级已存在同名位置"));
+        verify(locationMapper, never()).updateById(any(Location.class));
+    }
+
+    @Test
+    void update_shouldKeepExistingCodeWhenRequestCodeNull() {
+        Location existing = new Location();
+        existing.setId(2L);
+        existing.setName("物料仓");
+        existing.setParentId(1L);
+        existing.setPath("/1/2/");
+        existing.setCode("MATERIAL_WH");
+
+        Location update = new Location();
+        update.setId(2L);
+        update.setName("物料仓B");
+        update.setParentId(1L);
+
+        when(locationMapper.selectById(2L)).thenReturn(existing);
+        when(locationMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+
+        locationService.updateById(update);
+
+        // 前端契约不提交 code：库中原编码保持
+        assertEquals("MATERIAL_WH", update.getCode());
+        verify(locationMapper, times(1)).updateById(update);
+    }
+
+    @Test
+    void delete_shouldRejectWhenHasChildren() {
+        Location existing = new Location();
+        existing.setId(1L);
+        existing.setName("森科");
+
+        when(locationMapper.selectById(1L)).thenReturn(existing);
+        when(locationMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(2L);
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> locationService.deleteById(1L));
+        assertEquals(400, ex.getCode());
+        assertTrue(ex.getMessage().contains("存在子位置"));
+        verify(locationMapper, never()).deleteById(any(Long.class));
+    }
+
+    @Test
+    void delete_shouldRejectWhenReferencedByAsset() {
+        Location existing = new Location();
+        existing.setId(1L);
+        existing.setName("森科物料仓");
+
+        when(locationMapper.selectById(1L)).thenReturn(existing);
+        when(locationMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+        when(locationMapper.countAssetRefs(1L)).thenReturn(5L);
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> locationService.deleteById(1L));
+        assertEquals(400, ex.getCode());
+        assertTrue(ex.getMessage().contains("已被资产引用"));
+        verify(locationMapper, never()).deleteById(any(Long.class));
     }
 }

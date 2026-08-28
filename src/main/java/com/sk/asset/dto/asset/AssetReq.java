@@ -26,6 +26,10 @@ public class AssetReq {
     @Size(max = 100, message = "序列号长度不能超过 100")
     private String sn;
 
+    /** 细则（同品牌型号的配置差异，如内存大小） */
+    @Size(max = 500, message = "细则长度不能超过 500")
+    private String spec;
+
     private Long categoryId;
     private Long modelId;
     private Long supplierId;
@@ -61,6 +65,7 @@ public class AssetReq {
         // barcode 不拷贝：新增编码由 AssetServiceImpl.save 生成，客户端传入即忽略
         entity.setName(this.name);
         entity.setSn(this.sn);
+        entity.setSpec(this.spec);
         entity.setCategoryId(this.categoryId);
         entity.setModelId(this.modelId);
         entity.setSupplierId(this.supplierId);
@@ -81,6 +86,7 @@ public class AssetReq {
         entity.setBarcode(this.barcode);
         entity.setName(this.name);
         entity.setSn(this.sn);
+        entity.setSpec(this.spec);
         entity.setCategoryId(this.categoryId);
         entity.setModelId(this.modelId);
         entity.setSupplierId(this.supplierId);
