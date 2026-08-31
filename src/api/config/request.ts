@@ -1,4 +1,4 @@
-import axios, { type AxiosResponse } from 'axios'
+import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { ElMessage } from 'element-plus'
 import type { Result } from '@/api/interface'
 import { clearToken, getToken, redirectToAuthCenter } from '@/utils/token'
@@ -37,7 +37,9 @@ service.interceptors.response.use(
     const body = response.data
     // 业务失败：HTTP 200 但 code != 200（asset-backend 常规业务错误）
     if (body.code !== 200) {
-      ElMessage.error(body.message || '请求失败')
+      if (!(response.config as RequestConfig).skipErrorToast) {
+        ElMessage.error(body.message || '请求失败')
+      }
       return Promise.reject(new Error(body.message || '请求失败'))
     }
     return response
@@ -45,6 +47,7 @@ service.interceptors.response.use(
   (error) => {
     const status = error.response?.status
     const message: string = error.response?.data?.message || ''
+    const skipErrorToast = (error.config as RequestConfig | undefined)?.skipErrorToast
 
     if (status === 401) {
       // token 无效/过期：清除本地态并跳回 auth-center 登录页
@@ -54,19 +57,24 @@ service.interceptors.response.use(
         ElMessage.error(message || '登录已失效，请重新登录')
         redirectToAuthCenter()
       }
-    } else if (status === 403) {
-      ElMessage.error(message || '暂无访问权限')
-    } else if (status === 503) {
-      ElMessage.error(message || '鉴权服务暂不可用，请稍后重试')
-    } else {
-      ElMessage.error(message || error.message || '网络异常，请稍后重试')
+    } else if (!skipErrorToast) {
+      if (status === 403) {
+        ElMessage.error(message || '暂无访问权限')
+      } else if (status === 503) {
+        ElMessage.error(message || '鉴权服务暂不可用，请稍后重试')
+      } else {
+        ElMessage.error(message || error.message || '网络异常，请稍后重试')
+      }
     }
     return Promise.reject(error)
   }
 )
 
+/** 扩展配置：skipErrorToast=true 时静默失败，不弹全局错误提示（版本信息探测等非关键请求） */
+type RequestConfig = AxiosRequestConfig & { skipErrorToast?: boolean }
+
 /** 请求泛型封装：直接返回 Result.data */
-export async function request<T>(config: Parameters<typeof service.request>[0]): Promise<T> {
+export async function request<T>(config: RequestConfig): Promise<T> {
   const response = await service.request<Result<T>>(config)
   return response.data.data
 }

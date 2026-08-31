@@ -7,6 +7,14 @@ import { useTabsStore } from '@/stores/tabs'
 import TabBar from '@/components/TabBar.vue'
 import NotificationBell from '@/components/NotificationBell.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
+import {
+  FRONTEND_VERSION,
+  RELEASE_DATE,
+  CHANGELOG,
+  CREDIT,
+  fetchBackendVersion,
+  type BackendVersion,
+} from '@/version'
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -83,6 +91,23 @@ const toggleSection = (key: string) => {
 /** 占位菜单点击提示 */
 const comingSoon = () => {
   import('element-plus').then(({ ElMessage }) => ElMessage.info('功能建设中，敬请期待'))
+}
+
+/** 版本信息面板（左下角帮助问号）：前端版本本地直渲，后端版本打开时拉一次 */
+const versionVisible = ref(false)
+const backendVersion = ref<BackendVersion | null>(null)
+const backendLoading = ref(false)
+
+const openVersionPanel = () => {
+  versionVisible.value = true
+  backendLoading.value = true
+  fetchBackendVersion()
+    .then((data) => {
+      backendVersion.value = data
+    })
+    .finally(() => {
+      backendLoading.value = false
+    })
 }
 
 /** 顶栏图标色由 .nav-item 的 color（currentColor）控制 */
@@ -185,8 +210,8 @@ const comingSoon = () => {
 
         <div class="bottom-nav">
           <NotificationBell class="bottom-nav-bell" />
-          <el-tooltip content="帮助（待接入）" placement="right" :show-after="300">
-            <div class="bottom-nav-item">
+          <el-tooltip content="版本信息" placement="right" :show-after="300">
+            <div class="bottom-nav-item" @click="openVersionPanel">
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <circle cx="10" cy="10" r="7.5" style="stroke: var(--color-text-4)" stroke-width="1.5" />
                 <path d="M8 8C8 6.89543 8.89543 6 10 6C11.1046 6 12 6.89543 12 8C12 8.73638 11.5977 9.37205 11 9.7324V11" style="stroke: var(--color-text-4)" stroke-width="1.5" stroke-linecap="round" />
@@ -307,6 +332,49 @@ const comingSoon = () => {
 
     <!-- 命令面板（⌘K / Ctrl+K 全局呼出） -->
     <CommandPalette ref="commandPaletteRef" />
+
+    <!-- 版本信息面板（左下角帮助问号呼出，贴左侧滑出） -->
+    <el-drawer
+      v-model="versionVisible"
+      title="版本信息"
+      direction="ltr"
+      size="360px"
+      :append-to-body="true"
+    >
+      <div class="version-panel">
+        <!-- 前端版本：本地常量直渲 -->
+        <section class="version-block">
+          <div class="version-block-head">
+            <span class="version-tag">前端版本</span>
+            <span class="version-num">v{{ FRONTEND_VERSION }}</span>
+          </div>
+          <div class="version-date">{{ RELEASE_DATE }}</div>
+          <ul class="changelog-list">
+            <li v-for="(item, i) in CHANGELOG" :key="i">{{ item }}</li>
+          </ul>
+        </section>
+
+        <el-divider class="version-divider" />
+
+        <!-- 后端版本：打开面板时拉取，失败降级占位 -->
+        <section class="version-block">
+          <div class="version-block-head">
+            <span class="version-tag">后端版本</span>
+            <span v-if="backendVersion" class="version-num">v{{ backendVersion.version }}</span>
+            <span v-else-if="backendLoading" class="version-num version-loading">获取中…</span>
+            <span v-else class="version-num version-fail">后端版本获取失败</span>
+          </div>
+          <template v-if="backendVersion">
+            <div class="version-date">{{ backendVersion.releaseDate }}</div>
+            <ul v-if="backendVersion.changelog?.length" class="changelog-list">
+              <li v-for="(item, i) in backendVersion.changelog" :key="i">{{ item }}</li>
+            </ul>
+          </template>
+        </section>
+
+        <div class="version-credit">{{ CREDIT }}</div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -685,5 +753,87 @@ const comingSoon = () => {
   overflow: auto;
   padding: 24px;
   min-height: 0;
+}
+
+/* 版本信息面板（el-drawer 贴左侧滑出） */
+.version-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.version-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.version-tag {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.version-num {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-primary);
+}
+
+.version-num.version-loading {
+  color: var(--color-text-4);
+}
+
+.version-num.version-fail {
+  color: var(--color-error-text);
+  font-weight: 400;
+}
+
+.version-date {
+  margin-top: 4px;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+.changelog-list {
+  margin: 8px 0 0;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.changelog-list li {
+  position: relative;
+  padding-left: 14px;
+  font-size: var(--text-sm);
+  line-height: 20px;
+  color: var(--color-text-2);
+}
+
+.changelog-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--color-border);
+}
+
+.version-divider {
+  margin: 16px 0;
+}
+
+.version-credit {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border-light);
+  font-size: var(--text-xs);
+  color: var(--color-text-4);
+  text-align: center;
 }
 </style>

@@ -34,6 +34,7 @@
   - CategoryModal：父分类仅一级可选（对齐后端两级上限）；同级重名后端 400 由拦截器展示
   - LocationModal：父位置 el-tree-select（不限层级），编辑时剔除自身及子孙防环
   - 资产 spec 全链：AssetModal 细则输入（maxlength 500 对齐后端 varchar(500)、占位"如：16G内存/512G固态"）、列表列、详情抽屉；AssetQuery 不支持 spec 搜索仅展示；导出"细则"列由后端提供前端零改动
+- [x] **帮助面板版本信息**（08-31）：左下角问号 → el-drawer（贴左侧）前后端版本分开展示——前端版本直渲 `src/version.ts` 常量（唯一来源），后端版本打开时拉一次 `GET /v1/version`，失败显示"后端版本获取失败"占位不弹错；`request` 封装新增 `skipErrorToast` 静默选项；AGENTS.md 建立并写入版本号纪律（每次 push 末位 +1 + CHANGELOG 增补）
 
 ## 工程约定与决策点
 
@@ -57,4 +58,4 @@
 
 ---
 
-**最后更新**：2026-08-28（分类/位置管理页 + 资产细则完成待提交；后端 V20260832 契约核验对齐；补录 M-FE02~07 / M08 三件套 / F3/F4 及修复批次决策点）
+**最后更新**：2026-08-31（帮助面板版本信息完成：src/version.ts 唯一来源 + request skipErrorToast + AGENTS.md 版本号纪律）
