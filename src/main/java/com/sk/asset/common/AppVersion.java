@@ -13,13 +13,15 @@ public final class AppVersion {
     }
 
     /** 后端版本号（语义：功能上线 +1 末位） */
-    public static final String VERSION = "0.1.0";
+    public static final String VERSION = "0.1.1";
 
     /** 发布日期（yyyy-MM-dd） */
     public static final String RELEASE_DATE = "2026-08-31";
 
     /** 本版本新增功能（简要，供前端帮助面板展示） */
     public static final List<String> CHANGELOG = List.of(
+            "钉钉 userid 全公司批量同步：超管一键遍历钉钉通讯录自动绑定，员工无需自报 userid",
+            "修复钉钉审批人身份错乱：userid 重复绑定检测告警，杜绝审批人记录错误",
             "钉钉 OA 审批双向集成：系统建单自动推送钉钉审批，审批结果实时回传推进单据状态机",
             "资产责任归属编排：归还自动带回发放前区域，区域管理员随位置实时解析",
             "两级审批链（部门主管 + 区域仓管）与审批链配置管理",

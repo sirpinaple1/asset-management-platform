@@ -175,8 +175,10 @@ public class UserDirectory {
     /**
      * 钉钉 userid → 内部用户（M10 OA 审批联动：事件 staffId 反查操作人）。
      * 降级语义：未配置连接返回 null（调用方按"无法解析操作人"忽略事件并告警）。
+     * 同一 dd_user_id 绑定多个用户时无法判定真实操作人，返回 null 并告警
+     * （2026-08-31 联调教训：撞绑导致 LIMIT 1 静默取错人，审批人记录错乱）。
      *
-     * @return 内部用户（id/工号/姓名/部门）；未绑定或已删除返回 null
+     * @return 内部用户（id/工号/姓名/部门）；未绑定、重复绑定或已删除返回 null
      */
     public UserResp findByDdUserId(String ddUserId) {
         if (ddUserId == null || ddUserId.isBlank() || !isConfigured()) {
@@ -185,14 +187,21 @@ public class UserDirectory {
         try (Connection conn = openConnection();
              PreparedStatement ps = conn.prepareStatement(
                      "SELECT id, username, name, dept FROM sys_user "
-                             + "WHERE dd_user_id = ? AND deleted = 0 LIMIT 1")) {
+                             + "WHERE dd_user_id = ? AND deleted = 0")) {
             ps.setString(1, ddUserId);
+            List<UserResp> matches = new ArrayList<>();
             try (ResultSet rs = ps.executeQuery()) {
-                return rs.next()
-                        ? new UserResp(rs.getLong("id"), rs.getString("username"),
-                                rs.getString("name"), rs.getString("dept"))
-                        : null;
+                while (rs.next()) {
+                    matches.add(new UserResp(rs.getLong("id"), rs.getString("username"),
+                            rs.getString("name"), rs.getString("dept")));
+                }
             }
+            if (matches.size() > 1) {
+                log.error("钉钉 userid 重复绑定多个内部用户（ddUserId={}，users={}），"
+                        + "无法判定操作人——请清理 sys_user.dd_user_id 撞绑", ddUserId, matches);
+                return null;
+            }
+            return matches.isEmpty() ? null : matches.get(0);
         } catch (SQLException e) {
             log.error("按钉钉 userid 反查用户失败（ddUserId={}）：{}", ddUserId, e.getMessage());
             return null;

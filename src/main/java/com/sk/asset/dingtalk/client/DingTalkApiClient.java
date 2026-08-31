@@ -10,6 +10,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -99,6 +100,55 @@ public class DingTalkApiClient {
         body.put("process_instance_id", processInstanceId);
         JsonNode resp = post("/topapi/processinstance/get", body);
         return resp.path("result");
+    }
+
+    /**
+     * 列子部门（通讯录只读权限；userid 批量同步用）。
+     *
+     * @param parentDeptId 父部门 id（根部门=1）
+     * @return 子部门 id 列表（无子部门返回空）
+     */
+    public List<Long> listSubDeptIds(Long parentDeptId) {
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("dept_id", parentDeptId);
+        JsonNode resp = post("/topapi/v2/department/listsub", body);
+        List<Long> ids = new ArrayList<>();
+        for (JsonNode dept : resp.path("result")) {
+            ids.add(dept.path("dept_id").asLong());
+        }
+        return ids;
+    }
+
+    /**
+     * 按部门分页拉用户（通讯录只读权限；userid 批量同步用）。
+     *
+     * @return 单页结果（users: userid/name/mobile + nextCursor；末页 nextCursor=null）
+     */
+    public DeptUserPage listDeptUsers(Long deptId, Long cursor) {
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("dept_id", deptId);
+        body.put("cursor", cursor == null ? 0L : cursor);
+        body.put("size", 100);
+        JsonNode resp = post("/topapi/v2/user/list", body);
+        JsonNode result = resp.path("result");
+        List<DeptUser> users = new ArrayList<>();
+        for (JsonNode u : result.path("list")) {
+            users.add(new DeptUser(
+                    u.path("userid").asText(""),
+                    u.path("name").asText(""),
+                    u.path("mobile").asText("")));
+        }
+        Long next = result.path("has_more").asBoolean(false)
+                ? result.path("next_cursor").asLong(0) : null;
+        return new DeptUserPage(users, next);
+    }
+
+    /** 钉钉部门用户（userid 批量同步用） */
+    public record DeptUser(String userid, String name, String mobile) {
+    }
+
+    /** 钉钉部门用户分页（nextCursor=null 表示末页） */
+    public record DeptUserPage(List<DeptUser> users, Long nextCursor) {
     }
 
     /** topapi 通用 POST：access_token 走 query 参数，errcode != 0 统一抛异常 */
