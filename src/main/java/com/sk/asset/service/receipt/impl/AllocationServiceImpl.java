@@ -33,6 +33,7 @@ public class AllocationServiceImpl implements AllocationService {
     private final AssetAllocationMapper allocationMapper;
     private final AssetMapper assetMapper;
     private final AssetService assetService;
+    private final com.sk.asset.service.approval.ApprovalConfigService approvalConfigService;
 
     @Override
     public List<AssetAllocation> list(AllocationQuery query) {
@@ -84,12 +85,26 @@ public class AllocationServiceImpl implements AllocationService {
         }
         assetService.changeStatus(allocation.getAssetId(), AssetStatus.IDLE, operatorUserId, "归还", noteText);
 
-        // 资产持有人仍为本记录持有人时清空（期间已转让给他人则不动）
-        assetMapper.update(null, new LambdaUpdateWrapper<Asset>()
+        // B4（2026-08-31 决策）：归还带回位置——资产位置回置到发放前快照（A 区），
+        // 存量记录无快照时回退 home_location_id；两者皆空则位置保持不动。
+        // 接口无位置参数，归还位置完全由快照决定（不可手改）。位置回置同时区域管理员实时解析。
+        Asset asset = assetMapper.selectById(allocation.getAssetId());
+        Long backLocation = allocation.getLocationBefore() != null
+                ? allocation.getLocationBefore()
+                : (asset != null ? asset.getHomeLocationId() : null);
+
+        // 资产持有人仍为本记录持有人时清空（期间已转让给他人则不动）；
+        // 持有人未转移时位置一并回置（转让给他人则位置归新持有人的领用区域管）
+        LambdaUpdateWrapper<Asset> clearHolder = new LambdaUpdateWrapper<Asset>()
                 .eq(Asset::getId, allocation.getAssetId())
                 .eq(Asset::getUserId, allocation.getUserId())
                 .set(Asset::getUserId, null)
-                .set(Asset::getUserDepartment, null));
+                .set(Asset::getUserDepartment, null);
+        if (backLocation != null) {
+            clearHolder.set(Asset::getLocationId, backLocation)
+                    .set(Asset::getAdminUserId, approvalConfigService.keeperUserIdOf(backLocation));
+        }
+        assetMapper.update(null, clearHolder);
     }
 
     /** 批量回填资产编码/名称/序列号 */

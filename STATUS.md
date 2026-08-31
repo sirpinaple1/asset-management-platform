@@ -7,10 +7,11 @@
 ## 当前阶段
 
 **Phase 4 收尾 + 规范对齐**：
-- 后端：B1/B2/B3（定向待办/通知中心/统计聚合）+ M07 盘点 + CI 自动部署均已落地；分类两级结构重构 + 资产"细则"字段（V20260832）代码完成（工作区待提交，测试 400/400）
-- 前端：feat/m02-basedata 已上线分类管理/位置管理页 + 资产"细则"字段（vue-tsc 零错误），后端契约已对齐（2026-08-28 第二批）；审批中心前端 F3/F4 适配仍待做
+- 后端：B1/B2/B3（定向待办/通知中心/统计聚合）+ M07 盘点 + CI 自动部署均已落地；分类两级结构重构 + 资产"细则"字段（V20260832）+ 使用人/管理员姓名实时反查 + **B4 两级审批链 + 审批链配置（V20260833）**代码完成（工作区待提交，测试 449/449）
+- 前端：feat/m02-basedata 已上线分类管理/位置管理页 + 资产"细则"字段（vue-tsc 零错误），后端契约已对齐（2026-08-28 第二批）；B4 前端（审批链配置页/详情抽屉进度/发起弹窗预览）+ 审批中心 F3/F4 适配待做
 - CI/CD：任意分支 push → verify（编译+全量单测）→ 自动部署演练沙箱 193.112.174.178 + Pipeline 页手动一键回滚
-- 待执行：M08 历史数据迁移（POST /api/v1/migration/run）；V20260832 等迁移脚本需在测试库 172.16.5.247 手动执行
+- 待执行：M08 历史数据迁移（POST /api/v1/migration/run）；V20260832/V20260833 等迁移脚本需在测试库 172.16.5.247 手动执行
+- 规划中：**M10 钉钉 OA 审批双向集成**（2026-08-31 设计完成）——[ADR-0007](./docs/adr/0007-钉钉OA审批双向集成.md)（企业内部应用 + 新版 processInstances API + Stream 事件订阅，配置化实验/生产切换）+ [M10 模块 spec](./docs/modules/M10-钉钉OA集成.md)（三条链路：系统建单自动生成钉钉 OA、钉钉审批实时回传推进状态机、钉钉人工发起受理含退库单；oa_instance/oa_event_log 两表 outbox + 幂等）。**入口 A + 事件回传（入口 B 回传侧）代码已落地**（2026-08-31）：V20260834（approval_instance 表 + 三单据 dingtalk_instance_id 列）+ dingtalk 包（DingtalkProperties/DingTalkApiClient/DingTalkTokenClient/DingtalkStreamBootstrap）+ ApprovalSyncServiceImpl（AFTER_COMMIT outbox，降级站内审批）+ ApprovalCallbackServiceImpl（task/instance 事件推进状态机，两级链映射）+ 三单据 create 发布 OaSyncRequestedEvent；编译 + 449 单测全绿。**回传链路验证已补齐**（2026-08-31）：ApprovalCallbackServiceImplTest 19 用例（agree 逐级推进/二级终态/refuse 拒绝/terminate 撤销分发/instance:finish 终态兜底/eventId 幂等/corpId 跨企业校验/操作人无法解析/基础设施异常不外抛）+ ApprovalSyncServiceImplTest 13 用例（总开关关闭/模板未配置静默跳过/审批链未绑定钉钉 FAILED 告警/两级同人合并单节点/两级不同人顺序节点/API 失败降级/已 SYNCED 幂等跳过）；ApprovalCallbackServiceImpl 增加事件到达 INFO 日志（排查 instance:finish 事件未达）；ApprovalSyncServiceImpl 三入口（领用/调拨/变更）增加 alreadySynced 前置幂等检查（模板未配置先短路）；全量 481 单测 BUILD SUCCESS。**实验公司联调全链路打通**（2026-08-31，领用单）：实验公司凭证（appKey=ding10gsbdibezs5kkfv，corpId=dingd7404a40804add6ccecc981432f595ea，agentId=4926800774）+ 领用模板 processCode（PROC-688751E6-...FAC6）配置后，Stream 建连成功；系统建单 ARE202608310003 → outbox 同步 → 钉钉审批创建（5 契约字段正确落入表单：单据编号/资产编号/资产名称/领用区域/事由，模板经三轮调整去掉表格字段改为 5 个独立字段）→ 钉钉 App 审批同意 → `bpms_task_change(agree)` + `bpms_instance_change(agree)` 事件回传 → 状态机推进：单据 PENDING→APPROVED、资产 待确认→IN_USE（user_id 落持有）、approval_instance RUNNING→COMPLETED(result=agree)、站内通知（审批人/发起人）全链路验证通过。**剩余**：钉钉侧建议补开通 `qyapi_aflow_execute` 权限（API 代审批，便于自动化回归）；入口 B（钉钉人工发起受理）未实现。**四模板全链路联调完成**（2026-08-31）：borrow（PROC-3019F7BA-...）/transfer（PROC-023368F2-...）/change（PROC-4BE72E22-...）模板建好并配置，三单（BOR202608310001/ATR202608310002/AOC202608310002）经 API 建单→outbox 同步→钉钉审批→同意→事件回传→状态机推进全部验证通过（借用单 APPROVED+资产 IN_USE；调拨单 COMPLETED+资产归属转移至调入仓；变更单 CONFIRMED+资产位置明细更新）。**联调发现并修复一处缺陷**：调拨单 instance:finish 终审兜底用调入人 confirm，当发起人=调入人时被"不能自确认"业务校验拦截且异常中断导致 approval_instance 终态不落库（停在 RUNNING）；修复为 handleInstanceFinish 内兜底 try-catch（业务拦截记 WARN，终态照常落库，业务推进交由 task:finish 事件，本次实测 task 事件随后正确补位），新增测试 instanceFinishAgree_兜底被业务拦截_终态仍落库，全量 482 单测 BUILD SUCCESS。另确认实验环境数据现状：肖鹏(691)/潘雨松(762) 共用同一 dd_user_id（单人替审手段），findByDdUserId 解析顺序依赖此绑定
 
 ## 已完成
 
@@ -217,6 +218,25 @@
   - 资产 spec：上批已全链贯通（Req/Resp/导出"细则"列），AssetQuery 不支持 spec 搜索（前端仅展示，符合预期）
   - 验证：全量测试 400/400（位置服务 +6 用例、分类服务 +2 用例）
 
+- [x] **资产使用人/管理员姓名实时反查**（2026-08-28 第三批，工作区待提交，测试 404/404）：
+  - 背景：前端资产列表/详情"使用人"显示原始 ID（asset 库不存用户主数据，ADR-0004 跨库无法 JOIN）
+  - UserDirectory 补 `namesByIds(Collection<Long>)`：一条 JDBC `SELECT id,username,name,dept FROM sys_user WHERE id IN (...) AND deleted=0`，IN 分批上限 1000；降级语义对齐约定——未配置连接返回空 Map（名称留空不阻塞列表）、查询失败 500 上抛
+  - AssetResp 新增 `userName`/`adminUserName`；填充位置：fillRelations（page/listBy，userId+adminUserId 合并一次批量反查）+ getById（selectByIdWithRelations JOIN 后单独反查）；未命中/被删除用户 name=null（前端兜底 —）
+  - **修复潜在 NPE**：`Map.of().get(null)` 抛 NPE——闲置资产 userId/adminUserId 为 null 时未配置降级路径会炸；namesByIds 空返回改 `Collections.emptyMap()`（null-key 安全）+ fillUserNames 判空守卫，新用例已覆盖
+  - **userDepartment 口径决策（已定，告知前端）**：保持业务时点快照（领用/调拨/变更确认时写入），**不做实时化**——与 M04/M05/B1 的 department/operator 快照凭证语义一致；userName 实时、userDepartment 快照，两者可能不一致属预期
+
+- [x] **B4 领用/借用单两级审批链 + 审批链配置**（2026-08-28，依据《资产领用与借用操作流程指导》，工作区待提交）：
+  - 迁移 `V20260833__two_level_approval.sql`：
+    - 新表 `approval_config`（config_type/config_key/approver_user_id + uk(type,key) + 逻辑删除，删除时置空 key 释放唯一键对齐 Category 模式）
+    - receive_receipt 加列：approval_step（1=待部门主管审 2=待领料仓管理员审）+ 两级审批人快照（step1/step2_user_id/name/source_key）+ 一级审批时间/意见（step1_at/step1_remark）；存量单 step 回填 1、链快照 NULL → 按旧共享池语义处理（回归保护测试覆盖）
+  - **三个开放问题的后端决策（已告知前端）**：① 两级同人（主管兼仓管）= 合并为一次审批（step 直接 2，一级时间/说明留痕）；② 部门匹配 = 精确优先 + 按路径逐级向上回退（兼容 `/` 与 `-` 两种分隔符，给组织调整留余地）；③ approval_step1_remark 保留（合并留痕已用）
+  - `ApprovalChainResolver`（approval 上下文）：提交时解析两级审批人（一级 DEPT_SUPERVISOR+发起人 sys_user.dept 实时取，二级 WAREHOUSE_KEEPER+领用区域 location_id）；兜底 = 400 阻止提交（一级/二级缺失、审批人已失效、审批人=申请人本人死单防御）+ **REQUIRES_NEW 独立事务告警 systemAdmin**（外层事务回滚告警不丢）；解析结果冻结快照写入单据，人员调动不影响在途单
+  - `ReceiveReceiptServiceImpl` 改造：create（审批链解析替代手选 assignee，assigneeUserId 已废弃忽略；解析失败 400 + 告警；assignee = 当前层级快照审批人——审批中心"待我处理"语义复用零改动）；approve（链单据按 step 分派：一级通过 → step 推进 2 + assignee 物理推进 + 通知二级审批人与发起人进度；二级/合并 → 现有终态逻辑不动）；reject（任一级拒绝整单 REJECTED，通知带拒绝层级）；撤销/存量单逻辑不变
+  - `ApprovalConfigServiceImpl` + `/api/v1/approval-configs` CRUD（**仅 systemAdmin 403 门禁**；校验：类型合法、WAREHOUSE_KEEPER 键=存在的位置 id、审批人存在 UserDirectory、(type,key) 唯一预检 + DuplicateKeyException 兜底转 400"已配置审批人"）；分页 keyword 模糊 + 审批人姓名/位置名称回填（configKeyLabel）
+  - `GET /api/v1/receipts/approval-preview?locationId=`：发起预解析（返回两级审批人姓名 + resolvable/message，解析失败不抛 400 供前端弹窗提示）；列表/详情 Resp 透传 approvalStep/两级审批人姓名/step1At 字段
+  - 测试 449/449 全量通过（新增 45：ApprovalChainResolverTest 11 + ApprovalConfigServiceImplTest 14 + ApprovalConfigControllerTest 11 + ReceiveReceiptServiceImplTest 扩至 35 含链路/合并/兜底/存量回归）
+  - **待跟进**：V20260833 需在测试库 172.16.5.247 手动执行；本地 6006 重启后 Flyway 自动落地；前端分工（配置页/详情抽屉审批链进度/发起弹窗预览）待后端就绪后联调
+
 ## 进行中
 
 - [ ] **M08-A/B 历史数据迁移执行验证**（代码完成 2026-08-24，已提交 76a3604，测试 340/340）：
@@ -264,6 +284,14 @@
 | [0004](./docs/adr/0004-鉴权复用comm_public_basic与SpringBoot3解耦.md) | 鉴权复用 comm_public_basic + HTTP 解耦 + 钉钉 | Accepted |
 | [0005](./docs/adr/0005-架构降级为单模块三层.md) | 单模块三层（Superseded 0002） | Accepted |
 | [0006](./docs/adr/0006-数据库核心表设计.md) | 数据库核心表设计：model中间层/manufacturer+supplier分离/asset_allocation/depreciation_rule | Accepted |
+| [0007](./docs/adr/0007-钉钉OA审批双向集成.md) | 钉钉 OA 审批双向集成（outbox + Stream 回传 + 站内兜底） | Accepted |
+
+### B4 资产责任归属编排决策（2026-08-31，用户确认）
+
+1. **归还带回位置**：`asset_allocation` 增加 `location_before` 发放前位置快照（V20260835）；领用/借用发放时冻结资产当前位置（A 区），归还时资产位置回置快照（存量记录 NULL → 回退 `home_location_id`，两者皆空保持不动）；归还接口无位置参数——**带回位置由快照唯一决定，不可手改**。
+2. **责任归属语义**：有使用人（领用/借用发起人）→ 保管责任在使用人；无使用人（调拨回库等）→ 责任落到对应区域管理员。`asset.admin_user_id` 废弃静态语义，改为**随位置实时解析**（`ApprovalConfigService.keeperUserIdOf(locationId)`，数据源=WAREHOUSE_KEEPER 审批链配置）：领用/借用审批通过、归还回置、调拨确认、变更单改位置四处联动更新。
+3. **审批层级维持两级**（部门主管 + 区域仓管），不加统一经理终审。
+4. **变更单保持高维自由更改能力**（位置/使用人/公司/位置明细随意改，不受"归还带回快照"约束——那是归还链路的专属语义）。
 
 ## 阻塞 / 待决策
 
@@ -291,5 +319,5 @@
 
 ---
 
-**最后更新**：2026-08-28（补登 CI 自动部署演练沙箱 + 一键回滚、OA 方案/数据流转两份文档；分类两级重构 + spec 字段 + 前端契约对齐归档为已完成（工作区待提交）；刷新当前阶段与 Phase 4 待办）
+**最后更新**：2026-08-31（M10 四模板全链路联调完成 + **B4 资产责任归属编排落地**：归还带回位置快照（V20260835）、admin_user_id 随位置实时解析区域管理员、审批维持两级、变更单保持高维自由更改——决策详见"关键决策记录"节）
 **当前阶段负责人**：待指派

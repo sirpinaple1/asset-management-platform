@@ -33,7 +33,10 @@ public class ReceiptApplyReq {
     @NotBlank(message = "领用事由不能为空")
     private String reason;
 
-    /** 指定处理人 ID（可选，NULL=共享池；不能是申请人自己，需存在于 comm_public_basic） */
+    /**
+     * @deprecated 已废弃（V20260833 两级审批链）：审批人由 approval_config 自动路由并在提交时冻结快照，
+     * 本字段提交时忽略（保留字段兼容旧前端报文，前端发起弹窗应改用 approval-preview 预览审批链）
+     */
     @Positive(message = "指定处理人 ID 需为正整数")
     private Long assigneeUserId;
 }

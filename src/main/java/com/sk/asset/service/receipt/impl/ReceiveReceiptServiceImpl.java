@@ -2,8 +2,8 @@ package com.sk.asset.service.receipt.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
-import com.sk.asset.auth.UserDirectory;
 import com.sk.asset.common.BusinessException;
+import com.sk.asset.dto.receipt.ApprovalPreviewResp;
 import com.sk.asset.dto.receipt.ReceiptApplyReq;
 import com.sk.asset.dto.receipt.ReceiptQuery;
 import com.sk.asset.entity.asset.Asset;
@@ -31,9 +31,12 @@ import com.sk.asset.mapper.receipt.ReceiveReceiptMapper;
 import com.sk.asset.mapper.transfer.TransferOrderItemMapper;
 import com.sk.asset.mapper.transfer.TransferOrderMapper;
 import com.sk.asset.service.asset.AssetService;
+import com.sk.asset.service.approval.ApprovalChainResolver;
 import com.sk.asset.service.notification.NotificationService;
 import com.sk.asset.service.receipt.ReceiveReceiptService;
+import com.sk.asset.dingtalk.event.OaSyncRequestedEvent;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,12 +55,23 @@ import java.util.stream.Collectors;
  * 领用与借用共用单据流（type 区分，serial_no 前缀 ARE/BOR）；
  * 资产状态联动统一走 AssetService.changeStatus（合法性校验 + 写日志），
  * 任一资产流转失败整个事务回滚（单据与资产状态保持一致）。
+ *
+ * <p>两级审批链（V20260833，依据《资产领用与借用操作流程指导》）：
+ * 提交时经 ApprovalChainResolver 解析「部门主管 → 领料仓管理员」并冻结快照
+ * （任一级解析不到 400 阻止提交 + 超管告警；解析人=申请人本人同样 400 死单防御）；
+ * 单据状态保持 PENDING，approval_step 区分层级；assignee_user_id 列升级为
+ * "当前审批层级快照审批人"（一级通过后物理推进为二级审批人）——
+ * 列表筛选/B3 统计/审批中心"待我处理"口径零改动。
+ * 存量单（approval_step2_user_id 为 NULL）保持 B1 旧单层审批语义。</p>
  */
 @Service
 @RequiredArgsConstructor
 public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
+
+    /** 两级审批人为同一人时的合并说明（写入 approval_step1_remark，审计可追溯） */
+    private static final String MERGED_STEP_REMARK = "两级审批人为同一人，合并为一次审批";
 
     private final ReceiveReceiptMapper receiptMapper;
     private final ReceiveReceiptItemMapper itemMapper;
@@ -69,15 +83,17 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
     private final ChangeOrderMapper changeOrderMapper;
     private final ChangeOrderItemMapper changeOrderItemMapper;
     private final AssetService assetService;
-    private final UserDirectory userDirectory;
     private final NotificationService notificationService;
+    private final ApprovalChainResolver approvalChainResolver;
+    private final com.sk.asset.service.approval.ApprovalConfigService approvalConfigService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ReceiveReceipt create(ReceiptApplyReq req, Long applicantUserId, String applicantName) {
         ReceiptType type = ReceiptType.of(req.getType());
-        // 0b. 指定处理人校验（B1）：不能是申请人自己（否则单据永远无法审批），需存在于 comm_public_basic
-        validateAssignee(req.getAssigneeUserId(), applicantUserId);
+        // assigneeUserId 已废弃（V20260833）：审批人由审批链配置自动路由并冻结快照
+
         // 去重（前端跨页多选可能重复提交同一资产）
         List<Long> assetIds = req.getAssetIds().stream()
                 .filter(Objects::nonNull)
@@ -92,6 +108,19 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
         if (location == null) {
             throw new BusinessException(400, "领用区域不存在（id=" + req.getLocationId() + "）");
         }
+
+        // 0b. 两级审批链解析（部门主管 → 领料仓管理员，提交时冻结快照）。
+        // 兜底 = 阻止提交：任一级解析不到 / 审批人已失效 / 审批人=申请人本人 → 400，
+        // 同时以独立事务告警 systemAdmin 补配置（告警不随本事务回滚丢失）。
+        ApprovalChainResolver.Resolution resolution = approvalChainResolver.tryResolve(
+                applicantUserId, req.getLocationId(), location.getName());
+        if (!resolution.resolvable()) {
+            approvalChainResolver.alertAdmins(resolution.error(),
+                    displayName(applicantUserId, applicantName) + " 发起" + type.getLabel()
+                            + "，领用区域：" + location.getName());
+            throw new BusinessException(400, resolution.error());
+        }
+        ApprovalChainResolver.ResolvedChain chain = resolution.chain();
 
         // 1. 资产存在性校验
         Map<Long, Asset> assets = assetMapper.selectBatchIds(assetIds).stream()
@@ -161,14 +190,27 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
         // 3. 生成单号（锁定读串行取号，见 generateSerialNo）
         String serialNo = generateSerialNo(type);
 
-        // 4. 写主表 + 明细
+        // 4. 写主表 + 明细（两级审批人快照冻结；两级同一人时 approval_step 直接置 2 合并为一次审批）
         ReceiveReceipt receipt = new ReceiveReceipt();
         receipt.setSerialNo(serialNo);
         receipt.setType(type.name());
         receipt.setStatus(ReceiptStatus.PENDING.name());
         receipt.setApplicantUserId(applicantUserId);
         receipt.setApplicantName(applicantName);
-        receipt.setAssigneeUserId(req.getAssigneeUserId());
+        receipt.setApprovalStep(chain.isMerged() ? 2 : 1);
+        receipt.setApprovalStep1UserId(chain.getStep1UserId());
+        receipt.setApprovalStep1Name(chain.getStep1Name());
+        receipt.setApprovalStep1SourceKey(chain.getStep1SourceKey());
+        receipt.setApprovalStep2UserId(chain.getStep2UserId());
+        receipt.setApprovalStep2Name(chain.getStep2Name());
+        receipt.setApprovalStep2SourceKey(chain.getStep2SourceKey());
+        if (chain.isMerged()) {
+            // 合并审批：一级视为提交时自动通过（时间+说明留审计痕迹），仅需该人一次审批即终态
+            receipt.setApprovalStep1At(LocalDateTime.now());
+            receipt.setApprovalStep1Remark(MERGED_STEP_REMARK);
+        }
+        // assignee = 当前审批层级快照审批人（列表/统计/审批中心"待我处理"据此过滤）
+        receipt.setAssigneeUserId(chain.isMerged() ? chain.getStep2UserId() : chain.getStep1UserId());
         receipt.setDepartment(req.getDepartment());
         receipt.setLocationId(req.getLocationId());
         receipt.setReason(req.getReason());
@@ -186,15 +228,51 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
             assetService.changeStatus(assetId, AssetStatus.PENDING_CONFIRM, applicantUserId, type.getLabel(), note);
         }
 
-        // 6. 定向提交通知处理人（B2；共享池单据无定向接收人，不通知）
-        if (req.getAssigneeUserId() != null) {
-            notificationService.notify(req.getAssigneeUserId(), NotificationType.DOC_SUBMITTED,
-                    displayName(applicantUserId, applicantName) + " 提交的" + type.getLabel()
-                            + "单 " + serialNo + " 待你处理",
-                    type.name(), receipt.getId());
-        }
+        // 6. 通知第一级审批人（B2；两级链单据必通知——审批人已解析且必非申请人）
+        Long firstApproverId = chain.isMerged() ? chain.getStep2UserId() : chain.getStep1UserId();
+        notificationService.notify(firstApproverId, NotificationType.DOC_SUBMITTED,
+                displayName(applicantUserId, applicantName) + " 提交的" + type.getLabel()
+                        + "单 " + serialNo + " 待你审批",
+                type.name(), receipt.getId());
+
+        // 7. 钉钉 OA 同步事件（M10 入口 A：AFTER_COMMIT 消费，失败降级站内审批不回滚）
+        eventPublisher.publishEvent(new OaSyncRequestedEvent(
+                OaSyncRequestedEvent.KIND_RECEIPT, receipt.getId()));
 
         return getById(receipt.getId());
+    }
+
+    @Override
+    public ApprovalPreviewResp previewApprovalChain(Long applicantUserId, String applicantName, Long locationId) {
+        ApprovalPreviewResp resp = new ApprovalPreviewResp();
+        if (locationId == null) {
+            resp.setResolvable(false);
+            resp.setMessage("请先选择领用区域");
+            return resp;
+        }
+        Location location = locationMapper.selectById(locationId);
+        if (location == null) {
+            resp.setResolvable(false);
+            resp.setMessage("领用区域不存在（id=" + locationId + "）");
+            return resp;
+        }
+        ApprovalChainResolver.Resolution resolution = approvalChainResolver.tryResolve(
+                applicantUserId, locationId, location.getName());
+        if (!resolution.resolvable()) {
+            resp.setResolvable(false);
+            resp.setMessage(resolution.error());
+            return resp;
+        }
+        ApprovalChainResolver.ResolvedChain chain = resolution.chain();
+        resp.setResolvable(true);
+        resp.setStep1UserId(chain.getStep1UserId());
+        resp.setStep1UserName(chain.getStep1Name());
+        resp.setStep1SourceKey(chain.getStep1SourceKey());
+        resp.setStep2UserId(chain.getStep2UserId());
+        resp.setStep2UserName(chain.getStep2Name());
+        resp.setStep2SourceKey(chain.getStep2SourceKey());
+        resp.setMerged(chain.isMerged());
+        return resp;
     }
 
     @Override
@@ -243,7 +321,17 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
     public ReceiveReceipt approve(Long id, Long approverUserId, String approverName) {
         ReceiveReceipt receipt = requirePendingReceipt(id);
         requireNotApplicant(receipt, approverUserId);
-        requireAssignee(receipt, approverUserId);
+        if (isChainMode(receipt)) {
+            // 两级链：操作人必须 = 当前 step 快照审批人（403 拦截他人；一级审批人不能审二级）
+            requireChainApprover(receipt, approverUserId);
+            if (Integer.valueOf(1).equals(receipt.getApprovalStep())) {
+                return advanceToStep2(receipt, approverUserId, approverName);
+            }
+            // step=2 → 走下方终态逻辑（合并单提交即 step=2，一次审批即终态）
+        } else {
+            // 存量单（无链快照）：保持 B1 旧语义
+            requireAssignee(receipt, approverUserId);
+        }
 
         List<ReceiveReceiptItem> items = listItems(id);
         String applicantDisplay = displayName(receipt.getApplicantUserId(), receipt.getApplicantName());
@@ -261,16 +349,19 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
             // 资产状态 PENDING_CONFIRM → IN_USE（写日志）
             assetService.changeStatus(item.getAssetId(), AssetStatus.IN_USE, approverUserId,
                     ReceiptType.of(receipt.getType()).getLabel(), note);
-            // 更新资产持有人（使用人/部门快照）+ 位置（领用区域）
+            // 更新资产持有人（使用人/部门快照）+ 位置（领用区域 B）
+            // + 区域管理员随位置实时解析（B4：责任=使用人；无使用人场景落到区域管理员）
             LambdaUpdateWrapper<Asset> assetUpdate = new LambdaUpdateWrapper<Asset>()
                     .eq(Asset::getId, item.getAssetId())
                     .set(Asset::getUserId, receipt.getApplicantUserId())
                     .set(Asset::getUserDepartment, receipt.getDepartment());
             if (receipt.getLocationId() != null) {
-                assetUpdate.set(Asset::getLocationId, receipt.getLocationId());
+                assetUpdate.set(Asset::getLocationId, receipt.getLocationId())
+                        .set(Asset::getAdminUserId,
+                                approvalConfigService.keeperUserIdOf(receipt.getLocationId()));
             }
             assetMapper.update(null, assetUpdate);
-            // 写持有关系（"查现在在谁手里"）
+            // 写持有关系（"查现在在谁手里"），同时冻结发放前位置快照（B4：归还带回 A 区的依据）
             AssetAllocation allocation = new AssetAllocation();
             allocation.setAssetId(item.getAssetId());
             allocation.setUserId(receipt.getApplicantUserId());
@@ -279,6 +370,7 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
             allocation.setDepartment(receipt.getDepartment());
             allocation.setAllocatedAt(LocalDateTime.now());
             allocation.setCompanyId(asset != null ? asset.getCompanyId() : null);
+            allocation.setLocationBefore(asset != null ? asset.getLocationId() : null);
             allocationMapper.insert(allocation);
         }
 
@@ -302,7 +394,15 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
     public ReceiveReceipt reject(Long id, String reason, Long approverUserId, String approverName) {
         ReceiveReceipt receipt = requirePendingReceipt(id);
         requireNotApplicant(receipt, approverUserId);
-        requireAssignee(receipt, approverUserId);
+        String rejectLevelLabel;
+        if (isChainMode(receipt)) {
+            // 两级链：操作人必须 = 当前 step 快照审批人，任一级拒绝整单 REJECTED
+            requireChainApprover(receipt, approverUserId);
+            rejectLevelLabel = rejectLevelLabel(receipt);
+        } else {
+            requireAssignee(receipt, approverUserId);
+            rejectLevelLabel = null;
+        }
 
         List<ReceiveReceiptItem> items = listItems(id);
         ReceiptType type = ReceiptType.of(receipt.getType());
@@ -320,13 +420,66 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
         receipt.setApproveRemark(reason);
         receiptMapper.updateById(receipt);
 
-        // 通知发起人（B2）：含拒绝原因
+        // 通知发起人（B2）：含拒绝原因 + 拒绝层级（两级链单据）
+        String levelPart = rejectLevelLabel != null ? "，" + rejectLevelLabel : "";
         notificationService.notify(receipt.getApplicantUserId(), NotificationType.DOC_REJECTED,
                 "你发起的" + type.getLabel() + "单 " + receipt.getSerialNo()
-                        + " 已拒绝（审批人：" + approverName + "，原因：" + reason + "）",
+                        + " 已拒绝（审批人：" + approverName + levelPart + "，原因：" + reason + "）",
                 receipt.getType(), receipt.getId());
 
         return getById(id);
+    }
+
+    /**
+     * 一级审批通过：approval_step 推进到 2，assignee 物理推进为二级审批人
+     * （列表/统计/审批中心"待我处理"随推进变化），通知二级审批人与发起人。
+     */
+    private ReceiveReceipt advanceToStep2(ReceiveReceipt receipt, Long approverUserId, String approverName) {
+        ReceiptType type = ReceiptType.of(receipt.getType());
+        String applicantDisplay = displayName(receipt.getApplicantUserId(), receipt.getApplicantName());
+
+        receipt.setApprovalStep(2);
+        receipt.setApprovalStep1At(LocalDateTime.now());
+        receipt.setAssigneeUserId(receipt.getApprovalStep2UserId());
+        receiptMapper.updateById(receipt);
+
+        // 通知二级审批人（B2）：待你审批
+        notificationService.notify(receipt.getApprovalStep2UserId(), NotificationType.DOC_SUBMITTED,
+                applicantDisplay + " 的" + type.getLabel() + "单 " + receipt.getSerialNo()
+                        + " 部门主管已通过，待你审批",
+                receipt.getType(), receipt.getId());
+        // 通知发起人（B2）：一级通过进度
+        notificationService.notify(receipt.getApplicantUserId(), NotificationType.DOC_PROGRESS,
+                "你发起的" + type.getLabel() + "单 " + receipt.getSerialNo()
+                        + " 部门主管已通过（审批人：" + approverName + "），待仓管审批",
+                receipt.getType(), receipt.getId());
+        return getById(receipt.getId());
+    }
+
+    /** 拒绝层级标签（通知展示用）：一级=部门主管；二级=领料仓管理员；合并单特殊标注 */
+    private static String rejectLevelLabel(ReceiveReceipt receipt) {
+        boolean merged = Objects.equals(receipt.getApprovalStep1UserId(), receipt.getApprovalStep2UserId());
+        if (Integer.valueOf(1).equals(receipt.getApprovalStep())) {
+            return "一级审批（部门主管）";
+        }
+        return merged ? "合并审批（部门主管兼仓管）" : "二级审批（领料仓管理员）";
+    }
+
+    /** 两级链模式判定：二级审批人快照非空（新提单必有；存量单 NULL 走旧单层语义） */
+    private static boolean isChainMode(ReceiveReceipt receipt) {
+        return receipt.getApprovalStep2UserId() != null;
+    }
+
+    /** 两级链门禁：操作人必须 = 当前 step 的快照审批人（快照冻结，人员调动不影响在途单据） */
+    private void requireChainApprover(ReceiveReceipt receipt, Long operatorUserId) {
+        Long currentApproverId = Integer.valueOf(1).equals(receipt.getApprovalStep())
+                ? receipt.getApprovalStep1UserId() : receipt.getApprovalStep2UserId();
+        String currentApproverName = Integer.valueOf(1).equals(receipt.getApprovalStep())
+                ? receipt.getApprovalStep1Name() : receipt.getApprovalStep2Name();
+        if (operatorUserId == null || !operatorUserId.equals(currentApproverId)) {
+            throw new BusinessException(403, "当前审批层级仅审批人（"
+                    + displayName(currentApproverId, currentApproverName) + "）可操作");
+        }
     }
 
     /**
@@ -366,24 +519,11 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
         }
     }
 
-    /** 指定处理人门禁（B1）：assignee 非空时，审批人必须是 assignee；NULL=共享池保持现状 */
+    /** 指定处理人门禁（B1，存量单）：assignee 非空时，审批人必须是 assignee；NULL=共享池保持现状 */
     private void requireAssignee(ReceiveReceipt receipt, Long operatorUserId) {
         if (receipt.getAssigneeUserId() != null && operatorUserId != null
                 && !operatorUserId.equals(receipt.getAssigneeUserId())) {
             throw new BusinessException(403, "该单据已指定处理人，仅指定处理人可审批");
-        }
-    }
-
-    /** 提交时 assignee 校验（B1）：不能是申请人自己（死单防御），需存在于 comm_public_basic（未配置目录时降级跳过） */
-    private void validateAssignee(Long assigneeUserId, Long applicantUserId) {
-        if (assigneeUserId == null) {
-            return;
-        }
-        if (assigneeUserId.equals(applicantUserId)) {
-            throw new BusinessException(400, "指定处理人不能是申请人自己");
-        }
-        if (!userDirectory.exists(assigneeUserId)) {
-            throw new BusinessException(400, "指定处理人不存在（id=" + assigneeUserId + "）");
         }
     }
 

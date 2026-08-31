@@ -33,7 +33,9 @@ import com.sk.asset.mapper.transfer.TransferOrderMapper;
 import com.sk.asset.service.asset.AssetService;
 import com.sk.asset.service.notification.NotificationService;
 import com.sk.asset.service.transfer.TransferOrderService;
+import com.sk.asset.dingtalk.event.OaSyncRequestedEvent;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -75,6 +77,8 @@ public class TransferOrderServiceImpl implements TransferOrderService {
     private final AssetService assetService;
     private final UserDirectory userDirectory;
     private final NotificationService notificationService;
+    private final com.sk.asset.service.approval.ApprovalConfigService approvalConfigService;
+    private final ApplicationEventPublisher eventPublisher;
 
     // ---- create ----
 
@@ -225,6 +229,10 @@ public class TransferOrderServiceImpl implements TransferOrderService {
                     applicantName + " 发起的调拨单 " + serialNo + " 待你确认",
                     "TRANSFER", order.getId());
         }
+
+        // 钉钉 OA 同步事件（M10 入口 A：AFTER_COMMIT 消费；无调入人的共享池单在同步侧跳过）
+        eventPublisher.publishEvent(new OaSyncRequestedEvent(
+                OaSyncRequestedEvent.KIND_TRANSFER, order.getId()));
 
         return getById(order.getId());
     }
@@ -395,11 +403,14 @@ public class TransferOrderServiceImpl implements TransferOrderService {
                     .set(AssetAllocation::getNote, closureNote));
         }
 
-        // 3. 更新资产归属字段：位置（若填）；持有人按终态写入或清零（回库）
+        // 3. 更新资产归属字段：位置（若填，区域管理员随新位置实时解析，B4）；
+        //    持有人按终态写入或清零（回库，责任落到调入区域管理员）
         LambdaUpdateWrapper<Asset> assetUpdate = new LambdaUpdateWrapper<Asset>()
                 .eq(Asset::getId, assetId);
         if (hasToLocation) {
-            assetUpdate.set(Asset::getLocationId, order.getToLocationId());
+            assetUpdate.set(Asset::getLocationId, order.getToLocationId())
+                    .set(Asset::getAdminUserId,
+                            approvalConfigService.keeperUserIdOf(order.getToLocationId()));
         }
         if (holderTransfer) {
             assetUpdate.set(Asset::getUserId, order.getToUserId())

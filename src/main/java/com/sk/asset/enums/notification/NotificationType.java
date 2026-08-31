@@ -20,7 +20,16 @@ public enum NotificationType {
     DOC_REJECTED("单据已拒绝"),
 
     /** 单据已完成/已执行（通知发起人：调拨确认、变更执行） */
-    DOC_COMPLETED("单据已完成");
+    DOC_COMPLETED("单据已完成"),
+
+    /** 审批进度更新（两级审批链：一级通过，通知发起人与二级审批人） */
+    DOC_PROGRESS("审批进度更新"),
+
+    /** 审批链配置告警（解析失败/配置失效时通知 systemAdmin 补配置） */
+    APPROVAL_CONFIG_ALERT("审批链配置告警"),
+
+    /** 钉钉同步告警（OA 实例创建失败/事件处理异常时通知 systemAdmin，M10） */
+    DINGTALK_SYNC_ALERT("钉钉同步告警");
 
     private final String label;
 

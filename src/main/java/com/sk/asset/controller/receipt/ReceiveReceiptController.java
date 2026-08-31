@@ -3,6 +3,7 @@ package com.sk.asset.controller.receipt;
 import com.sk.asset.auth.AuthContext;
 import com.sk.asset.auth.UserContext;
 import com.sk.asset.common.Result;
+import com.sk.asset.dto.receipt.ApprovalPreviewResp;
 import com.sk.asset.dto.receipt.ReceiptApplyReq;
 import com.sk.asset.dto.receipt.ReceiptQuery;
 import com.sk.asset.dto.receipt.ReceiptRejectReq;
@@ -88,7 +89,19 @@ public class ReceiveReceiptController {
         return Result.ok(ReceiptResp.from(receipt));
     }
 
-    @Operation(summary = "发起领用/借用申请（一次可申请多台资产，申请人取当前登录用户）")
+    @Operation(summary = "发起审批人预览（按当前用户部门 + 领用区域解析两级审批人；解析失败返回 resolvable=false + 提示）")
+    @SecurityRequirement(name = "BearerAuth")
+    @GetMapping("/approval-preview")
+    public Result<ApprovalPreviewResp> approvalPreview(
+            @Parameter(description = "领用区域 ID")
+            @RequestParam Long locationId) {
+        AuthContext user = UserContext.require();
+        ApprovalPreviewResp preview = receiptService.previewApprovalChain(
+                Long.valueOf(user.getUserId()), displayName(user), locationId);
+        return Result.ok(preview);
+    }
+
+    @Operation(summary = "发起领用/借用申请（一次可申请多台资产，申请人取当前登录用户；审批人由审批链配置自动路由并冻结快照）")
     @SecurityRequirement(name = "BearerAuth")
     @PostMapping
     public Result<ReceiptResp> create(@RequestBody @Valid ReceiptApplyReq req) {
@@ -98,7 +111,7 @@ public class ReceiveReceiptController {
         return Result.ok(ReceiptResp.from(created));
     }
 
-    @Operation(summary = "批准（审批人与申请人不能是同一人；资产转在用并写持有记录）")
+    @Operation(summary = "批准（两级链：一级通过推进层级并通知二级审批人，二级通过资产转在用；审批人须匹配当前层级快照）")
     @SecurityRequirement(name = "BearerAuth")
     @PostMapping("/{id}/approve")
     public Result<ReceiptResp> approve(@PathVariable Long id) {
@@ -108,7 +121,7 @@ public class ReceiveReceiptController {
         return Result.ok(ReceiptResp.from(updated));
     }
 
-    @Operation(summary = "拒绝（资产回闲置）")
+    @Operation(summary = "拒绝（任一级拒绝整单 REJECTED，资产回闲置，通知发起人含拒绝层级）")
     @SecurityRequirement(name = "BearerAuth")
     @PostMapping("/{id}/reject")
     public Result<ReceiptResp> reject(@PathVariable Long id,

@@ -33,8 +33,30 @@ public class ReceiptResp {
     /** 申请人姓名（提交时快照，空时前端回退展示用户 ID） */
     private String applicantName;
 
-    /** 指定处理人 ID（NULL=共享池） */
+    /**
+     * 当前处理人 ID（两级链单据 = 当前审批层级快照审批人：一级通过后自动推进为二级审批人；
+     * 存量单保持 B1 旧语义：NULL=共享池）——审批中心"待我处理"据此过滤，前端共享池逻辑零改动
+     */
     private Long assigneeUserId;
+
+    /** 当前审批层级：1=待部门主管审 2=待领料仓管理员审（REJECTED 单保留拒绝时的层级，可据此展示拒绝层级） */
+    private Integer approvalStep;
+
+    private Long approvalStep1UserId;
+
+    /** 一级审批人姓名（部门主管，提交时快照） */
+    private String approvalStep1UserName;
+
+    /** 一级审批通过时间（两级同一人合并审批时=提交时间） */
+    private LocalDateTime approvalStep1At;
+
+    /** 一级审批意见（预留，当前接口无意见入参；合并审批时为合并说明） */
+    private String approvalStep1Remark;
+
+    private Long approvalStep2UserId;
+
+    /** 二级审批人姓名（领料仓管理员，提交时快照；NULL=存量单走旧单层审批） */
+    private String approvalStep2UserName;
 
     private String department;
 
@@ -76,6 +98,13 @@ public class ReceiptResp {
         resp.setApplicantUserId(entity.getApplicantUserId());
         resp.setApplicantName(entity.getApplicantName());
         resp.setAssigneeUserId(entity.getAssigneeUserId());
+        resp.setApprovalStep(entity.getApprovalStep());
+        resp.setApprovalStep1UserId(entity.getApprovalStep1UserId());
+        resp.setApprovalStep1UserName(entity.getApprovalStep1Name());
+        resp.setApprovalStep1At(entity.getApprovalStep1At());
+        resp.setApprovalStep1Remark(entity.getApprovalStep1Remark());
+        resp.setApprovalStep2UserId(entity.getApprovalStep2UserId());
+        resp.setApprovalStep2UserName(entity.getApprovalStep2Name());
         resp.setDepartment(entity.getDepartment());
         resp.setLocationId(entity.getLocationId());
         resp.setLocationName(entity.getLocationName());

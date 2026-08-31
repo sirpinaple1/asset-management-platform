@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sk.asset.common.BusinessException;
+import com.sk.asset.dto.user.UserResp;
 import com.sk.asset.entity.asset.Asset;
 import com.sk.asset.entity.asset.AssetLog;
 import com.sk.asset.entity.basedata.AssetModel;
@@ -35,6 +36,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -74,6 +76,9 @@ class AssetServiceImplTest {
 
     @Mock
     private CompanyMapper companyMapper;
+
+    @Mock
+    private com.sk.asset.auth.UserDirectory userDirectory;
 
     @InjectMocks
     private AssetServiceImpl assetService;
@@ -482,6 +487,44 @@ class AssetServiceImplTest {
         assertEquals("一楼车间", filled.getLocationName());
         assertEquals("物料仓", filled.getHomeLocationName());
         assertEquals("森科五金", filled.getCompanyName());
+    }
+
+    @Test
+    void page_shouldFillUserNamesFromUserDirectory() {
+        Asset a1 = idleAsset(1L, "SKSCDM-0001");
+        a1.setUserId(100L);
+        a1.setAdminUserId(200L);
+        // 200 已被删除/未命中 → adminUserName 置 null（前端兜底 —）
+        Asset a2 = idleAsset(2L, "SKSCDM-0002");
+        a2.setUserId(100L);
+
+        Page<Asset> pageResult = new Page<>(1, 20);
+        pageResult.setRecords(List.of(a1, a2));
+        pageResult.setTotal(2);
+        when(assetMapper.selectPage(any(Page.class), any())).thenReturn(pageResult);
+
+        Map<Long, UserResp> users = Map.of(
+                100L, new UserResp(100L, "SK9802", "张三", "生产部"));
+        when(userDirectory.namesByIds(anyCollection())).thenReturn(users);
+
+        IPage<Asset> result = assetService.page(1, 20, null);
+
+        assertEquals("张三", result.getRecords().get(0).getUserName());
+        assertNull(result.getRecords().get(0).getAdminUserName());
+        assertEquals("张三", result.getRecords().get(1).getUserName());
+    }
+
+    @Test
+    void getById_shouldFillUserNamesAfterJoinQuery() {
+        Asset asset = idleAsset(1L, "SKSCDM-0001");
+        asset.setUserId(100L);
+        when(assetMapper.selectByIdWithRelations(1L)).thenReturn(asset);
+        when(userDirectory.namesByIds(anyCollection()))
+                .thenReturn(Map.of(100L, new UserResp(100L, "SK9802", "张三", "生产部")));
+
+        Asset result = assetService.getById(1L);
+
+        assertEquals("张三", result.getUserName());
     }
 
     @Test

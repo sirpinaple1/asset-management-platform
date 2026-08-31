@@ -3,6 +3,7 @@ package com.sk.asset.service.receipt;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.sk.asset.common.BusinessException;
+import com.sk.asset.dto.receipt.ApprovalPreviewResp;
 import com.sk.asset.dto.receipt.ReceiptApplyReq;
 import com.sk.asset.dto.receipt.ReceiptQuery;
 import com.sk.asset.entity.asset.Asset;
@@ -13,6 +14,7 @@ import com.sk.asset.entity.receipt.ReceiveReceiptItem;
 import com.sk.asset.entity.transfer.TransferOrder;
 import com.sk.asset.entity.transfer.TransferOrderItem;
 import com.sk.asset.enums.asset.AssetStatus;
+import com.sk.asset.enums.notification.NotificationType;
 import com.sk.asset.mapper.asset.AssetMapper;
 import com.sk.asset.mapper.basedata.LocationMapper;
 import com.sk.asset.mapper.receipt.AssetAllocationMapper;
@@ -20,6 +22,7 @@ import com.sk.asset.mapper.receipt.ReceiveReceiptItemMapper;
 import com.sk.asset.mapper.receipt.ReceiveReceiptMapper;
 import com.sk.asset.mapper.transfer.TransferOrderItemMapper;
 import com.sk.asset.mapper.transfer.TransferOrderMapper;
+import com.sk.asset.service.approval.ApprovalChainResolver;
 import com.sk.asset.service.asset.AssetService;
 import com.sk.asset.service.receipt.impl.ReceiveReceiptServiceImpl;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -37,6 +40,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -52,7 +56,16 @@ class ReceiveReceiptServiceImplTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), AssetAllocation.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), TransferOrder.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), TransferOrderItem.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""),
+                com.sk.asset.entity.change.ChangeOrder.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""),
+                com.sk.asset.entity.change.ChangeOrderItem.class);
     }
+
+    private static final Long STEP1_USER = 200L;
+    private static final String STEP1_NAME = "李四";
+    private static final Long STEP2_USER = 300L;
+    private static final String STEP2_NAME = "王五";
 
     @Mock
     private ReceiveReceiptMapper receiptMapper;
@@ -85,10 +98,16 @@ class ReceiveReceiptServiceImplTest {
     private AssetService assetService;
 
     @Mock
-    private com.sk.asset.auth.UserDirectory userDirectory;
+    private com.sk.asset.service.notification.NotificationService notificationService;
 
     @Mock
-    private com.sk.asset.service.notification.NotificationService notificationService;
+    private ApprovalChainResolver approvalChainResolver;
+
+    @Mock
+    private com.sk.asset.service.approval.ApprovalConfigService approvalConfigService;
+
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private ReceiveReceiptServiceImpl receiptService;
@@ -134,6 +153,19 @@ class ReceiveReceiptServiceImplTest {
         when(locationMapper.selectBatchIds(any())).thenReturn(List.of(location()));
     }
 
+    /** 审批链解析成功 stub（一级李四 200 / 二级王五 300，非合并） */
+    private void stubChainResolved() {
+        when(approvalChainResolver.tryResolve(eq(100L), eq(1L), any())).thenReturn(
+                new ApprovalChainResolver.Resolution(chain(false), null));
+    }
+
+    private ApprovalChainResolver.ResolvedChain chain(boolean merged) {
+        return new ApprovalChainResolver.ResolvedChain(
+                STEP1_USER, STEP1_NAME, "资材管理中心/PMC部",
+                merged ? STEP1_USER : STEP2_USER, merged ? STEP1_NAME : STEP2_NAME, "1",
+                merged);
+    }
+
     private ReceiveReceipt pendingReceipt() {
         ReceiveReceipt receipt = new ReceiveReceipt();
         receipt.setId(1L);
@@ -148,6 +180,32 @@ class ReceiveReceiptServiceImplTest {
         return receipt;
     }
 
+    /** 两级链 PENDING 单：step=1，一级李四 200 / 二级王五 300，assignee=当前层级审批人 */
+    private ReceiveReceipt chainPendingReceipt() {
+        ReceiveReceipt receipt = pendingReceipt();
+        receipt.setApprovalStep(1);
+        receipt.setApprovalStep1UserId(STEP1_USER);
+        receipt.setApprovalStep1Name(STEP1_NAME);
+        receipt.setApprovalStep2UserId(STEP2_USER);
+        receipt.setApprovalStep2Name(STEP2_NAME);
+        receipt.setAssigneeUserId(STEP1_USER);
+        return receipt;
+    }
+
+    /** 合并审批 PENDING 单：两级同为李四 200，提交即 step=2 */
+    private ReceiveReceipt mergedPendingReceipt() {
+        ReceiveReceipt receipt = pendingReceipt();
+        receipt.setApprovalStep(2);
+        receipt.setApprovalStep1UserId(STEP1_USER);
+        receipt.setApprovalStep1Name(STEP1_NAME);
+        receipt.setApprovalStep1At(java.time.LocalDateTime.now());
+        receipt.setApprovalStep1Remark("两级审批人为同一人，合并为一次审批");
+        receipt.setApprovalStep2UserId(STEP1_USER);
+        receipt.setApprovalStep2Name(STEP1_NAME);
+        receipt.setAssigneeUserId(STEP1_USER);
+        return receipt;
+    }
+
     private ReceiveReceiptItem item(Long receiptId, Long assetId) {
         ReceiveReceiptItem item = new ReceiveReceiptItem();
         item.setId(10L);
@@ -159,10 +217,11 @@ class ReceiveReceiptServiceImplTest {
     // ---- create ----
 
     @Test
-    void create_shouldInsertReceiptItemsAndLockAssets() {
+    void create_shouldInsertReceiptItemsAndFreezeApprovalChainSnapshot() {
         AtomicReference<ReceiveReceipt> inserted = new AtomicReference<>();
         stubLocationExists();
         stubLocationNames();
+        stubChainResolved();
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L), idleAsset(2L)));
         when(itemMapper.selectList(any())).thenReturn(List.of());
         when(receiptMapper.selectOne(any())).thenReturn(null);
@@ -184,9 +243,22 @@ class ReceiveReceiptServiceImplTest {
         assertEquals("张三", created.getApplicantName());
         assertEquals(1L, created.getLocationId());
         assertEquals("一号车间", created.getLocationName());
+        // 审批链快照冻结：step=1、两级审批人、assignee=一级审批人
+        assertEquals(1, inserted.get().getApprovalStep());
+        assertEquals(STEP1_USER, inserted.get().getApprovalStep1UserId());
+        assertEquals(STEP1_NAME, inserted.get().getApprovalStep1Name());
+        assertEquals(STEP2_USER, inserted.get().getApprovalStep2UserId());
+        assertEquals(STEP2_NAME, inserted.get().getApprovalStep2Name());
+        assertEquals(STEP1_USER, inserted.get().getAssigneeUserId());
+        assertEquals("资材管理中心/PMC部", inserted.get().getApprovalStep1SourceKey());
+        assertEquals("1", inserted.get().getApprovalStep2SourceKey());
+        assertNull(inserted.get().getApprovalStep1At());
         verify(itemMapper, times(2)).insert(any(ReceiveReceiptItem.class));
         verify(assetService, times(2)).changeStatus(anyLong(), eq(AssetStatus.PENDING_CONFIRM),
                 eq(100L), eq("领用"), contains("发起申请，待审批"));
+        // B2：通知一级审批人
+        verify(notificationService).notify(eq(STEP1_USER), eq(NotificationType.DOC_SUBMITTED),
+                contains("ARE"), eq("RECEIVE"), eq(1L));
     }
 
     @Test
@@ -194,6 +266,7 @@ class ReceiveReceiptServiceImplTest {
         AtomicReference<ReceiveReceipt> inserted = new AtomicReference<>();
         stubLocationExists();
         stubLocationNames();
+        stubChainResolved();
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
         when(itemMapper.selectList(any())).thenReturn(List.of());
         when(receiptMapper.selectOne(any())).thenReturn(null);
@@ -218,6 +291,7 @@ class ReceiveReceiptServiceImplTest {
         ReceiveReceipt latest = new ReceiveReceipt();
         latest.setSerialNo("ARE" + today() + "0005");
         stubLocationExists();
+        stubChainResolved();
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
         when(itemMapper.selectList(any())).thenReturn(List.of());
         when(receiptMapper.selectOne(any())).thenReturn(latest);
@@ -249,6 +323,7 @@ class ReceiveReceiptServiceImplTest {
     @Test
     void create_shouldRejectWhenAssetMissing() {
         stubLocationExists();
+        stubChainResolved();
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
 
         BusinessException exception = assertThrows(BusinessException.class,
@@ -258,63 +333,59 @@ class ReceiveReceiptServiceImplTest {
         verify(receiptMapper, never()).insert(any(ReceiveReceipt.class));
     }
 
-    // ---- create：B1 指定处理人 ----
+    // ---- create：审批链解析兜底 ----
 
     @Test
-    void create_shouldRejectWhenAssigneeIsApplicant() {
-        ReceiptApplyReq req = applyReq("RECEIVE", List.of(1L));
-        req.setAssigneeUserId(100L);
-
-        BusinessException exception = assertThrows(BusinessException.class,
-                () -> receiptService.create(req, 100L, "张三"));
-
-        assertEquals(400, exception.getCode());
-        assertTrue(exception.getMessage().contains("申请人自己"));
-        verify(receiptMapper, never()).insert(any(ReceiveReceipt.class));
-    }
-
-    @Test
-    void create_shouldRejectWhenAssigneeNotExist() {
-        when(userDirectory.exists(999L)).thenReturn(false);
-        ReceiptApplyReq req = applyReq("RECEIVE", List.of(1L));
-        req.setAssigneeUserId(999L);
-
-        BusinessException exception = assertThrows(BusinessException.class,
-                () -> receiptService.create(req, 100L, "张三"));
-
-        assertEquals(400, exception.getCode());
-        assertTrue(exception.getMessage().contains("指定处理人不存在"));
-        verify(receiptMapper, never()).insert(any(ReceiveReceipt.class));
-    }
-
-    @Test
-    void create_shouldPersistAssigneeWhenValid() {
-        when(userDirectory.exists(200L)).thenReturn(true);
+    void create_shouldRejectAndAlertAdminsWhenChainUnresolvable() {
+        // 任一级解析不到 → 400 阻止提交 + 独立事务告警超管（此处模拟一级缺失）
         stubLocationExists();
+        when(approvalChainResolver.tryResolve(eq(100L), eq(1L), any())).thenReturn(
+                new ApprovalChainResolver.Resolution(null, "未找到〔PMC部〕的主管审批人，请线下联系审批人，并联系管理员配置审批链"));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> receiptService.create(applyReq("RECEIVE", List.of(1L)), 100L, "张三"));
+
+        assertEquals(400, exception.getCode());
+        assertTrue(exception.getMessage().contains("主管审批人"));
+        verify(approvalChainResolver).alertAdmins(contains("主管审批人"), contains("张三"));
+        verify(receiptMapper, never()).insert(any(ReceiveReceipt.class));
+        verify(assetService, never()).changeStatus(anyLong(), any(), anyLong(), any(), any());
+    }
+
+    @Test
+    void create_shouldFreezeMergedChainWhenSameApprover() {
+        // 两级审批人同一人：approval_step 直接置 2 合并为一次审批，一级时间/说明留痕，assignee=该人
+        AtomicReference<ReceiveReceipt> inserted = new AtomicReference<>();
+        stubLocationExists();
+        stubLocationNames();
+        when(approvalChainResolver.tryResolve(eq(100L), eq(1L), any())).thenReturn(
+                new ApprovalChainResolver.Resolution(chain(true), null));
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
         when(itemMapper.selectList(any())).thenReturn(List.of());
         when(receiptMapper.selectOne(any())).thenReturn(null);
         when(receiptMapper.insert(any(ReceiveReceipt.class))).thenAnswer(invocation -> {
-            ((ReceiveReceipt) invocation.getArgument(0)).setId(1L);
+            ReceiveReceipt receipt = invocation.getArgument(0);
+            receipt.setId(1L);
+            inserted.set(receipt);
             return 1;
         });
+        when(receiptMapper.selectById(1L)).thenAnswer(inv -> inserted.get());
 
-        ReceiptApplyReq req = applyReq("RECEIVE", List.of(1L));
-        req.setAssigneeUserId(200L);
-        receiptService.create(req, 100L, "张三");
+        receiptService.create(applyReq("RECEIVE", List.of(1L)), 100L, "张三");
 
-        ArgumentCaptor<ReceiveReceipt> captor = ArgumentCaptor.forClass(ReceiveReceipt.class);
-        verify(receiptMapper).insert(captor.capture());
-        assertEquals(200L, captor.getValue().getAssigneeUserId());
-        // B2：定向提交应通知处理人
-        verify(notificationService).notify(eq(200L),
-                eq(com.sk.asset.enums.notification.NotificationType.DOC_SUBMITTED),
-                contains("ARE"), eq("RECEIVE"), eq(1L));
+        assertEquals(2, inserted.get().getApprovalStep());
+        assertEquals(STEP1_USER, inserted.get().getAssigneeUserId());
+        assertNotNull(inserted.get().getApprovalStep1At());
+        assertTrue(inserted.get().getApprovalStep1Remark().contains("合并"));
+        // 通知合并审批人（=二级快照人）
+        verify(notificationService).notify(eq(STEP1_USER), eq(NotificationType.DOC_SUBMITTED),
+                contains("待你审批"), eq("RECEIVE"), eq(1L));
     }
 
     @Test
     void create_shouldRejectWhenAssetOccupiedByPendingReceipt() {
         stubLocationExists();
+        stubChainResolved();
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
         when(itemMapper.selectList(any())).thenReturn(List.of(item(5L, 1L)));
         ReceiveReceipt pending = pendingReceipt();
@@ -332,6 +403,7 @@ class ReceiveReceiptServiceImplTest {
     @Test
     void create_shouldRejectWhenAssetOccupiedByPendingTransfer() {
         stubLocationExists();
+        stubChainResolved();
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
         TransferOrderItem transferItem = new TransferOrderItem();
         transferItem.setOrderId(7L);
@@ -354,6 +426,7 @@ class ReceiveReceiptServiceImplTest {
     @Test
     void create_shouldRejectWhenAssetOccupiedByPendingChangeOrder() {
         stubLocationExists();
+        stubChainResolved();
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
         com.sk.asset.entity.change.ChangeOrderItem changeItem = new com.sk.asset.entity.change.ChangeOrderItem();
         changeItem.setOrderId(9L);
@@ -383,6 +456,7 @@ class ReceiveReceiptServiceImplTest {
     @Test
     void create_shouldPropagateIllegalStatusTransition() {
         stubLocationExists();
+        stubChainResolved();
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
         when(itemMapper.selectList(any())).thenReturn(List.of());
         when(receiptMapper.selectOne(any())).thenReturn(null);
@@ -399,7 +473,7 @@ class ReceiveReceiptServiceImplTest {
         assertEquals(409, exception.getCode());
     }
 
-    // ---- approve ----
+    // ---- approve：存量单（无链快照）保持 B1 旧语义（回归保护） ----
 
     @Test
     void approve_shouldTransitionAssetsWriteAllocationsAndApprove() {
@@ -444,7 +518,7 @@ class ReceiveReceiptServiceImplTest {
         verify(receiptMapper).updateById(any(ReceiveReceipt.class));
         // B2：审批通过通知发起人
         verify(notificationService).notify(eq(100L),
-                eq(com.sk.asset.enums.notification.NotificationType.DOC_APPROVED),
+                eq(NotificationType.DOC_APPROVED),
                 contains("ARE"), eq("RECEIVE"), eq(1L));
     }
 
@@ -491,8 +565,6 @@ class ReceiveReceiptServiceImplTest {
         assertEquals(403, exception.getCode());
         verify(assetService, never()).changeStatus(anyLong(), any(), anyLong(), any(), any());
     }
-
-    // ---- approve/reject：B1 指定处理人门禁 ----
 
     @Test
     void approve_shouldRejectWhenOperatorIsNotAssignee() {
@@ -551,6 +623,106 @@ class ReceiveReceiptServiceImplTest {
         assertEquals(404, exception.getCode());
     }
 
+    // ---- approve：两级链 ----
+
+    @Test
+    void approve_step1ShouldRejectWhenOperatorIsNotStep1Approver() {
+        when(receiptMapper.selectById(1L)).thenReturn(chainPendingReceipt());
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> receiptService.approve(1L, STEP2_USER, STEP2_NAME));
+
+        assertEquals(403, exception.getCode());
+        assertTrue(exception.getMessage().contains("当前审批层级"));
+        verify(assetService, never()).changeStatus(anyLong(), any(), anyLong(), any(), any());
+    }
+
+    @Test
+    void approve_step1ShouldAdvanceToStep2AndNotifyBoth() {
+        ReceiveReceipt receipt = chainPendingReceipt();
+        when(receiptMapper.selectById(1L)).thenReturn(receipt);
+        when(itemMapper.selectList(any())).thenReturn(List.of());
+        when(receiptMapper.updateById(any(ReceiveReceipt.class))).thenReturn(1);
+        stubLocationNames();
+
+        ReceiveReceipt advanced = receiptService.approve(1L, STEP1_USER, STEP1_NAME);
+
+        // 层级推进：step=2、一级时间落库、assignee 物理推进为二级审批人
+        assertEquals(2, advanced.getApprovalStep());
+        assertEquals(STEP2_USER, advanced.getAssigneeUserId());
+        assertNotNull(advanced.getApprovalStep1At());
+        assertEquals(STEP2_USER, advanced.getApprovalStep2UserId());
+        // 通知二级审批人 + 发起人（进度）
+        verify(notificationService).notify(eq(STEP2_USER), eq(NotificationType.DOC_SUBMITTED),
+                contains("部门主管已通过，待你审批"), eq("RECEIVE"), eq(1L));
+        verify(notificationService).notify(eq(100L), eq(NotificationType.DOC_PROGRESS),
+                contains("部门主管已通过"), eq("RECEIVE"), eq(1L));
+        // 一级通过不动资产（终态逻辑留给二级）
+        verify(assetService, never()).changeStatus(anyLong(), any(), anyLong(), any(), any());
+        verify(allocationMapper, never()).insert(any(AssetAllocation.class));
+    }
+
+    @Test
+    void approve_step2ShouldRejectWhenOperatorIsStep1Approver() {
+        // 一级审批人不能在二级再审（两级不同人）
+        ReceiveReceipt receipt = chainPendingReceipt();
+        receipt.setApprovalStep(2);
+        receipt.setApprovalStep1At(java.time.LocalDateTime.now());
+        receipt.setAssigneeUserId(STEP2_USER);
+        when(receiptMapper.selectById(1L)).thenReturn(receipt);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> receiptService.approve(1L, STEP1_USER, STEP1_NAME));
+
+        assertEquals(403, exception.getCode());
+        verify(assetService, never()).changeStatus(anyLong(), any(), anyLong(), any(), any());
+    }
+
+    @Test
+    void approve_step2ShouldFinalApprove() {
+        ReceiveReceipt receipt = chainPendingReceipt();
+        receipt.setApprovalStep(2);
+        receipt.setApprovalStep1At(java.time.LocalDateTime.now());
+        receipt.setAssigneeUserId(STEP2_USER);
+        when(receiptMapper.selectById(1L)).thenReturn(receipt);
+        when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
+        Asset asset = idleAsset(1L);
+        when(assetMapper.selectById(1L)).thenReturn(asset);
+        when(assetMapper.selectBatchIds(any())).thenReturn(List.of(asset));
+        when(receiptMapper.updateById(any(ReceiveReceipt.class))).thenReturn(1);
+        stubLocationExists();
+        stubLocationNames();
+
+        ReceiveReceipt approved = receiptService.approve(1L, STEP2_USER, STEP2_NAME);
+
+        assertEquals("APPROVED", approved.getStatus());
+        assertEquals(STEP2_USER, approved.getApproverUserId());
+        assertEquals(STEP2_NAME, approved.getApproverName());
+        verify(assetService).changeStatus(eq(1L), eq(AssetStatus.IN_USE), eq(STEP2_USER),
+                eq("领用"), any());
+        verify(notificationService).notify(eq(100L), eq(NotificationType.DOC_APPROVED),
+                contains("ARE"), eq("RECEIVE"), eq(1L));
+    }
+
+    @Test
+    void approve_mergedShouldFinalApproveInOneShot() {
+        // 两级同一人：step=2 起步，一次审批即终态
+        ReceiveReceipt receipt = mergedPendingReceipt();
+        when(receiptMapper.selectById(1L)).thenReturn(receipt);
+        when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
+        Asset asset = idleAsset(1L);
+        when(assetMapper.selectById(1L)).thenReturn(asset);
+        when(assetMapper.selectBatchIds(any())).thenReturn(List.of(asset));
+        when(receiptMapper.updateById(any(ReceiveReceipt.class))).thenReturn(1);
+        stubLocationExists();
+        stubLocationNames();
+
+        ReceiveReceipt approved = receiptService.approve(1L, STEP1_USER, STEP1_NAME);
+
+        assertEquals("APPROVED", approved.getStatus());
+        assertEquals(STEP1_USER, approved.getApproverUserId());
+    }
+
     // ---- reject ----
 
     @Test
@@ -593,6 +765,76 @@ class ReceiveReceiptServiceImplTest {
                 () -> receiptService.reject(1L, "不需要", 100L, "张三"));
 
         assertEquals(403, exception.getCode());
+    }
+
+    @Test
+    void reject_chainStep1ShouldRejectWholeDocWithLevelInNotification() {
+        // 一级拒绝：整单 REJECTED + 资产回 IDLE + 通知带拒绝层级
+        ReceiveReceipt receipt = chainPendingReceipt();
+        when(receiptMapper.selectById(1L)).thenReturn(receipt);
+        when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
+        when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
+        when(receiptMapper.updateById(any(ReceiveReceipt.class))).thenReturn(1);
+        stubLocationNames();
+
+        ReceiveReceipt rejected = receiptService.reject(1L, "不需要", STEP1_USER, STEP1_NAME);
+
+        assertEquals("REJECTED", rejected.getStatus());
+        verify(assetService).changeStatus(eq(1L), eq(AssetStatus.IDLE), eq(STEP1_USER),
+                eq("领用"), contains("审批拒绝：不需要"));
+        verify(notificationService).notify(eq(100L), eq(NotificationType.DOC_REJECTED),
+                contains("一级审批（部门主管）"), eq("RECEIVE"), eq(1L));
+    }
+
+    @Test
+    void reject_chainShouldRejectWhenOperatorMismatch() {
+        when(receiptMapper.selectById(1L)).thenReturn(chainPendingReceipt());
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> receiptService.reject(1L, "不需要", STEP2_USER, STEP2_NAME));
+
+        assertEquals(403, exception.getCode());
+        verify(assetService, never()).changeStatus(anyLong(), any(), anyLong(), any(), any());
+    }
+
+    // ---- previewApprovalChain ----
+
+    @Test
+    void preview_shouldReturnUnresolvableWithMessage() {
+        stubLocationExists();
+        when(approvalChainResolver.tryResolve(eq(100L), eq(1L), any())).thenReturn(
+                new ApprovalChainResolver.Resolution(null, "未找到〔一号车间〕的仓管审批人"));
+
+        ApprovalPreviewResp preview = receiptService.previewApprovalChain(100L, "张三", 1L);
+
+        assertFalse(preview.getResolvable());
+        assertTrue(preview.getMessage().contains("仓管审批人"));
+    }
+
+    @Test
+    void preview_shouldReturnResolvedChain() {
+        stubLocationExists();
+        when(approvalChainResolver.tryResolve(eq(100L), eq(1L), any())).thenReturn(
+                new ApprovalChainResolver.Resolution(chain(false), null));
+
+        ApprovalPreviewResp preview = receiptService.previewApprovalChain(100L, "张三", 1L);
+
+        assertTrue(preview.getResolvable());
+        assertEquals(STEP1_USER, preview.getStep1UserId());
+        assertEquals(STEP1_NAME, preview.getStep1UserName());
+        assertEquals(STEP2_USER, preview.getStep2UserId());
+        assertEquals(STEP2_NAME, preview.getStep2UserName());
+        assertFalse(preview.getMerged());
+    }
+
+    @Test
+    void preview_shouldReturnMessageWhenLocationMissing() {
+        when(locationMapper.selectById(9L)).thenReturn(null);
+
+        ApprovalPreviewResp preview = receiptService.previewApprovalChain(100L, "张三", 9L);
+
+        assertFalse(preview.getResolvable());
+        assertTrue(preview.getMessage().contains("领用区域不存在"));
     }
 
     // ---- list ----

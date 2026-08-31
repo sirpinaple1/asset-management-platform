@@ -27,6 +27,9 @@ public class TransferOrder {
     /** 状态：PENDING-待确认 COMPLETED-已完成 CANCELLED-已撤销 REJECTED-已拒绝（对应 TransferStatus 枚举） */
     private String status;
 
+    /** 钉钉审批实例id（M10；NULL=站内审批通道，非空=已同步钉钉） */
+    private String dingtalkInstanceId;
+
     /** 来源：MANUAL-手动调拨 INVENTORY_TRIGGERED-盘点触发（对应 TransferSource 枚举） */
     private String source;
 

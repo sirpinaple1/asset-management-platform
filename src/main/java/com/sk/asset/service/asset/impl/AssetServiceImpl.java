@@ -4,8 +4,10 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.sk.asset.auth.UserDirectory;
 import com.sk.asset.common.BusinessException;
 import com.sk.asset.dto.asset.AssetQuery;
+import com.sk.asset.dto.user.UserResp;
 import com.sk.asset.entity.asset.Asset;
 import com.sk.asset.entity.asset.AssetLog;
 import com.sk.asset.entity.basedata.AssetModel;
@@ -58,6 +60,7 @@ public class AssetServiceImpl implements AssetService {
     private final SupplierMapper supplierMapper;
     private final LocationMapper locationMapper;
     private final CompanyMapper companyMapper;
+    private final UserDirectory userDirectory;
 
     @Override
     public IPage<Asset> page(long current, long size, AssetQuery query) {
@@ -107,7 +110,12 @@ public class AssetServiceImpl implements AssetService {
 
     @Override
     public Asset getById(Long id) {
-        return assetMapper.selectByIdWithRelations(id);
+        Asset asset = assetMapper.selectByIdWithRelations(id);
+        if (asset != null) {
+            // 详情关联名称走 SQL JOIN，用户姓名在 comm_public_basic 库无法 JOIN，单独反查回填
+            fillUserNames(List.of(asset));
+        }
+        return asset;
     }
 
     @Override
@@ -363,6 +371,31 @@ public class AssetServiceImpl implements AssetService {
             asset.setLocationName(locationNames.get(asset.getLocationId()));
             asset.setHomeLocationName(locationNames.get(asset.getHomeLocationId()));
             asset.setCompanyName(companyNames.get(asset.getCompanyId()));
+        });
+        fillUserNames(assets);
+    }
+
+    /**
+     * 实时反查 comm_public_basic sys_user 回填使用人/资产管理员姓名
+     * （ADR-0004：asset 库不存用户主数据，跨库无法 JOIN，列表/详情统一走此反查）。
+     * userId/adminUserId 合并一次批量查询；用户未配置连接时 namesByIds 返回空 Map，
+     * 姓名留空不阻塞列表；用户被删除/未命中 name 置 null（前端兜底显示 —）。
+     * 注：userDepartment 保持业务时点快照口径（领用/调拨/变更确认时写入），
+     * 与实时姓名可能不一致——单据凭证语义优先，不做实时化。
+     */
+    private void fillUserNames(List<Asset> assets) {
+        Set<Long> userIds = new HashSet<>(collectIds(assets, Asset::getUserId));
+        userIds.addAll(collectIds(assets, Asset::getAdminUserId));
+        if (userIds.isEmpty()) {
+            return;
+        }
+        Map<Long, UserResp> users = userDirectory.namesByIds(userIds);
+        assets.forEach(asset -> {
+            // userId/adminUserId 可为 null（闲置资产无持有人），null key 查询对不可变 Map 会 NPE，先判空
+            UserResp user = asset.getUserId() != null ? users.get(asset.getUserId()) : null;
+            asset.setUserName(user != null ? user.name() : null);
+            UserResp admin = asset.getAdminUserId() != null ? users.get(asset.getAdminUserId()) : null;
+            asset.setAdminUserName(admin != null ? admin.name() : null);
         });
     }
 

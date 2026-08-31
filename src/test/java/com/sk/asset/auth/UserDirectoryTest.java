@@ -45,6 +45,22 @@ class UserDirectoryTest {
     }
 
     @Test
+    void namesByIds_shouldReturnEmptyMapWhenUnconfigured() {
+        // 降级语义：未配置连接时名称回填留空，不阻塞资产列表/详情
+        assertTrue(unconfigured().namesByIds(java.util.List.of(1L, 2L)).isEmpty());
+    }
+
+    @Test
+    void namesByIds_shouldReturnEmptyMapForNullOrEmptyIds() {
+        // 空集合不触发 JDBC；全 null 入参过滤后同样短路
+        assertTrue(unconfigured().namesByIds(null).isEmpty());
+        assertTrue(new UserDirectory("jdbc:mysql://127.0.0.1:3306/db", "u", "p")
+                .namesByIds(java.util.List.of()).isEmpty());
+        assertTrue(new UserDirectory("jdbc:mysql://127.0.0.1:3306/db", "u", "p")
+                .namesByIds(java.util.Arrays.asList(null, null)).isEmpty());
+    }
+
+    @Test
     void search_shouldClampPageParams() {
         // page/size 边界收敛属纯逻辑：未配置时在触达 JDBC 前抛 503，此处仅验证不因非法参数抛 NPE/越界
         assertThrows(BusinessException.class, () -> unconfigured().search(null, -1, 0));

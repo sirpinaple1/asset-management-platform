@@ -80,3 +80,11 @@ app:
     # url: jdbc:mysql://127.0.0.1:3306/comm_public_basic?useSSL=false&serverTimezone=Asia/Shanghai
     # username: readonly
     # password: xxx
+  # 钉钉 OA 审批联动（M10，ADR-0007）：默认关闭（站内审批）；
+  # 凭证（appKey/appSecret/agentId/corpId）与模板 processCode 只放 application-local.yml / 环境变量（R3 红线），
+  # 实验公司 → 生产公司切换只换配置不改代码。
+  dingtalk:
+    enabled: false
+    stream-enabled: true
+    admin-role: systemAdmin
+    # app-key / app-secret / agent-id / corp-id / cc-user-ids / process-codes 见 application-local.yml.example

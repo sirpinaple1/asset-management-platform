@@ -101,6 +101,12 @@ class ChangeOrderServiceImplTest {
     @Mock
     private com.sk.asset.service.notification.NotificationService notificationService;
 
+    @Mock
+    private com.sk.asset.service.approval.ApprovalConfigService approvalConfigService;
+
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private ChangeOrderServiceImpl changeService;
 

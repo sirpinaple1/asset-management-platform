@@ -40,8 +40,13 @@ public class AssetResp {
     private String homeLocationName;
     private String locationDetail;
     private Long userId;
+    /** 使用人姓名（实时反查 comm_public_basic sys_user，被删除/未命中为 null，前端兜底 —） */
+    private String userName;
+    /** 使用人部门（业务时点快照：领用/调拨/变更确认时写入，可能与实时部门不一致） */
     private String userDepartment;
     private Long adminUserId;
+    /** 资产管理员姓名（实时反查，未命中为 null） */
+    private String adminUserName;
     private Long companyId;
     private String companyName;
     private LocalDate purchaseDate;
@@ -71,8 +76,10 @@ public class AssetResp {
         resp.setHomeLocationName(entity.getHomeLocationName());
         resp.setLocationDetail(entity.getLocationDetail());
         resp.setUserId(entity.getUserId());
+        resp.setUserName(entity.getUserName());
         resp.setUserDepartment(entity.getUserDepartment());
         resp.setAdminUserId(entity.getAdminUserId());
+        resp.setAdminUserName(entity.getAdminUserName());
         resp.setCompanyId(entity.getCompanyId());
         resp.setCompanyName(entity.getCompanyName());
         resp.setPurchaseDate(entity.getPurchaseDate());

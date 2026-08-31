@@ -45,6 +45,9 @@ class AllocationServiceImplTest {
     @Mock
     private AssetService assetService;
 
+    @Mock
+    private com.sk.asset.service.approval.ApprovalConfigService approvalConfigService;
+
     @InjectMocks
     private AllocationServiceImpl allocationService;
 
@@ -99,6 +102,54 @@ class AllocationServiceImplTest {
                 () -> allocationService.returnAllocation(99L, null, 200L));
 
         assertEquals(404, exception.getCode());
+    }
+
+    // ---- return 带回位置（B4：归还位置由发放前快照决定，不可手改） ----
+
+    @Test
+    void return_shouldRestoreLocationFromSnapshot() {
+        AssetAllocation allocation = activeAllocation();
+        allocation.setLocationBefore(5L); // 发放前在 5 号区域（A 区）
+        when(allocationMapper.selectById(12L)).thenReturn(allocation);
+        when(assetMapper.selectById(1L)).thenReturn(new Asset());
+        when(approvalConfigService.keeperUserIdOf(5L)).thenReturn(691L);
+
+        allocationService.returnAllocation(12L, null, 200L);
+
+        // 位置回置快照（A 区）并实时解析该区域管理员
+        verify(approvalConfigService).keeperUserIdOf(5L);
+        verify(assetMapper).update(any(), any());
+    }
+
+    @Test
+    void return_shouldFallbackToHomeLocationWhenNoSnapshot() {
+        AssetAllocation allocation = activeAllocation();
+        // 存量记录：无快照
+        when(allocationMapper.selectById(12L)).thenReturn(allocation);
+        Asset asset = new Asset();
+        asset.setId(1L);
+        asset.setHomeLocationId(2L); // 回退：入库原属区域
+        when(assetMapper.selectById(1L)).thenReturn(asset);
+        when(approvalConfigService.keeperUserIdOf(2L)).thenReturn(691L);
+
+        allocationService.returnAllocation(12L, null, 200L);
+
+        verify(approvalConfigService).keeperUserIdOf(2L);
+    }
+
+    @Test
+    void return_shouldKeepLocationWhenNeitherSnapshotNorHome() {
+        AssetAllocation allocation = activeAllocation();
+        when(allocationMapper.selectById(12L)).thenReturn(allocation);
+        Asset asset = new Asset();
+        asset.setId(1L); // 无快照也无 home_location_id
+        when(assetMapper.selectById(1L)).thenReturn(asset);
+
+        allocationService.returnAllocation(12L, null, 200L);
+
+        // 无带回依据：位置与管理员均保持不动（不触发解析）
+        verify(approvalConfigService, never()).keeperUserIdOf(any());
+        verify(assetMapper).update(any(), any());
     }
 
     // ---- list ----

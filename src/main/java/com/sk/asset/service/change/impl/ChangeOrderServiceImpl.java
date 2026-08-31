@@ -34,8 +34,10 @@ import com.sk.asset.mapper.transfer.TransferOrderItemMapper;
 import com.sk.asset.mapper.transfer.TransferOrderMapper;
 import com.sk.asset.service.asset.AssetService;
 import com.sk.asset.service.notification.NotificationService;
+import com.sk.asset.dingtalk.event.OaSyncRequestedEvent;
 import com.sk.asset.service.change.ChangeOrderService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -81,6 +83,8 @@ public class ChangeOrderServiceImpl implements ChangeOrderService {
     private final AssetService assetService;
     private final UserDirectory userDirectory;
     private final NotificationService notificationService;
+    private final com.sk.asset.service.approval.ApprovalConfigService approvalConfigService;
+    private final ApplicationEventPublisher eventPublisher;
 
     // ---- create ----
 
@@ -234,6 +238,10 @@ public class ChangeOrderServiceImpl implements ChangeOrderService {
                     applicantName + " 提交的变更单 " + serialNo + " 待你确认",
                     "CHANGE", order.getId());
         }
+
+        // 钉钉 OA 同步事件（M10 入口 A：AFTER_COMMIT 消费；无处理人的共享池单在同步侧跳过）
+        eventPublisher.publishEvent(new OaSyncRequestedEvent(
+                OaSyncRequestedEvent.KIND_CHANGE, order.getId()));
 
         return getById(order.getId());
     }
@@ -438,7 +446,10 @@ public class ChangeOrderServiceImpl implements ChangeOrderService {
             assetUpdate.set(Asset::getUserDepartment, order.getNewUserDepartment());
         }
         if (order.getNewLocationId() != null) {
-            assetUpdate.set(Asset::getLocationId, order.getNewLocationId());
+            // 变更单保持高维自由更改（B4 决策）；位置变更时区域管理员随新位置实时解析
+            assetUpdate.set(Asset::getLocationId, order.getNewLocationId())
+                    .set(Asset::getAdminUserId,
+                            approvalConfigService.keeperUserIdOf(order.getNewLocationId()));
         }
         if (order.getNewLocationDetail() != null) {
             assetUpdate.set(Asset::getLocationDetail, order.getNewLocationDetail());

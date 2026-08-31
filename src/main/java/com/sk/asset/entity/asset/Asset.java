@@ -90,4 +90,12 @@ public class Asset {
 
     @TableField(exist = false)
     private String companyName;
+
+    /** 使用人姓名（实时反查 comm_public_basic sys_user 回填，未命中为 null） */
+    @TableField(exist = false)
+    private String userName;
+
+    /** 资产管理员姓名（实时反查 comm_public_basic sys_user 回填，未命中为 null） */
+    @TableField(exist = false)
+    private String adminUserName;
 }

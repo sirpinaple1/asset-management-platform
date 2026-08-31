@@ -52,3 +52,5 @@
 | [0003](./0003-多Agent上下文传承机制.md) | 多 Agent 上下文传承机制 | Accepted |
 | [0004](./0004-鉴权复用comm_public_basic与SpringBoot3解耦.md) | 鉴权复用 comm_public_basic + Spring Boot 3.x + HTTP 解耦 + 钉钉 | Accepted |
 | [0005](./0005-架构降级为单模块三层.md) | 架构降级为单模块三层（Superseded 0002） | Accepted |
+| [0006](./0006-数据库核心表设计.md) | 数据库核心表设计 | Accepted |
+| [0007](./0007-钉钉OA审批双向集成.md) | 钉钉 OA 审批双向集成（实验公司验证 → 生产切换） | Proposed |

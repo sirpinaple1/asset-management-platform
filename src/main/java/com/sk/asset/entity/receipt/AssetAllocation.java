@@ -45,6 +45,9 @@ public class AssetAllocation {
 
     private Long companyId;
 
+    /** 发放前位置快照（A 区）：归还时资产位置回置到此（不可手改）；存量记录 NULL → 归还回退 home_location_id */
+    private Long locationBefore;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 

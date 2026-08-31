@@ -37,3 +37,19 @@ app:
     url: jdbc:mysql://127.0.0.1:3306/db_comm_public_basic?useUnicode=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
     username: root
     password: 123456
+  # 钉钉 OA 审批联动（M10）：enabled=true 开启后单据自动推钉钉 + Stream 事件回传；
+  # 实验公司凭证（开放平台 → 应用开发 → asset-oa）
+  dingtalk:
+    enabled: true
+    app-key: dingxxxxxxxx
+    app-secret: xxxxxxxx
+    agent-id: 123456789
+    corp-id: dingxxxxxxxx
+    # 额外抄送人钉钉 userid（发起人默认始终抄送，可空）
+    cc-user-ids: []
+    # 单据类型 → 审批模板 processCode（开放平台 → 审批 → 模板唯一码）
+    process-codes:
+      receive: PROC-xxxxxxxx-xxxx  # 领用
+      borrow:  PROC-xxxxxxxx-xxxx  # 借用
+      transfer: PROC-xxxxxxxx-xxxx # 调拨
+      change:  PROC-xxxxxxxx-xxxx  # 实物变更

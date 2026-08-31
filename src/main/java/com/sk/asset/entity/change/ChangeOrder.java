@@ -28,6 +28,9 @@ public class ChangeOrder {
     /** 状态：PENDING-待确认 CONFIRMED-已执行 CANCELLED-已撤销（对应 ChangeStatus 枚举） */
     private String status;
 
+    /** 钉钉审批实例id（M10；NULL=站内审批通道，非空=已同步钉钉） */
+    private String dingtalkInstanceId;
+
     /** 发起人ID（comm_public_basic 用户） */
     private Long applicantUserId;
 

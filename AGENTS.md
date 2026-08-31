@@ -34,6 +34,7 @@
 6. **License 合规**：GPL/AGPL 不引入；参考项目只参考逻辑不抄代码；**comm_public_basic 只 HTTP 调用、不得引入依赖**（受"永不提交"红线约束）
 7. **重大决策写 ADR**，进展更新 STATUS.md
 8. **鉴权不可自建**：登录/用户/角色/菜单/权限复用 comm_public_basic，asset 库不存权限主数据（见 ADR-0004）
+9. **版本号纪律（每次 push 必做）**：后端版本唯一来源是 `common/AppVersion.java`（前端左下角帮助面板经 `GET /api/v1/version` 读取）。**每次 push 功能/修复上测试/生产，必须**：`VERSION` 末位 +1、更新 `RELEASE_DATE`、`CHANGELOG` 顶部增补一行简要功能描述。前后端版本**独立演进**，互不同步。目的：用户从页面即可确认新功能是否已上线。
 
 ## 仓库结构
 
