@@ -99,7 +99,9 @@ public class DingTalkApiClient {
         ObjectNode body = objectMapper.createObjectNode();
         body.put("process_instance_id", processInstanceId);
         JsonNode resp = post("/topapi/processinstance/get", body);
-        return resp.path("result");
+        // 新版返回包裹在 process_instance，旧版在 result（实测 2026-08 沙箱企业返回 process_instance）
+        JsonNode result = resp.path("process_instance");
+        return result.isMissingNode() || result.isEmpty() ? resp.path("result") : result;
     }
 
     /**

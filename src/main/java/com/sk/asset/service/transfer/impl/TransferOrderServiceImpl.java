@@ -92,6 +92,19 @@ public class TransferOrderServiceImpl implements TransferOrderService {
     @Transactional(rollbackFor = Exception.class)
     public TransferOrder create(TransferApplyReq req, Long applicantUserId, String applicantName,
                                 TransferSource source, Long stocktakeId) {
+        return doCreate(req, applicantUserId, applicantName, source, stocktakeId, false);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public TransferOrder createFromDingtalk(TransferApplyReq req, Long applicantUserId, String applicantName) {
+        // 入口 B：校验主体与 create 一致；toUserId 由调用方按钉钉实例 tasks 审批人解析传入
+        return doCreate(req, applicantUserId, applicantName, TransferSource.MANUAL, null, true);
+    }
+
+    /** 建单主体（create 与 createFromDingtalk 共用）：占用校验 → 取号 → 落表 → 通知 */
+    private TransferOrder doCreate(TransferApplyReq req, Long applicantUserId, String applicantName,
+                                   TransferSource source, Long stocktakeId, boolean fromDingtalk) {
         // 调入区域与调入部门至少一项（调拨必须改变归属维度之一）
         boolean hasToLocation = req.getToLocationId() != null;
         boolean hasToDepartment = req.getToDepartment() != null && !req.getToDepartment().isBlank();
@@ -231,8 +244,11 @@ public class TransferOrderServiceImpl implements TransferOrderService {
         }
 
         // 钉钉 OA 同步事件（M10 入口 A：AFTER_COMMIT 消费；无调入人的共享池单在同步侧跳过）
-        eventPublisher.publishEvent(new OaSyncRequestedEvent(
-                OaSyncRequestedEvent.KIND_TRANSFER, order.getId()));
+        // 入口 B（钉钉发起导入）跳过——单据源自钉钉，回推即死循环
+        if (!fromDingtalk) {
+            eventPublisher.publishEvent(new OaSyncRequestedEvent(
+                    OaSyncRequestedEvent.KIND_TRANSFER, order.getId()));
+        }
 
         return getById(order.getId());
     }

@@ -33,6 +33,14 @@ public interface TransferOrderService {
     TransferOrder create(TransferApplyReq req, Long applicantUserId, String applicantName,
                          TransferSource source, Long stocktakeId);
 
+    /**
+     * 入口 B（钉钉原生表单发起）建单：校验主体与 create 一致（资产/占用/位置），
+     * 但不发布 OA 同步事件（单据源自钉钉，避免回推循环）。
+     * 调拨在入口 A 契约中钉钉审批人 = 调入方（toUserId），故调用方（import 服务）
+     * 应以钉钉实例 tasks 解析的审批人作为 toUserId 传入 req——以钉钉传来的为准。
+     */
+    TransferOrder createFromDingtalk(TransferApplyReq req, Long applicantUserId, String applicantName);
+
     /** 列表（status/source/dept/userId/date 筛选，含明细行与位置名称回填） */
     List<TransferOrder> list(TransferQuery query);
 

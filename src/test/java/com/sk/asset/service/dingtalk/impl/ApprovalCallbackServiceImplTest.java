@@ -80,6 +80,8 @@ class ApprovalCallbackServiceImplTest {
     private TransferOrderService transferOrderService;
     @Mock
     private ChangeOrderService changeOrderService;
+    @Mock
+    private com.sk.asset.service.dingtalk.InboundApprovalImportService importService;
 
     private DingtalkProperties props;
     private ApprovalCallbackServiceImpl service;
@@ -90,7 +92,7 @@ class ApprovalCallbackServiceImplTest {
         props.setCorpId(CORP_ID);
         service = new ApprovalCallbackServiceImpl(props, approvalInstanceMapper, userDirectory,
                 notificationService, receiptMapper, transferOrderMapper, changeOrderMapper,
-                receiveReceiptService, transferOrderService, changeOrderService);
+                receiveReceiptService, transferOrderService, changeOrderService, importService);
     }
 
     // ------------------------------------------------------------ 事件构造
@@ -134,6 +136,31 @@ class ApprovalCallbackServiceImplTest {
     }
 
     // ------------------------------------------------------------ task_change：逐级推进
+
+    @Test
+    void 钉钉发起实例_入口B导入后事件继续处理() {
+        // 本地无映射 → importService 导入建映射 → 事件按既有状态机推进（task:finish agree）
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(null, record(ApprovalInstance.BIZ_RECEIVE, 1L));
+        when(importService.tryImport(any())).thenAnswer(inv -> record(ApprovalInstance.BIZ_RECEIVE, 1L));
+        mockOperator("dd200", STEP1_USER, STEP1_NAME);
+
+        service.onEvent("bpms_task_change", taskEvent("agree", "dd200", CORP_ID));
+
+        verify(importService).tryImport(any());
+        verify(receiveReceiptService).approve(1L, STEP1_USER, STEP1_NAME);
+    }
+
+    @Test
+    void 钉钉发起实例_导入失败_按未知实例记日志() {
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(null);
+        when(importService.tryImport(any())).thenReturn(null);
+
+        service.onEvent("bpms_instance_change", instanceEvent("start", "", "", CORP_ID));
+
+        verify(importService).tryImport(any());
+        verifyNoInteractions(receiveReceiptService);
+        // 导入失败不告警重试（importService 内部已告警），也不外抛
+    }
 
     @Test
     void taskAgree_一级审批_推进到二级() {

@@ -83,6 +83,7 @@ public class ApprovalCallbackServiceImpl implements ApprovalCallbackService {
     private final ReceiveReceiptService receiveReceiptService;
     private final TransferOrderService transferOrderService;
     private final ChangeOrderService changeOrderService;
+    private final com.sk.asset.service.dingtalk.InboundApprovalImportService importService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
@@ -134,6 +135,9 @@ public class ApprovalCallbackServiceImpl implements ApprovalCallbackService {
         try {
             ApprovalInstance record = findByInstanceId(instanceId);
             if (record == null) {
+                record = importService.tryImport(data);
+            }
+            if (record == null) {
                 logUnknownInstance(data);
                 return;
             }
@@ -168,6 +172,9 @@ public class ApprovalCallbackServiceImpl implements ApprovalCallbackService {
         lock.lock();
         try {
             ApprovalInstance record = findByInstanceId(instanceId);
+            if (record == null) {
+                record = importService.tryImport(data);
+            }
             if (record == null) {
                 logUnknownInstance(data);
                 return;
@@ -329,9 +336,9 @@ public class ApprovalCallbackServiceImpl implements ApprovalCallbackService {
                 .eq(ApprovalInstance::getProcessInstanceId, processInstanceId));
     }
 
-    /** 非系统发起的实例（入口 B 钉钉原生表单发起）：当前阶段只记日志，不自动建单 */
+    /** 非系统发起且不适用入口 B 导入的实例（非领用/借用模板或导入失败）：记日志，人工处理 */
     private void logUnknownInstance(JsonNode data) {
-        log.info("收到非系统发起的钉钉审批事件（processCode={}, instanceId={}，入口B自动建单见 M10 后续阶段）",
+        log.info("收到非系统发起的钉钉审批事件，入口 B 未导入（processCode={}, instanceId={}）",
                 data.path("processCode").asText(""), data.path("processInstanceId").asText(""));
     }
 

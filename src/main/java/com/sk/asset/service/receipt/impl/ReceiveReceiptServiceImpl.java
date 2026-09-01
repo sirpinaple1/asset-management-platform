@@ -94,15 +94,6 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
         ReceiptType type = ReceiptType.of(req.getType());
         // assigneeUserId 已废弃（V20260833）：审批人由审批链配置自动路由并冻结快照
 
-        // 去重（前端跨页多选可能重复提交同一资产）
-        List<Long> assetIds = req.getAssetIds().stream()
-                .filter(Objects::nonNull)
-                .distinct()
-                .collect(Collectors.toList());
-        if (assetIds.isEmpty()) {
-            throw new BusinessException(400, "请至少选择一台资产");
-        }
-
         // 0. 领用区域存在性校验（必填：审批通过后资产位置更新至此，盘点按位置扫资产的依据）
         Location location = locationMapper.selectById(req.getLocationId());
         if (location == null) {
@@ -120,7 +111,34 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
                             + "，领用区域：" + location.getName());
             throw new BusinessException(400, resolution.error());
         }
-        ApprovalChainResolver.ResolvedChain chain = resolution.chain();
+
+        return doCreate(req, type, location, applicantUserId, applicantName, resolution.chain(), false);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ReceiveReceipt createFromDingtalk(ReceiptApplyReq req, Long applicantUserId, String applicantName,
+                                             ApprovalChainResolver.ResolvedChain chain) {
+        ReceiptType type = ReceiptType.of(req.getType());
+        if (req.getLocationId() == null) {
+            throw new BusinessException(400, "领用区域不能为空");
+        }
+        Location location = locationMapper.selectById(req.getLocationId());
+        if (location == null) {
+            throw new BusinessException(400, "领用区域不存在（id=" + req.getLocationId() + "）");
+        }
+        // 审批人快照以钉钉实例 tasks 为准（chain 由 import 服务解析传入），不走站内审批链解析
+        return doCreate(req, type, location, applicantUserId, applicantName, chain, true);
+    }
+
+    /** 建单主体（create 与 createFromDingtalk 共用）：占用校验 → 取号 → 落表 → 状态联动 → 通知 */
+    private ReceiveReceipt doCreate(ReceiptApplyReq req, ReceiptType type, Location location,
+                                    Long applicantUserId, String applicantName,
+                                    ApprovalChainResolver.ResolvedChain chain, boolean fromDingtalk) {
+        List<Long> assetIds = distinctAssetIds(req.getAssetIds());
+        if (assetIds.isEmpty()) {
+            throw new BusinessException(400, "请至少选择一台资产");
+        }
 
         // 1. 资产存在性校验
         Map<Long, Asset> assets = assetMapper.selectBatchIds(assetIds).stream()
@@ -236,10 +254,21 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
                 type.name(), receipt.getId());
 
         // 7. 钉钉 OA 同步事件（M10 入口 A：AFTER_COMMIT 消费，失败降级站内审批不回滚）
-        eventPublisher.publishEvent(new OaSyncRequestedEvent(
-                OaSyncRequestedEvent.KIND_RECEIPT, receipt.getId()));
+        // 入口 B（钉钉发起导入）跳过——单据源自钉钉，回推即死循环
+        if (!fromDingtalk) {
+            eventPublisher.publishEvent(new OaSyncRequestedEvent(
+                    OaSyncRequestedEvent.KIND_RECEIPT, receipt.getId()));
+        }
 
         return getById(receipt.getId());
+    }
+
+    /** 资产 ID 去重（前端跨页多选可能重复提交同一资产；入口 B 表单多编号同理） */
+    private List<Long> distinctAssetIds(List<Long> assetIds) {
+        return assetIds == null ? List.of() : assetIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     @Override

@@ -91,6 +91,19 @@ public class ChangeOrderServiceImpl implements ChangeOrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ChangeOrder create(ChangeApplyReq req, Long applicantUserId, String applicantName) {
+        return doCreate(req, applicantUserId, applicantName, false);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ChangeOrder createFromDingtalk(ChangeApplyReq req, Long applicantUserId, String applicantName) {
+        // 入口 B：校验主体与 create 一致；assigneeUserId 由调用方按钉钉实例 tasks 审批人解析传入
+        return doCreate(req, applicantUserId, applicantName, true);
+    }
+
+    /** 建单主体（create 与 createFromDingtalk 共用）：占用校验 → 取号 → 落表 → 通知 */
+    private ChangeOrder doCreate(ChangeApplyReq req, Long applicantUserId, String applicantName,
+                                 boolean fromDingtalk) {
         // 1. 至少一项变更内容（全部 new_* 为 null 的变更单没有意义）
         boolean hasChangeField = req.getNewUserId() != null
                 || req.getNewUserDepartment() != null
@@ -240,8 +253,11 @@ public class ChangeOrderServiceImpl implements ChangeOrderService {
         }
 
         // 钉钉 OA 同步事件（M10 入口 A：AFTER_COMMIT 消费；无处理人的共享池单在同步侧跳过）
-        eventPublisher.publishEvent(new OaSyncRequestedEvent(
-                OaSyncRequestedEvent.KIND_CHANGE, order.getId()));
+        // 入口 B（钉钉发起导入）跳过——单据源自钉钉，回推即死循环
+        if (!fromDingtalk) {
+            eventPublisher.publishEvent(new OaSyncRequestedEvent(
+                    OaSyncRequestedEvent.KIND_CHANGE, order.getId()));
+        }
 
         return getById(order.getId());
     }

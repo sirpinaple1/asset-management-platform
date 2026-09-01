@@ -26,6 +26,18 @@ public interface ReceiveReceiptService {
      */
     ReceiveReceipt create(ReceiptApplyReq req, Long applicantUserId, String applicantName);
 
+    /**
+     * 入口 B（钉钉原生表单发起）建单：校验主体与 create 一致（资产存在/占用/位置），
+     * 但审批人快照不做站内审批链解析——以钉钉实例 tasks 提取的审批人为准
+     * （M10：钉钉创建的单据自带审批人时，系统以钉钉传来的为准）。
+     * 不发布 OA 同步事件（单据源自钉钉，避免回推循环）。
+     *
+     * @param chain 钉钉侧审批人快照（import 服务从实例 tasks 解析）
+     */
+    ReceiveReceipt createFromDingtalk(ReceiptApplyReq req, Long applicantUserId,
+                                      String applicantName,
+                                      com.sk.asset.service.approval.ApprovalChainResolver.ResolvedChain chain);
+
     /** 发起预解析：返回当前用户 + 领用区域解析出的两级审批人（解析失败返回 resolvable=false + 提示，不抛 400） */
     ApprovalPreviewResp previewApprovalChain(Long applicantUserId, String applicantName, Long locationId);
 
