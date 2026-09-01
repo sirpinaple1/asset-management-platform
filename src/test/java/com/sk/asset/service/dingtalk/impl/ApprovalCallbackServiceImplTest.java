@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.sk.asset.common.BusinessException;
 import com.sk.asset.auth.UserDirectory;
+import com.sk.asset.dingtalk.client.DingTalkApiClient;
 import com.sk.asset.dingtalk.config.DingtalkProperties;
 import com.sk.asset.dto.user.UserResp;
 import com.sk.asset.entity.change.ChangeOrder;
@@ -63,6 +64,8 @@ class ApprovalCallbackServiceImplTest {
     private static final String STEP2_NAME = "王五";
 
     @Mock
+    private DingTalkApiClient apiClient;
+    @Mock
     private ApprovalInstanceMapper approvalInstanceMapper;
     @Mock
     private UserDirectory userDirectory;
@@ -90,9 +93,10 @@ class ApprovalCallbackServiceImplTest {
     void setUp() {
         props = new DingtalkProperties();
         props.setCorpId(CORP_ID);
-        service = new ApprovalCallbackServiceImpl(props, approvalInstanceMapper, userDirectory,
-                notificationService, receiptMapper, transferOrderMapper, changeOrderMapper,
-                receiveReceiptService, transferOrderService, changeOrderService, importService);
+        service = new ApprovalCallbackServiceImpl(props, apiClient, approvalInstanceMapper,
+                userDirectory, notificationService, receiptMapper, transferOrderMapper,
+                changeOrderMapper, receiveReceiptService, transferOrderService,
+                changeOrderService, importService);
     }
 
     // ------------------------------------------------------------ 事件构造
@@ -135,6 +139,14 @@ class ApprovalCallbackServiceImplTest {
         when(userDirectory.findByDdUserId(staffId)).thenReturn(new UserResp(userId, "SK" + userId, name, "IT"));
     }
 
+    /** 钉钉实例详情（status/result）——task 二级同意关单前回查终态用 */
+    private com.fasterxml.jackson.databind.node.ObjectNode detail(String status, String result) throws Exception {
+        return (com.fasterxml.jackson.databind.node.ObjectNode)
+                new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readTree("{\"title\":\"IT资产领用单\",\"status\":\"" + status
+                                + "\",\"result\":\"" + result + "\"}");
+    }
+
     // ------------------------------------------------------------ task_change：逐级推进
 
     @Test
@@ -142,6 +154,7 @@ class ApprovalCallbackServiceImplTest {
         // 本地无映射 → importService 导入建映射 → 事件按既有状态机推进（task:finish agree）
         when(approvalInstanceMapper.selectOne(any())).thenReturn(null, record(ApprovalInstance.BIZ_RECEIVE, 1L));
         when(importService.tryImport(any())).thenAnswer(inv -> record(ApprovalInstance.BIZ_RECEIVE, 1L));
+        when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(1));
         mockOperator("dd200", STEP1_USER, STEP1_NAME);
 
         service.onEvent("bpms_task_change", taskEvent("agree", "dd200", CORP_ID));
@@ -165,6 +178,7 @@ class ApprovalCallbackServiceImplTest {
     @Test
     void taskAgree_一级审批_推进到二级() {
         when(approvalInstanceMapper.selectOne(any())).thenReturn(record(ApprovalInstance.BIZ_RECEIVE, 1L));
+        when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(1));
         mockOperator("dd200", STEP1_USER, STEP1_NAME);
 
         service.onEvent("bpms_task_change", taskEvent("agree", "dd200", CORP_ID));
@@ -174,13 +188,84 @@ class ApprovalCallbackServiceImplTest {
     }
 
     @Test
-    void taskAgree_二级终态() {
+    void taskAgree_一级阶段非快照审批人_记日志忽略() {
         when(approvalInstanceMapper.selectOne(any())).thenReturn(record(ApprovalInstance.BIZ_RECEIVE, 1L));
+        when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(1));
+        mockOperator("dd999", 999L, "快照外人");
+
+        service.onEvent("bpms_task_change", taskEvent("agree", "dd999", CORP_ID));
+
+        // 不推进、不落回调审计（记日志即可）
+        verify(receiveReceiptService, never()).approve(anyLong(), anyLong(), anyString());
+        verify(approvalInstanceMapper, never()).updateById(any(ApprovalInstance.class));
+    }
+
+    @Test
+    void taskAgree_二级终态() throws Exception {
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(record(ApprovalInstance.BIZ_RECEIVE, 1L));
+        when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(2));
+        when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(detail("COMPLETED", "agree"));
         mockOperator("dd300", STEP2_USER, STEP2_NAME);
 
         service.onEvent("bpms_task_change", taskEvent("agree", "dd300", CORP_ID));
 
         verify(receiveReceiptService).approve(1L, STEP2_USER, STEP2_NAME);
+    }
+
+    // ------------------------------------------------------------ task_change：多级主管模板终态同步
+
+    @Test
+    void taskAgree_二级同意_实例仍在审批_不关单等终审() throws Exception {
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(record(ApprovalInstance.BIZ_RECEIVE, 1L));
+        when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(2));
+        // 快照二级（直接主管）已同意，但连续多级主管的第 2/3 级未审完：实例仍 RUNNING
+        when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(detail("RUNNING", ""));
+        mockOperator("dd300", STEP2_USER, STEP2_NAME);
+
+        service.onEvent("bpms_task_change", taskEvent("agree", "dd300", CORP_ID));
+
+        // 单据终态必须与钉钉实例同步：不提前关单，等 instance:finish 终审事件
+        verify(receiveReceiptService, never()).approve(anyLong(), anyLong(), anyString());
+    }
+
+    @Test
+    void taskAgree_快照外后续主管同意_实例未终审_仅记日志不落库() throws Exception {
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(record(ApprovalInstance.BIZ_RECEIVE, 1L));
+        when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(2));
+        when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(detail("RUNNING", ""));
+        mockOperator("dd999", 999L, "第2级主管");
+
+        service.onEvent("bpms_task_change", taskEvent("agree", "dd999", CORP_ID));
+
+        // 第 2/3 级主管同意：记日志即可，不推进不落库
+        verify(receiveReceiptService, never()).approve(anyLong(), anyLong(), anyString());
+        verify(approvalInstanceMapper, never()).updateById(any(ApprovalInstance.class));
+    }
+
+    @Test
+    void taskAgree_快照外后续主管同意_实例恰已终审_自愈关单() throws Exception {
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(record(ApprovalInstance.BIZ_RECEIVE, 1L));
+        when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(2));
+        // 终审 instance:finish 事件丢失场景：最后一级主管 task:agree 到达时实例已 COMPLETED
+        when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(detail("COMPLETED", "agree"));
+        mockOperator("dd999", 999L, "第3级主管");
+
+        service.onEvent("bpms_task_change", taskEvent("agree", "dd999", CORP_ID));
+
+        // 以快照二级审批人身份过链关单（实际审批过程以钉钉侧记录为准）
+        verify(receiveReceiptService).approve(1L, STEP2_USER, STEP2_NAME);
+    }
+
+    @Test
+    void taskAgree_二级同意_实例详情查询失败_保守不关单() throws Exception {
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(record(ApprovalInstance.BIZ_RECEIVE, 1L));
+        when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(2));
+        when(apiClient.getProcessInstance(INSTANCE_ID)).thenThrow(new RuntimeException("dingtalk api down"));
+        mockOperator("dd300", STEP2_USER, STEP2_NAME);
+
+        service.onEvent("bpms_task_change", taskEvent("agree", "dd300", CORP_ID));
+
+        verify(receiveReceiptService, never()).approve(anyLong(), anyLong(), anyString());
     }
 
     @Test
@@ -369,8 +454,10 @@ class ApprovalCallbackServiceImplTest {
     }
 
     @Test
-    void 双端并发_业务409被吞掉_不告警() {
+    void 双端并发_业务409被吞掉_不告警() throws Exception {
         when(approvalInstanceMapper.selectOne(any())).thenReturn(record(ApprovalInstance.BIZ_RECEIVE, 1L));
+        when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(2));
+        when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(detail("COMPLETED", "agree"));
         mockOperator("dd300", STEP2_USER, STEP2_NAME);
         // 站内已审批，钉钉事件后到 → 状态机 409 拦截，事件按幂等忽略
         when(receiveReceiptService.approve(1L, STEP2_USER, STEP2_NAME))

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sk.asset.auth.UserDirectory;
 import com.sk.asset.common.BusinessException;
+import com.sk.asset.dingtalk.client.DingTalkApiClient;
 import com.sk.asset.dingtalk.config.DingtalkProperties;
 import com.sk.asset.dto.user.UserResp;
 import com.sk.asset.entity.dingtalk.ApprovalInstance;
@@ -74,6 +75,7 @@ public class ApprovalCallbackServiceImpl implements ApprovalCallbackService {
     }
 
     private final DingtalkProperties props;
+    private final DingTalkApiClient apiClient;
     private final ApprovalInstanceMapper approvalInstanceMapper;
     private final UserDirectory userDirectory;
     private final NotificationService notificationService;
@@ -148,13 +150,16 @@ public class ApprovalCallbackServiceImpl implements ApprovalCallbackService {
                 return;
             }
             if ("agree".equals(result)) {
-                applyAgree(record, operator.id(), operator.name());
+                boolean handled = applyAgree(record, operator.id(), operator.name());
+                if (handled) {
+                    appendCallback(record, "task:" + type, result, operator.name());
+                }
             } else if ("refuse".equals(result)) {
                 applyRefuse(record, operator.id(), operator.name(), "钉钉审批拒绝");
+                appendCallback(record, "task:" + type, result, operator.name());
             } else {
                 log.debug("忽略任务事件 result={}（instanceId={}）", result, instanceId);
             }
-            appendCallback(record, "task:" + type, result, operator.name());
         } finally {
             lock.unlock();
         }
@@ -249,20 +254,83 @@ public class ApprovalCallbackServiceImpl implements ApprovalCallbackService {
 
     // ------------------------------------------------------------ 审批动作落地（复用状态机）
 
-    /** 任务级同意：操作人 = 事件 staffId（须命中当前 step 快照审批人，否则 403 记日志） */
-    private void applyAgree(ApprovalInstance record, Long operatorId, String operatorName) {
+    /**
+     * 任务级同意：操作人 = 事件 staffId（须命中当前 step 快照审批人，否则记日志忽略）。
+     *
+     * @return true=事件已作用到系统单据（落回调审计）；false=仅记日志忽略（不落库）
+     */
+    private boolean applyAgree(ApprovalInstance record, Long operatorId, String operatorName) {
         switch (record.getBizType()) {
-            case ApprovalInstance.BIZ_RECEIVE, ApprovalInstance.BIZ_BORROW ->
-                    receiveReceiptService.approve(record.getBizId(), operatorId, operatorName);
-            case ApprovalInstance.BIZ_TRANSFER ->
-                    transferOrderService.confirm(record.getBizId(), operatorId, operatorName);
-            case ApprovalInstance.BIZ_CHANGE ->
-                    changeOrderService.confirm(record.getBizId(), operatorId, operatorName);
+            case ApprovalInstance.BIZ_RECEIVE, ApprovalInstance.BIZ_BORROW -> {
+                // 领用/借用：多级主管模板下单据终态必须与钉钉实例同步（不能快照二级同意就提前关单）
+                return applyReceiptAgree(record, operatorId, operatorName);
+            }
+            case ApprovalInstance.BIZ_TRANSFER -> {
+                transferOrderService.confirm(record.getBizId(), operatorId, operatorName);
+            }
+            case ApprovalInstance.BIZ_CHANGE -> {
+                changeOrderService.confirm(record.getBizId(), operatorId, operatorName);
+            }
             case ApprovalInstance.BIZ_RETURN ->
                     // 退还无系统单据状态机：executeReturn 自查实例终态（COMPLETED+agree）才执行，
                     // 多审批节点模板的首个节点同意（实例仍 RUNNING）不会误触发归还
                     importService.executeReturn(record, operatorId, operatorName);
             default -> log.debug("忽略同意动作（bizType={}）", record.getBizType());
+        }
+        return true;
+    }
+
+    /**
+     * 领用/借用任务级同意（多级主管模板兼容，快照只记前两级审批人）：
+     * <ul>
+     *   <li>一级（快照 step1，如固定审批人谷仍山）：操作人=快照一级 → 推进 step2，
+     *       单据仍 PENDING 不关单；快照外人 → 记日志忽略</li>
+     *   <li>二级（快照 step2，如发起人直接主管）：关单前置条件 = 钉钉实例已终审同意——
+     *       回查实例详情，COMPLETED+agree 才终审关单；实例仍在审批（第 2/3 级主管未审完）
+     *       则记日志等待，由 instance:finish 终审事件兜底推进，保证单据终态与钉钉同步</li>
+     *   <li>快照外审批人（连续多级主管的第 2/3 级）同意：记日志不落库；
+     *       若实例恰已终审（终审事件丢失自愈）则以快照二级审批人身份关单</li>
+     * </ul>
+     */
+    private boolean applyReceiptAgree(ApprovalInstance record, Long operatorId, String operatorName) {
+        ReceiveReceipt receipt = receiptMapper.selectById(record.getBizId());
+        if (receipt == null || !ReceiptStatus.PENDING.name().equals(receipt.getStatus())) {
+            return false; // 已终态（task 与 instance 事件先到先得，幂等）
+        }
+        if (Integer.valueOf(1).equals(receipt.getApprovalStep())) {
+            if (!operatorId.equals(receipt.getApprovalStep1UserId())) {
+                log.info("忽略非快照审批人的同意事件（一级，operator={}，instanceId={}）",
+                        operatorName, record.getProcessInstanceId());
+                return false;
+            }
+            receiveReceiptService.approve(record.getBizId(), operatorId, operatorName);
+            return true;
+        }
+        // step=2：单据终态必须与钉钉实例同步——实例未终审同意不关单（多级主管后续节点还在审）
+        if (!instanceCompletedAgree(record.getProcessInstanceId())) {
+            log.info("快照二级审批人已同意，但钉钉实例仍在审批中（多级主管后续节点未审完），"
+                    + "等实例终审再关单（instanceId={}，operator={}）",
+                    record.getProcessInstanceId(), operatorName);
+            return false;
+        }
+        // 操作人可能为快照二级（正常链路）或后续层级主管（终审事件丢失自愈）：
+        // 统一以快照二级审批人过链校验推进，实际审批过程以钉钉侧记录为准
+        receiveReceiptService.approve(record.getBizId(),
+                receipt.getApprovalStep2UserId(), receipt.getApprovalStep2Name());
+        return true;
+    }
+
+    /** 钉钉实例是否已终审同意（task 事件不携带整体审批进度，回查详情判定） */
+    private boolean instanceCompletedAgree(String instanceId) {
+        try {
+            JsonNode detail = apiClient.getProcessInstance(instanceId);
+            return detail != null && !detail.isEmpty()
+                    && "COMPLETED".equals(detail.path("status").asText(""))
+                    && "agree".equals(detail.path("result").asText(""));
+        } catch (Exception e) {
+            // 查询失败保守不关单：等 instance:finish 终审事件兜底，绝不提前关单
+            log.warn("钉钉实例终态查询失败，本次不关单（instanceId={}）：{}", instanceId, e.getMessage());
+            return false;
         }
     }
 
