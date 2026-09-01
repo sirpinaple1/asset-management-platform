@@ -16,7 +16,7 @@ public final class AppVersion {
     public static final String VERSION = "0.1.2";
 
     /** 发布日期（yyyy-MM-dd） */
-    public static final String RELEASE_DATE = "2026-08-31";
+    public static final String RELEASE_DATE = "2026-09-01";
 
     /** 本版本新增功能（简要，供前端帮助面板展示） */
     public static final List<String> CHANGELOG = List.of(
