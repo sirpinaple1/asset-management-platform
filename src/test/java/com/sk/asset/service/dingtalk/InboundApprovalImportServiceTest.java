@@ -64,12 +64,30 @@ class InboundApprovalImportServiceTest {
                 new org.apache.ibatis.builder.MapperBuilderAssistant(
                         new com.baomidou.mybatisplus.core.MybatisConfiguration(), ""),
                 com.sk.asset.entity.basedata.Location.class);
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
+                new org.apache.ibatis.builder.MapperBuilderAssistant(
+                        new com.baomidou.mybatisplus.core.MybatisConfiguration(), ""),
+                com.sk.asset.entity.receipt.AssetAllocation.class);
+        // backfillInstanceId 用 LambdaUpdateWrapper<ReceiveReceipt/TransferOrder/ChangeOrder>
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
+                new org.apache.ibatis.builder.MapperBuilderAssistant(
+                        new com.baomidou.mybatisplus.core.MybatisConfiguration(), ""),
+                com.sk.asset.entity.receipt.ReceiveReceipt.class);
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
+                new org.apache.ibatis.builder.MapperBuilderAssistant(
+                        new com.baomidou.mybatisplus.core.MybatisConfiguration(), ""),
+                com.sk.asset.entity.transfer.TransferOrder.class);
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
+                new org.apache.ibatis.builder.MapperBuilderAssistant(
+                        new com.baomidou.mybatisplus.core.MybatisConfiguration(), ""),
+                com.sk.asset.entity.change.ChangeOrder.class);
     }
 
     private static final String INSTANCE_ID = "inst-b-001";
     private static final String RECEIVE_CODE = "PROC-RECEIVE-001";
     private static final String TRANSFER_CODE = "PROC-TRANSFER-001";
     private static final String CHANGE_CODE = "PROC-CHANGE-001";
+    private static final String RETURN_CODE = "PROC-RETURN-001";
     private static final String ORIGINATOR = "dd-originator";
     private static final String APPROVER1 = "dd-approver1";
     private static final String APPROVER2 = "dd-approver2";
@@ -98,6 +116,10 @@ class InboundApprovalImportServiceTest {
     private com.sk.asset.mapper.transfer.TransferOrderMapper transferOrderMapper;
     @Mock
     private com.sk.asset.mapper.change.ChangeOrderMapper changeOrderMapper;
+    @Mock
+    private com.sk.asset.mapper.receipt.AssetAllocationMapper allocationMapper;
+    @Mock
+    private com.sk.asset.service.receipt.AllocationService allocationService;
 
     private DingtalkProperties props;
     private InboundApprovalImportService service;
@@ -109,11 +131,12 @@ class InboundApprovalImportServiceTest {
         props.setCorpId("corpA");
         props.getProcessCodes().putAll(Map.of(
                 "receive", RECEIVE_CODE, "borrow", "PROC-BORROW-001",
-                "transfer", TRANSFER_CODE, "change", CHANGE_CODE));
+                "transfer", TRANSFER_CODE, "change", CHANGE_CODE, "return", RETURN_CODE));
         service = new InboundApprovalImportService(props, apiClient, userDirectory,
                 approvalInstanceMapper, assetMapper, locationMapper,
                 receiveReceiptService, transferOrderService, changeOrderService,
-                notificationService, receiptMapper, transferOrderMapper, changeOrderMapper);
+                notificationService, receiptMapper, transferOrderMapper, changeOrderMapper,
+                allocationMapper, allocationService);
     }
 
     // ------------------------------------------------------------ 事件/详情构造
@@ -153,6 +176,170 @@ class InboundApprovalImportServiceTest {
 
     private UserResp user(long id, String name) {
         return new UserResp(id, "SK" + id, name, "综合管理部/IT科");
+    }
+
+    // ------------------------------------------------------------ 退还（TableField 资产明细 + 终审执行归还）
+
+    /**
+     * 退还模板详情。资产明细 value 兼容两种钉钉返回形态：
+     * 行对象 {列组件id:值}（第一行）与 [[{name,value}单元格]]（第二行），
+     * 备注列的普通文本（"屏幕破损"）不应被误认作资产编码。
+     */
+    private com.fasterxml.jackson.databind.node.ObjectNode returnDetail(
+            String status, String result) throws Exception {
+        Object tableObj = List.of(
+                Map.of("TextField_1HCIL3BLRT7K0", "SKBGDN374",
+                        "TextField_O5ERQQ146N40", "屏幕破损"),
+                List.of(Map.of("name", "资产编码", "value", "SKBGDN375"),
+                        Map.of("name", "备注", "value", "")));
+        // 双重编码：明细 value 是"JSON 字符串"（内层引号需转义）
+        String tableValueLiteral = objectMapper.writeValueAsString(
+                objectMapper.writeValueAsString(tableObj));
+        String json = """
+                {
+                  "title":"IT资产退还单",
+                  "originator_userid":"%s",
+                  "form_component_values":[
+                    {"name":"申请人","value":"张三"},
+                    {"name":"申请人部门","value":"综合管理部"},
+                    {"name":"原使用人","value":"张三"},
+                    {"name":"归还原因","value":"离职退还"},
+                    {"name":"资产明细","value":%s},
+                    {"name":"资产规格","value":"笔记本"},
+                    {"name":"归还数量","value":"2"},
+                    {"name":"备注","value":"测试备注"}
+                  ],
+                  "tasks":[{"userid":"%s","task_status":"COMPLETED"}]%s
+                }
+                """.formatted(ORIGINATOR, tableValueLiteral, APPROVER1,
+                status != null ? ",\"status\":\"" + status + "\",\"result\":\"" + result + "\"" : "");
+        return (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(json);
+    }
+
+    private Asset asset(long id, String barcode) {
+        Asset a = new Asset();
+        a.setId(id);
+        a.setBarcode(barcode);
+        return a;
+    }
+
+    private com.sk.asset.entity.receipt.AssetAllocation activeAlloc(long assetId) {
+        com.sk.asset.entity.receipt.AssetAllocation al =
+                new com.sk.asset.entity.receipt.AssetAllocation();
+        al.setId(700L + assetId);
+        al.setAssetId(assetId);
+        return al;
+    }
+
+    @Test
+    void 退还导入_解析资产明细_仅落映射记录不动业务() throws Exception {
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(null);
+        when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(returnDetail(null, null));
+        when(userDirectory.findByDdUserId(ORIGINATOR)).thenReturn(user(100L, "张三"));
+        when(assetMapper.selectList(any())).thenReturn(
+                List.of(asset(10L, "SKBGDN374"), asset(11L, "SKBGDN375")));
+        when(allocationMapper.selectList(any())).thenReturn(
+                List.of(activeAlloc(10L), activeAlloc(11L)));
+
+        ApprovalInstance result = service.tryImport(objectMapper.readTree(eventData(RETURN_CODE)));
+
+        assertNotNull(result);
+        assertEquals(ApprovalInstance.BIZ_RETURN, result.getBizType());
+        assertEquals(0L, result.getBizId());
+        assertEquals(ApprovalInstance.SYNC_SYNCED, result.getSyncStatus());
+        assertEquals(INSTANCE_ID, result.getProcessInstanceId());
+        verify(approvalInstanceMapper).insert(any(ApprovalInstance.class));
+        // 导入期不动业务：无系统单据、不执行归还（等终审事件）
+        verifyNoInteractions(receiveReceiptService, transferOrderService, changeOrderService,
+                allocationService);
+    }
+
+    @Test
+    void 退还导入_资产无持有记录_拒绝告警通知发起人() throws Exception {
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(null);
+        when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(returnDetail(null, null));
+        when(userDirectory.findByDdUserId(ORIGINATOR)).thenReturn(user(100L, "张三"));
+        when(assetMapper.selectList(any())).thenReturn(
+                List.of(asset(10L, "SKBGDN374"), asset(11L, "SKBGDN375")));
+        when(allocationMapper.selectList(any())).thenReturn(List.of()); // 均无持有记录
+        when(userDirectory.userIdsByRole("systemAdmin")).thenReturn(List.of(999L));
+
+        ApprovalInstance result = service.tryImport(objectMapper.readTree(eventData(RETURN_CODE)));
+
+        assertNull(result);
+        verify(approvalInstanceMapper, org.mockito.Mockito.never()).insert(any(ApprovalInstance.class));
+        verify(notificationService).notify(eq(999L), any(),
+                contains("无持有记录"), eq("DINGTALK"), eq(0L));
+        verify(notificationService).notify(eq(100L), any(),
+                contains("未同步到资产系统"), eq("DINGTALK"), eq(0L));
+    }
+
+    @Test
+    void 退还导入_明细行资产编码不存在_拒绝告警() throws Exception {
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(null);
+        when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(returnDetail(null, null));
+        when(userDirectory.findByDdUserId(ORIGINATOR)).thenReturn(user(100L, "张三"));
+        // 只命中一台：第二行编码 SKBGDN375 不存在
+        when(assetMapper.selectList(any())).thenReturn(List.of(asset(10L, "SKBGDN374")));
+        when(userDirectory.userIdsByRole("systemAdmin")).thenReturn(List.of(999L));
+
+        ApprovalInstance result = service.tryImport(objectMapper.readTree(eventData(RETURN_CODE)));
+
+        assertNull(result);
+        verify(notificationService).notify(eq(999L), any(),
+                contains("SKBGDN375"), eq("DINGTALK"), eq(0L));
+    }
+
+    @Test
+    void 退还终审agree_导入后直接执行归还_操作人取钉钉审批人() throws Exception {
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(null);
+        when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(
+                returnDetail("COMPLETED", "agree"));
+        when(userDirectory.findByDdUserId(ORIGINATOR)).thenReturn(user(100L, "张三"));
+        when(userDirectory.findByDdUserId(APPROVER1)).thenReturn(user(200L, "李四"));
+        when(assetMapper.selectList(any())).thenReturn(
+                List.of(asset(10L, "SKBGDN374"), asset(11L, "SKBGDN375")));
+        when(allocationMapper.selectList(any())).thenReturn(
+                List.of(activeAlloc(10L), activeAlloc(11L)));
+        when(allocationMapper.selectOne(any())).thenReturn(activeAlloc(10L), activeAlloc(11L));
+
+        ApprovalInstance result = service.tryImport(objectMapper.readTree(eventData(RETURN_CODE)));
+
+        assertEquals("COMPLETED", result.getStatus());
+        // 两台均归还：allocationId = 710/711，操作人兜底 = 钉钉审批人李四(200)，备注含归还原因
+        verify(allocationService).returnAllocation(eq(710L), contains("离职退还"), eq(200L));
+        verify(allocationService).returnAllocation(eq(711L), contains("离职退还"), eq(200L));
+    }
+
+    @Test
+    void 退还执行_实例未终审_跳过不动业务() throws Exception {
+        ApprovalInstance record = new ApprovalInstance();
+        record.setBizType(ApprovalInstance.BIZ_RETURN);
+        record.setProcessInstanceId(INSTANCE_ID);
+        record.setOriginatorDdUserId(ORIGINATOR);
+        when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(returnDetail(null, null));
+
+        service.executeReturn(record, 200L, "李四");
+
+        // 实例仍 RUNNING（如多节点模板首节点同意）：不执行归还
+        verifyNoInteractions(allocationService, allocationMapper);
+    }
+
+    @Test
+    void 退还执行_资产已归还_幂等跳过() throws Exception {
+        ApprovalInstance record = new ApprovalInstance();
+        record.setBizType(ApprovalInstance.BIZ_RETURN);
+        record.setProcessInstanceId(INSTANCE_ID);
+        record.setOriginatorDdUserId(ORIGINATOR);
+        when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(
+                returnDetail("COMPLETED", "agree"));
+        when(userDirectory.findByDdUserId(APPROVER1)).thenReturn(user(200L, "李四"));
+        when(assetMapper.selectList(any())).thenReturn(List.of(asset(10L, "SKBGDN374")));
+        when(allocationMapper.selectOne(any())).thenReturn(null); // 已无持有中记录
+
+        service.executeReturn(record, 200L, "李四");
+
+        verifyNoInteractions(allocationService);
     }
 
     private void mockHappyPath(String taskUserid1, String taskUserid2) throws Exception {

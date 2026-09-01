@@ -20,11 +20,12 @@ import java.time.LocalDateTime;
 @TableName("approval_instance")
 public class ApprovalInstance {
 
-    /** 单据类型：RECEIVE/BORROW/TRANSFER/CHANGE（LEAVE_RETURN 预留） */
+    /** 单据类型：RECEIVE/BORROW/TRANSFER/CHANGE/RETURN（退还：无系统单据，终审 agree 后直接执行归还） */
     public static final String BIZ_RECEIVE = "RECEIVE";
     public static final String BIZ_BORROW = "BORROW";
     public static final String BIZ_TRANSFER = "TRANSFER";
     public static final String BIZ_CHANGE = "CHANGE";
+    public static final String BIZ_RETURN = "RETURN";
 
     /** 同步状态 */
     public static final String SYNC_PENDING = "PENDING";

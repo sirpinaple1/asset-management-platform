@@ -53,3 +53,4 @@ app:
       borrow:  PROC-xxxxxxxx-xxxx  # 借用
       transfer: PROC-xxxxxxxx-xxxx # 调拨
       change:  PROC-xxxxxxxx-xxxx  # 实物变更
+      return:  PROC-xxxxxxxx-xxxx  # 退还（终审通过后系统自动执行归还）

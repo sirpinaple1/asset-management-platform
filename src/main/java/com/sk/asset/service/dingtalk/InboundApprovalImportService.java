@@ -16,25 +16,34 @@ import com.sk.asset.entity.asset.Asset;
 import com.sk.asset.entity.basedata.Location;
 import com.sk.asset.entity.change.ChangeOrder;
 import com.sk.asset.entity.dingtalk.ApprovalInstance;
+import com.sk.asset.entity.receipt.AssetAllocation;
 import com.sk.asset.entity.receipt.ReceiveReceipt;
 import com.sk.asset.entity.transfer.TransferOrder;
 import com.sk.asset.enums.notification.NotificationType;
 import com.sk.asset.mapper.asset.AssetMapper;
 import com.sk.asset.mapper.basedata.LocationMapper;
 import com.sk.asset.mapper.dingtalk.ApprovalInstanceMapper;
+import com.sk.asset.mapper.receipt.AssetAllocationMapper;
 import com.sk.asset.service.approval.ApprovalChainResolver;
 import com.sk.asset.service.change.ChangeOrderService;
 import com.sk.asset.service.notification.NotificationService;
+import com.sk.asset.service.receipt.AllocationService;
 import com.sk.asset.service.receipt.ReceiveReceiptService;
 import com.sk.asset.service.transfer.TransferOrderService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 入口 B：钉钉原生表单发起的审批实例导入为系统单据（M10 2026-08-31）。
@@ -50,6 +59,11 @@ import java.util.Objects;
  * <p>失败语义：表单解析失败 / 资产或区域查不到 / 审批人未绑定内部用户 / 业务校验
  * （资产被占用等 400/409）→ 告警 systemAdmin + 放弃导入（返回 null，事件按未知实例
  * 记日志）；钉钉侧审批继续不受影响，系统侧人工补建。</p>
+ *
+ * <p>退还（return）：不建系统单据（方案 B，复用既有归还逻辑）——导入仅落映射记录 +
+ * 校验资产持有中；实例终审 agree 后由 {@link #executeReturn} 逐台执行
+ * {@link AllocationService#returnAllocation}（闭环 allocation + 状态机流转 +
+ * 位置回置发放前快照），拒绝/撤销仅通知发起人、资产不动。</p>
  */
 @Slf4j
 @Service
@@ -69,12 +83,18 @@ public class InboundApprovalImportService {
     private final com.sk.asset.mapper.receipt.ReceiveReceiptMapper receiptMapper;
     private final com.sk.asset.mapper.transfer.TransferOrderMapper transferOrderMapper;
     private final com.sk.asset.mapper.change.ChangeOrderMapper changeOrderMapper;
+    private final AssetAllocationMapper allocationMapper;
+    private final AllocationService allocationService;
+
+    /** 明细表 value JSON 解析（TableField 行/单元格结构随钉钉版本形态不一，见 resolveReturnAssets） */
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /** 钉钉模板 → 业务类型（与入口 A 推送契约一一对应） */
     private static final String TEMPLATE_BIZ_RECEIVE = "receive";
     private static final String TEMPLATE_BIZ_BORROW = "borrow";
     private static final String TEMPLATE_BIZ_TRANSFER = "transfer";
     private static final String TEMPLATE_BIZ_CHANGE = "change";
+    private static final String TEMPLATE_BIZ_RETURN = "return";
 
     /**
      * 尝试导入钉钉发起的实例（幂等：已有映射直接返回既有记录）。
@@ -122,6 +142,7 @@ public class InboundApprovalImportService {
                 case TEMPLATE_BIZ_BORROW -> importReceipt(detail, applicant, TEMPLATE_BIZ_BORROW, "BORROW", instanceId);
                 case TEMPLATE_BIZ_TRANSFER -> importTransfer(detail, applicant, instanceId);
                 case TEMPLATE_BIZ_CHANGE -> importChange(detail, applicant, instanceId);
+                case TEMPLATE_BIZ_RETURN -> importReturn(detail, instanceId);
                 default -> null;
             };
         } catch (BusinessException e) {
@@ -145,7 +166,7 @@ public class InboundApprovalImportService {
     private String matchTemplate(String processCode) {
         var codes = props.getProcessCodes();
         for (String key : List.of(TEMPLATE_BIZ_RECEIVE, TEMPLATE_BIZ_BORROW,
-                TEMPLATE_BIZ_TRANSFER, TEMPLATE_BIZ_CHANGE)) {
+                TEMPLATE_BIZ_TRANSFER, TEMPLATE_BIZ_CHANGE, TEMPLATE_BIZ_RETURN)) {
             String code = codes.get(key);
             if (code != null && !code.isBlank() && code.equals(processCode)) {
                 return key;
@@ -228,6 +249,197 @@ public class InboundApprovalImportService {
                 req, applicant.id(), applicant.name());
         return insertRecord(ApprovalInstance.BIZ_CHANGE, TEMPLATE_BIZ_CHANGE,
                 order.getId(), order.getSerialNo(), detail, instanceId);
+    }
+
+    // ------------------------------------------------------------ 退还（方案 B：不建系统单据，终审 agree 直接执行归还）
+
+    /**
+     * 退还导入：解析资产明细（TableField）→ 校验资产存在且持有中 → 仅落映射记录
+     * （bizId=0，无系统单据）。实例终审 agree 由 {@link #executeReturn} 执行归还；
+     * 拒绝/撤销仅通知发起人，资产不动。
+     */
+    private ApprovalInstance importReturn(JsonNode detail, String instanceId) {
+        // 导入期校验持有关系：给发起人即时反馈（无持有记录的资产退还无意义，等终审才发现就晚了）
+        List<Asset> assets = resolveReturnAssets(detail, instanceId);
+        Set<Long> held = allocationMapper.selectList(new LambdaQueryWrapper<AssetAllocation>()
+                        .in(AssetAllocation::getAssetId, assets.stream().map(Asset::getId).toList())
+                        .isNull(AssetAllocation::getReturnedAt)).stream()
+                .map(AssetAllocation::getAssetId).collect(Collectors.toSet());
+        List<String> notHeld = assets.stream()
+                .filter(a -> !held.contains(a.getId())).map(Asset::getBarcode).toList();
+        if (!notHeld.isEmpty()) {
+            throw new BusinessException(400, "钉钉表单资产当前无持有记录（可能已归还，无需退还）："
+                    + String.join("、", notHeld));
+        }
+        return insertRecord(ApprovalInstance.BIZ_RETURN, TEMPLATE_BIZ_RETURN,
+                0L, null, detail, instanceId);
+    }
+
+    /**
+     * 退还终审执行：实例终态（COMPLETED + agree）后逐台归还。
+     * 双入口共用（导入时终态兜底 / 回调 task:finish、instance:finish），内部自查实例详情
+     * 终态——多审批节点模板的首个节点同意不会误触发（届时实例仍 RUNNING）。
+     * 幂等：资产无持有中 allocation 视为已归还，跳过（系统侧手动归还 / 重复事件双容错）。
+     *
+     * @param operatorId   操作人（事件 staffId 反查；空则回退钉钉审批人 → 发起人，仅供日志审计）
+     * @param operatorName 操作人姓名
+     */
+    public void executeReturn(ApprovalInstance record, Long operatorId, String operatorName) {
+        String instanceId = record.getProcessInstanceId();
+        JsonNode detail;
+        try {
+            detail = apiClient.getProcessInstance(instanceId);
+        } catch (Exception e) {
+            alertAdmins("钉钉退还实例详情查询失败（" + e.getMessage() + "），请人工核对归还"
+                    + "（钉钉实例 " + instanceId + "）");
+            return;
+        }
+        if (detail == null || detail.isEmpty()
+                || !"COMPLETED".equals(detail.path("status").asText(""))
+                || !"agree".equals(detail.path("result").asText(""))) {
+            log.info("退还实例未到终审同意，跳过执行（instanceId={}, status={}, result={}）",
+                    instanceId, detail == null ? "-" : detail.path("status").asText(""),
+                    detail == null ? "-" : detail.path("result").asText(""));
+            return;
+        }
+        // 操作人兜底：事件无 staffId（实例终态兜底入口）时取钉钉审批人 → 发起人
+        Long opId = operatorId;
+        String opName = operatorName;
+        if (opId == null) {
+            try {
+                UserResp approver = resolveFirstApprover(detail, instanceId);
+                opId = approver.id();
+                opName = displayName(approver);
+            } catch (BusinessException e) {
+                UserResp originator = userDirectory.findByDdUserId(record.getOriginatorDdUserId());
+                opId = originator != null ? originator.id() : 0L;
+                opName = originator != null ? displayName(originator) : "钉钉";
+            }
+        }
+
+        List<Asset> assets;
+        try {
+            assets = resolveReturnAssets(detail, instanceId);
+        } catch (BusinessException e) {
+            // 导入后才解析失败（模板改版/数据漂移）：实例已终审通过，告警人工核对归还
+            alertAdmins("钉钉退还终审执行失败（" + e.getMessage() + "），请人工核对归还"
+                    + "（钉钉实例 " + instanceId + "）");
+            return;
+        }
+        String reason = formValue(detail, "归还原因");
+        String remark = formValue(detail, "备注");
+        String note = "钉钉退还审批通过"
+                + (reason != null && !reason.isBlank() ? "：" + reason.trim() : "")
+                + (remark != null && !remark.isBlank() ? "（备注：" + remark.trim() + "）" : "");
+
+        int returned = 0;
+        int skipped = 0;
+        List<String> failed = new ArrayList<>();
+        for (Asset asset : assets) {
+            AssetAllocation active = allocationMapper.selectOne(new LambdaQueryWrapper<AssetAllocation>()
+                    .eq(AssetAllocation::getAssetId, asset.getId())
+                    .isNull(AssetAllocation::getReturnedAt)
+                    .orderByDesc(AssetAllocation::getId)
+                    .last("limit 1"));
+            if (active == null) {
+                skipped++;
+                log.info("退还资产无持有中记录，跳过（barcode={}, instanceId={}）",
+                        asset.getBarcode(), instanceId);
+                continue;
+            }
+            try {
+                allocationService.returnAllocation(active.getId(), note, opId);
+                returned++;
+            } catch (BusinessException e) {
+                // 逐台独立事务：单台失败（如资产状态不合法）不影响其余，失败项告警人工处理
+                log.warn("退还资产归还被业务校验拦截（barcode={}, instanceId={}）：{}",
+                        asset.getBarcode(), instanceId, e.getMessage());
+                failed.add(asset.getBarcode() + "：" + e.getMessage());
+            }
+        }
+        log.info("钉钉退还终审执行完成：归还 {} 台、跳过 {} 台、失败 {} 台（instanceId={}，操作人={}）",
+                returned, skipped, failed.size(), instanceId, opName);
+        if (!failed.isEmpty()) {
+            alertAdmins("钉钉退还部分资产归还失败，请人工处理（钉钉实例 " + instanceId + "）："
+                    + String.join("；", failed));
+        }
+    }
+
+    /**
+     * 退还模板资产明细（TableField「资产明细」，列 = 资产编码/备注）→ 资产列表。
+     * 明细 value 为 JSON 字符串，行/单元格结构随钉钉版本形态不一
+     * （[[{name,value}...]] / [{列组件id:值}]），统一收集每行叶子文本值后按系统
+     * 资产条码批量匹配（备注等非条码文本自然滤除）；每行至少命中一条资产编码，
+     * 否则视为编码填写错误拒绝。
+     */
+    private List<Asset> resolveReturnAssets(JsonNode detail, String instanceId) {
+        String raw = formValue(detail, "资产明细");
+        if (raw == null || raw.isBlank()) {
+            throw new BusinessException(400, "钉钉表单缺少资产明细（instanceId=" + instanceId + "）");
+        }
+        JsonNode rows;
+        try {
+            rows = objectMapper.readTree(raw);
+        } catch (Exception e) {
+            throw new BusinessException(400, "钉钉表单资产明细格式异常（instanceId=" + instanceId + "）");
+        }
+        if (!rows.isArray() || rows.isEmpty()) {
+            throw new BusinessException(400, "钉钉表单资产明细为空（instanceId=" + instanceId + "）");
+        }
+        List<List<String>> rowValues = new ArrayList<>();
+        for (JsonNode row : rows) {
+            List<String> vals = new ArrayList<>();
+            collectLeafTexts(row, vals);
+            rowValues.add(vals);
+        }
+        List<String> candidates = rowValues.stream().flatMap(List::stream)
+                .map(String::trim).filter(s -> !s.isEmpty()).distinct().toList();
+        if (candidates.isEmpty()) {
+            throw new BusinessException(400, "钉钉表单资产明细为空（instanceId=" + instanceId + "）");
+        }
+        Map<String, Asset> byBarcode = assetMapper.selectList(new LambdaQueryWrapper<Asset>()
+                        .in(Asset::getBarcode, candidates)).stream()
+                .collect(Collectors.toMap(Asset::getBarcode, Function.identity(), (a, b) -> a));
+        Set<Long> seen = new LinkedHashSet<>();
+        for (int i = 0; i < rowValues.size(); i++) {
+            boolean hit = false;
+            for (String v : rowValues.get(i)) {
+                Asset asset = byBarcode.get(v.trim());
+                if (asset != null) {
+                    hit = true;
+                    seen.add(asset.getId());
+                }
+            }
+            if (!hit) {
+                throw new BusinessException(400, "钉钉表单资产明细第 " + (i + 1)
+                        + " 行资产编码在系统中不存在：" + String.join("、", rowValues.get(i)));
+            }
+        }
+        return seen.stream().map(id -> byBarcode.values().stream()
+                .filter(a -> a.getId().equals(id)).findFirst().orElse(null))
+                .filter(Objects::nonNull).toList();
+    }
+
+    /** 递归收集节点叶子文本值（TableField 行内容兼容 {name,value} 单元格 / {列id:值} 行 / 纯文本数组） */
+    private void collectLeafTexts(JsonNode node, List<String> out) {
+        if (node.isTextual()) {
+            out.add(node.asText());
+        } else if (node.isArray()) {
+            node.forEach(n -> collectLeafTexts(n, out));
+        } else if (node.isObject()) {
+            JsonNode value = node.path("value");
+            if (value.isTextual()) {
+                // 单元格 {name: 列名, value: 填写值}：只取填写值
+                out.add(value.asText());
+                return;
+            }
+            // 行对象 {列组件id: 填写值}：取全部文本属性值
+            node.properties().forEach(e -> {
+                if (e.getValue().isTextual()) {
+                    out.add(e.getValue().asText());
+                }
+            });
+        }
     }
 
     // ------------------------------------------------------------ 共用解析
@@ -413,9 +625,10 @@ public class InboundApprovalImportService {
         // 回填单据 dingtalk_instance_id（与入口 A 同步后回填对齐，审批中心区分站内/钉钉通道展示）
         backfillInstanceId(bizType, bizId, instanceId);
         log.info("入口 B 导入完成：钉钉实例 {} → 系统单据 {}（bizType={}, 申请人={}, 审批人以钉钉为准）",
-                instanceId, serialNo, bizType, detail.path("originator_userid").asText(""));
+                instanceId, serialNo != null ? serialNo : "（退还：无系统单据，终审执行归还）", bizType,
+                detail.path("originator_userid").asText(""));
         // 实例可能已在钉钉侧终审（导入触发晚于终态事件消费）：不等后续事件，直接落终态
-        settleIfFinal(bizType, bizId, detail);
+        settleIfFinal(record, detail);
         return record;
     }
 
@@ -448,27 +661,29 @@ public class InboundApprovalImportService {
      * 详情已终态时直接推进单据（事件乱序/迟到场景的兜底；单据刚建必然 PENDING，
      * 与回调层终审兜底逻辑幂等互备——后到的事件会被单据状态机 409 拦截）。
      */
-    private void settleIfFinal(String bizType, Long bizId, JsonNode detail) {
+    private void settleIfFinal(ApprovalInstance record, JsonNode detail) {
         String status = detail.path("status").asText("");
         String result = detail.path("result").asText("");
         try {
             if ("COMPLETED".equals(status) && "agree".equals(result)) {
-                applyFinalAgree(bizType, bizId);
+                applyFinalAgree(record);
             } else if ("COMPLETED".equals(status) && "refuse".equals(result)) {
-                applyFinalRefuse(bizType, bizId, "钉钉审批拒绝（导入时已终审）");
+                applyFinalRefuse(record, "钉钉审批拒绝（导入时已终审）");
             } else if ("TERMINATED".equals(status)) {
-                applyFinalTerminate(bizType, bizId, "发起人在钉钉撤销（导入时已终止）");
+                applyFinalTerminate(record, "发起人在钉钉撤销（导入时已终止）");
             }
         } catch (BusinessException e) {
             // 终态记录已落库；业务推进被拦截（如调拨自确认限制）交人工处理
             log.warn("入口 B 终态落地被业务校验拦截（bizType={}, bizId={}）：code={}, message={}",
-                    bizType, bizId, e.getCode(), e.getMessage());
+                    record.getBizType(), record.getBizId(), e.getCode(), e.getMessage());
             alertAdmins("钉钉导入单据终态落地被拦截（" + e.getMessage() + "），请在系统内处理（"
-                    + bizType + "#" + bizId + "）");
+                    + record.getBizType() + "#" + record.getBizId() + "）");
         }
     }
 
-    private void applyFinalAgree(String bizType, Long bizId) {
+    private void applyFinalAgree(ApprovalInstance record) {
+        String bizType = record.getBizType();
+        Long bizId = record.getBizId();
         switch (bizType) {
             case ApprovalInstance.BIZ_RECEIVE, ApprovalInstance.BIZ_BORROW -> {
                 ReceiveReceipt receipt = receiptMapper.selectById(bizId);
@@ -498,11 +713,14 @@ public class InboundApprovalImportService {
                     changeOrderService.confirm(bizId, order.getAssigneeUserId(), order.getReason());
                 }
             }
+            case ApprovalInstance.BIZ_RETURN -> executeReturn(record, null, null);
             default -> log.debug("忽略终审落地（bizType={}）", bizType);
         }
     }
 
-    private void applyFinalRefuse(String bizType, Long bizId, String reason) {
+    private void applyFinalRefuse(ApprovalInstance record, String reason) {
+        String bizType = record.getBizType();
+        Long bizId = record.getBizId();
         switch (bizType) {
             case ApprovalInstance.BIZ_RECEIVE, ApprovalInstance.BIZ_BORROW -> {
                 ReceiveReceipt receipt = receiptMapper.selectById(bizId);
@@ -522,15 +740,19 @@ public class InboundApprovalImportService {
                             order.getApplicantUserId(), order.getApplicantName());
                 }
             }
-            case ApprovalInstance.BIZ_CHANGE -> applyFinalTerminate(bizType, bizId, reason);
+            case ApprovalInstance.BIZ_CHANGE -> applyFinalTerminate(record, reason);
+            case ApprovalInstance.BIZ_RETURN ->
+                    notifyReturnOriginator(record, "你提交的钉钉退还审批被拒绝，资产持有状态未变化。");
             default -> log.debug("忽略拒绝落地（bizType={}）", bizType);
         }
     }
 
-    private void applyFinalTerminate(String bizType, Long bizId, String reason) {
+    private void applyFinalTerminate(ApprovalInstance record, String reason) {
+        String bizType = record.getBizType();
+        Long bizId = record.getBizId();
         switch (bizType) {
             case ApprovalInstance.BIZ_RECEIVE, ApprovalInstance.BIZ_BORROW ->
-                    applyFinalRefuse(bizType, bizId, reason);
+                    applyFinalRefuse(record, reason);
             case ApprovalInstance.BIZ_TRANSFER -> {
                 TransferOrder order = transferOrderMapper.selectById(bizId);
                 if (order != null) {
@@ -543,7 +765,26 @@ public class InboundApprovalImportService {
                     changeOrderService.cancel(bizId, order.getApplicantUserId());
                 }
             }
+            case ApprovalInstance.BIZ_RETURN ->
+                    notifyReturnOriginator(record, "你提交的钉钉退还审批已撤销，资产持有状态未变化。");
             default -> log.debug("忽略终止落地（bizType={}）", bizType);
+        }
+    }
+
+    /** 退还被拒绝/撤销时通知发起人（资产不动，发起人需知晓结果） */
+    private void notifyReturnOriginator(ApprovalInstance record, String message) {
+        UserResp originator = record.getOriginatorDdUserId() == null ? null
+                : userDirectory.findByDdUserId(record.getOriginatorDdUserId());
+        if (originator == null) {
+            log.warn("退还结果通知发起人失败：发起人未绑定系统用户（instanceId={}）",
+                    record.getProcessInstanceId());
+            return;
+        }
+        try {
+            notificationService.notify(originator.id(), NotificationType.DINGTALK_SYNC_ALERT,
+                    message, "DINGTALK", 0L);
+        } catch (Exception e) {
+            log.warn("退还结果通知发起人异常（userId={}）：{}", originator.id(), e.getMessage());
         }
     }
 
@@ -553,6 +794,7 @@ public class InboundApprovalImportService {
             case TEMPLATE_BIZ_BORROW -> ApprovalInstance.BIZ_BORROW;
             case TEMPLATE_BIZ_TRANSFER -> ApprovalInstance.BIZ_TRANSFER;
             case TEMPLATE_BIZ_CHANGE -> ApprovalInstance.BIZ_CHANGE;
+            case TEMPLATE_BIZ_RETURN -> ApprovalInstance.BIZ_RETURN;
             default -> ApprovalInstance.BIZ_RECEIVE;
         };
     }

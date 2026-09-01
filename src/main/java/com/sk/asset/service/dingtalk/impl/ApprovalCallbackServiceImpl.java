@@ -239,6 +239,9 @@ public class ApprovalCallbackServiceImpl implements ApprovalCallbackService {
             case ApprovalInstance.BIZ_CHANGE -> changeOrderService.cancel(record.getBizId(),
                     changeOrderMapper.selectById(record.getBizId()) != null
                             ? changeOrderMapper.selectById(record.getBizId()).getApplicantUserId() : null);
+            case ApprovalInstance.BIZ_RETURN ->
+                    // 退还未终审即撤销：仅通知发起人（资产不动；若实例此前已终审 agree 则已归还，撤销事件不再到达）
+                    notifyReturnOriginator(record, "你提交的钉钉退还审批已撤销，资产持有状态未变化。");
             default -> log.debug("忽略终止事件（bizType={}）", record.getBizType());
         }
         appendCallback(record, "instance:terminate", null, displayName(operator));
@@ -255,6 +258,10 @@ public class ApprovalCallbackServiceImpl implements ApprovalCallbackService {
                     transferOrderService.confirm(record.getBizId(), operatorId, operatorName);
             case ApprovalInstance.BIZ_CHANGE ->
                     changeOrderService.confirm(record.getBizId(), operatorId, operatorName);
+            case ApprovalInstance.BIZ_RETURN ->
+                    // 退还无系统单据状态机：executeReturn 自查实例终态（COMPLETED+agree）才执行，
+                    // 多审批节点模板的首个节点同意（实例仍 RUNNING）不会误触发归还
+                    importService.executeReturn(record, operatorId, operatorName);
             default -> log.debug("忽略同意动作（bizType={}）", record.getBizType());
         }
     }
@@ -285,6 +292,8 @@ public class ApprovalCallbackServiceImpl implements ApprovalCallbackService {
                     changeOrderService.cancel(record.getBizId(), order.getApplicantUserId());
                 }
             }
+            case ApprovalInstance.BIZ_RETURN ->
+                    notifyReturnOriginator(record, "你提交的钉钉退还审批被拒绝，资产持有状态未变化。");
             default -> log.debug("忽略拒绝动作（bizType={}）", record.getBizType());
         }
     }
@@ -325,7 +334,25 @@ public class ApprovalCallbackServiceImpl implements ApprovalCallbackService {
                             order.getAssigneeUserId(), order.getReason());
                 }
             }
+            case ApprovalInstance.BIZ_RETURN -> importService.executeReturn(record, null, null);
             default -> log.debug("忽略终审兜底（bizType={}）", record.getBizType());
+        }
+    }
+
+    /** 退还被拒绝/撤销时通知发起人（资产不动，发起人需知晓结果） */
+    private void notifyReturnOriginator(ApprovalInstance record, String message) {
+        UserResp originator = record.getOriginatorDdUserId() == null ? null
+                : userDirectory.findByDdUserId(record.getOriginatorDdUserId());
+        if (originator == null) {
+            log.warn("退还结果通知发起人失败：发起人未绑定系统用户（instanceId={}）",
+                    record.getProcessInstanceId());
+            return;
+        }
+        try {
+            notificationService.notify(originator.id(), NotificationType.DINGTALK_SYNC_ALERT,
+                    message, "DINGTALK", 0L);
+        } catch (Exception e) {
+            log.warn("退还结果通知发起人异常（userId={}）：{}", originator.id(), e.getMessage());
         }
     }
 

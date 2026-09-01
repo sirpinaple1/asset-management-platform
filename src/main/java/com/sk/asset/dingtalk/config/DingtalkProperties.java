@@ -17,7 +17,7 @@ import java.util.Map;
  * 与各单据模板 processCode 全部外置（R3 红线：密钥只放 application-local.yml / 环境变量）。
  * {@code enabled=false}（默认）时同步与事件监听整体关闭，系统功能不受影响。</p>
  *
- * <p>processCodes 的 key 为单据类型：receive（领用）/borrow（借用）/transfer（调拨）/change（实物变更）。</p>
+ * <p>processCodes 的 key 为单据类型：receive（领用）/borrow（借用）/transfer（调拨）/change（实物变更）/return（退还）。</p>
  */
 @Getter
 @Setter
