@@ -52,6 +52,16 @@ const isAssetModule = computed(() =>
   ),
 )
 
+/** 资产管理图标激活态：审批中心页面仅亮“审批中心”，不联动“资产管理” */
+const isAssetNavActive = computed(() =>
+  ['assets-', 'basedata-', 'receipts-', 'transfers-', 'changes-', 'stocktakes-'].some((p) =>
+    String(route.name || '').startsWith(p),
+  ),
+)
+
+/** 审批中心路由：进入时折叠“资产功能/基础设置”分组（入口保留，可手动展开跳转） */
+const isApprovalsRoute = computed(() => String(route.name || '').startsWith('approvals-'))
+
 /** 审批中心子菜单激活态：/approvals?tab=xxx（缺省 tab=todo） */
 const approvalsTabActive = (key: string) =>
   route.path === '/approvals' && (String(route.query.tab || 'todo') === key)
@@ -87,6 +97,24 @@ const toggleSection = (key: string) => {
   collapsed.value[key] = !collapsed.value[key]
   localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsed.value))
 }
+
+/** 进入审批中心：折叠“资产功能/基础设置”分组（保留入口，可手动展开跳转）；离开时恢复用户原折叠偏好 */
+let collapsedSnapshot: Record<string, boolean> | null = null
+watch(
+  isApprovalsRoute,
+  (inApprovals) => {
+    if (inApprovals) {
+      collapsedSnapshot = { ...collapsed.value }
+      collapsed.value.assetFn = true
+      collapsed.value.basedata = true
+    } else if (collapsedSnapshot) {
+      collapsed.value = collapsedSnapshot
+      collapsedSnapshot = null
+      localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsed.value))
+    }
+  },
+  { immediate: true },
+)
 
 /** 占位菜单点击提示 */
 const comingSoon = () => {
@@ -186,7 +214,7 @@ const openVersionPanel = () => {
         </el-tooltip>
 
         <el-tooltip content="资产管理" placement="right" :show-after="300">
-          <router-link to="/assets" class="nav-item" :class="{ active: isAssetModule }">
+          <router-link to="/assets" class="nav-item" :class="{ active: isAssetNavActive }">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
               <rect x="3" y="6" width="14" height="11" rx="1.5" stroke="currentColor" stroke-width="1.5" />
               <path d="M3 9.5L10 6L17 9.5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
