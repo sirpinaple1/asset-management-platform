@@ -3,18 +3,15 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { notificationApi } from '@/api/modules/notification'
-import type {
-  NotificationCategory,
-  NotificationItem,
-} from '@/api/interface/notification'
-import { NOTIFICATION_CATEGORY_META } from '@/api/interface/notification'
+import type { NotificationItem } from '@/api/interface/notification'
+import { NOTIFICATION_TYPE_TAG } from '@/api/interface/notification'
 
 /**
  * 通知铃铛（右上角）：
- * - 60s 轮询 unread-count，红点 + 未读数字角标（超过 99 显示 99+）
- * - 点击铃铛打开抽屉，分页加载全部未读（可切"全部"）
- * - 点击单条通知：标记已读 + 深链跳对应单据详情
- * - 右上角一键全部标记已读
+ * - 60s 轮询 unread-count，红点 + 未读数字角标（超过 99 显示 99+，含抄送类）
+ * - 点击铃铛打开抽屉：「全部 / 抄送我的」两个视图 + 只看未读开关
+ * - 点击单条通知：标记已读 + 深链跳对应单据详情（RETURN 且无 bizId 的退还审批不跳转）
+ * - 右上角一键全部标记已读（会把抄送通知一并标读，后端暂无按 type 批量已读）
  */
 defineOptions({ name: 'notification-bell' })
 
@@ -22,14 +19,12 @@ const router = useRouter()
 
 /* ---------------- 未读计数轮询 ---------------- */
 const unreadCount = ref(0)
-const urgentCount = ref(0)
 let pollTimer: ReturnType<typeof setInterval> | undefined
 
 const pollUnread = async () => {
   try {
     const resp = await notificationApi.unreadCount()
-    unreadCount.value = resp.unreadCount || 0
-    urgentCount.value = resp.urgentCount || 0
+    unreadCount.value = resp.count || 0
   } catch {
     /* 401/503 等已由 axios 拦截器统一处理 */
   }
@@ -49,6 +44,8 @@ const pageSize = 10
 const currentPage = ref(1)
 const total = ref(0)
 const records = ref<NotificationItem[]>([])
+/** 视图 tab：all=全部通知，cc=抄送我的（type=DOC_CC） */
+const activeTab = ref<'all' | 'cc'>('all')
 const unreadOnly = ref(true)
 const markingAll = ref(false)
 
@@ -59,7 +56,7 @@ const badgeCount = computed(() => {
   return n > 99 ? 99 : n
 })
 
-/** 铃铛打开时立即重拉一次最新计数 + 列表 */
+/** 铃铛打开时立即重拉一次最新列表 */
 watch(drawerVisible, async (v) => {
   if (v) {
     currentPage.value = 1
@@ -73,7 +70,8 @@ const loadList = async (reset = false) => {
     const resp = await notificationApi.list({
       page: currentPage.value,
       size: pageSize,
-      unreadOnly: unreadOnly.value,
+      unread: unreadOnly.value,
+      ...(activeTab.value === 'cc' ? { type: 'DOC_CC' } : {}),
     })
     total.value = resp.total
     records.value = reset ? resp.records : [...records.value, ...resp.records]
@@ -93,23 +91,24 @@ const loadMore = () => {
   void loadList()
 }
 
+/* 切换视图 tab（全部 / 抄送我的）时重置页码并重载 */
+const switchTab = (tab: 'all' | 'cc') => {
+  if (tab === activeTab.value) return
+  activeTab.value = tab
+  currentPage.value = 1
+  void loadList(true)
+}
+
 /* 切换未读/全部时重置页码并重载 */
-const toggleScope = (val: boolean) => {
+const toggleUnread = (val: boolean) => {
   if (val === unreadOnly.value) return
   unreadOnly.value = val
   currentPage.value = 1
   void loadList(true)
 }
 
-/* ---------------- 分类标签颜色 ---------------- */
-const categoryTag = (c: NotificationCategory) => {
-  const m = NOTIFICATION_CATEGORY_META[c]
-  if (m.type === 'urgent') return 'warning' as const
-  if (m.type === 'result') return 'success' as const
-  return 'info' as const
-}
-
-const categoryLabel = (c: NotificationCategory) => NOTIFICATION_CATEGORY_META[c].label
+/* ---------------- 类型标签颜色（文案 typeLabel 由后端返回） ---------------- */
+const typeTag = (t: string) => NOTIFICATION_TYPE_TAG[t] ?? 'info'
 
 /* ---------------- 点击单条：标记已读 + 深链跳转 ---------------- */
 const actingId = ref<number>()
@@ -124,22 +123,20 @@ const BIZ_LIST_PATHS: Record<string, string> = {
 }
 
 const jumpPath = (row: NotificationItem) => {
-  if (!row.refOrderBiz) return null
-  const listPath = BIZ_LIST_PATHS[row.refOrderBiz]
+  /* RETURN 且 bizId=0 为退还审批（无系统单据），点击不跳转 */
+  if (!row.bizType || !row.bizId) return null
+  const listPath = BIZ_LIST_PATHS[row.bizType]
   if (!listPath) return null
-  if (row.refOrderId) {
-    return { path: listPath, query: { id: String(row.refOrderId) } }
-  }
-  return { path: listPath }
+  return { path: listPath, query: { id: String(row.bizId) } }
 }
 
 const handleClick = async (row: NotificationItem) => {
   if (actingId.value) return
   actingId.value = row.id
   try {
-    if (!row.read) {
+    if (row.readFlag === 0) {
       await notificationApi.markRead(row.id)
-      row.read = true
+      row.readFlag = 1
       unreadCount.value = Math.max(0, unreadCount.value - 1)
     }
     const target = jumpPath(row)
@@ -154,7 +151,7 @@ const handleClick = async (row: NotificationItem) => {
   }
 }
 
-/* ---------------- 一键全部已读 ---------------- */
+/* ---------------- 一键全部已读（含抄送类） ---------------- */
 const markAllRead = async () => {
   if (markingAll.value || unreadCount.value <= 0) return
   markingAll.value = true
@@ -162,14 +159,19 @@ const markAllRead = async () => {
     await notificationApi.markAllRead()
     ElMessage.success('已全部标记为已读')
     unreadCount.value = 0
-    urgentCount.value = 0
-    records.value.forEach((r) => (r.read = true))
+    records.value.forEach((r) => (r.readFlag = 1))
   } catch {
     /* 拦截器已提示 */
   } finally {
     markingAll.value = false
   }
 }
+
+/* ---------------- 空态文案 ---------------- */
+const emptyText = computed(() => {
+  if (activeTab.value === 'cc') return unreadOnly.value ? '暂无未读抄送' : '暂无抄送通知'
+  return unreadOnly.value ? '暂无未读通知' : '暂无通知'
+})
 
 /* ---------------- 时间格式化 ---------------- */
 const formatTime = (s: string) => {
@@ -221,23 +223,33 @@ const formatTime = (s: string) => {
       </template>
 
       <div class="drawer-body">
-        <!-- 顶部切换：只看未读 / 全部 -->
-        <div class="scope-switch">
+        <!-- 顶部：视图 tab（全部 / 抄送我的）+ 只看未读开关 -->
+        <div class="filter-bar">
+          <div class="view-switch">
+            <button
+              type="button"
+              class="view-btn"
+              :class="{ active: activeTab === 'all' }"
+              @click="switchTab('all')"
+            >
+              全部
+            </button>
+            <button
+              type="button"
+              class="view-btn"
+              :class="{ active: activeTab === 'cc' }"
+              @click="switchTab('cc')"
+            >
+              抄送我的
+            </button>
+          </div>
           <button
             type="button"
-            class="scope-btn"
+            class="unread-toggle"
             :class="{ active: unreadOnly }"
-            @click="toggleScope(true)"
+            @click="toggleUnread(!unreadOnly)"
           >
             只看未读<span class="scope-count">{{ unreadCount }}</span>
-          </button>
-          <button
-            type="button"
-            class="scope-btn"
-            :class="{ active: !unreadOnly }"
-            @click="toggleScope(false)"
-          >
-            全部
           </button>
         </div>
 
@@ -247,21 +259,20 @@ const formatTime = (s: string) => {
             v-for="row in records"
             :key="row.id"
             class="notif-item"
-            :class="{ unread: !row.read, dim: row.read }"
+            :class="{ unread: row.readFlag === 0, dim: row.readFlag === 1 }"
             :disabled="actingId === row.id"
             @click="handleClick(row)"
           >
             <div class="notif-top">
-              <el-tag :type="categoryTag(row.category)" effect="light" size="small">
-                {{ categoryLabel(row.category) }}
+              <el-tag :type="typeTag(row.type)" effect="light" size="small">
+                {{ row.typeLabel }}
               </el-tag>
               <span class="notif-time">{{ formatTime(row.createdAt) }}</span>
             </div>
-            <div class="notif-title" :class="{ 'is-bold': !row.read }">{{ row.title }}</div>
-            <div class="notif-content">{{ row.content }}</div>
+            <div class="notif-title" :class="{ 'is-bold': row.readFlag === 0 }">{{ row.title }}</div>
           </li>
           <li v-if="!loading && records.length === 0" class="notif-empty">
-            {{ unreadOnly ? '暂无未读通知' : '暂无通知' }}
+            {{ emptyText }}
           </li>
         </ul>
 
@@ -333,19 +344,26 @@ const formatTime = (s: string) => {
   gap: 12px;
 }
 
-.scope-switch {
+/* ---------- 筛选栏：tab + 未读开关 ---------- */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.view-switch {
   display: inline-flex;
   gap: 4px;
   padding: 4px;
   background: var(--color-bg-1);
   border-radius: var(--radius-lg);
-  align-self: flex-start;
 }
 
-.scope-btn {
+.view-btn {
   border: none;
   background: transparent;
-  padding: 8px 8px;
+  padding: 8px 10px;
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   color: var(--color-text-2);
@@ -354,20 +372,40 @@ const formatTime = (s: string) => {
   align-items: center;
   gap: 4px;
 }
-.scope-btn:hover {
+.view-btn:hover {
   color: var(--color-primary);
 }
-.scope-btn.active {
+.view-btn.active {
   background: var(--color-bg-2);
   color: var(--color-primary);
   font-weight: 600;
   box-shadow: var(--shadow-sm);
 }
+
+.unread-toggle {
+  border: none;
+  background: transparent;
+  padding: 8px 8px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.unread-toggle:hover {
+  color: var(--color-primary);
+}
+.unread-toggle.active {
+  color: var(--color-primary);
+  font-weight: 600;
+}
 .scope-count {
   font-size: var(--text-xs);
   color: var(--color-text-3);
 }
-.scope-btn.active .scope-count {
+.unread-toggle.active .scope-count {
   color: var(--color-primary);
 }
 
@@ -429,20 +467,9 @@ const formatTime = (s: string) => {
   font-size: var(--text-base);
   color: var(--color-text-1);
   line-height: 20px;
-  margin-bottom: 4px;
 }
 .notif-title.is-bold {
   font-weight: 600;
-}
-
-.notif-content {
-  font-size: var(--text-sm);
-  color: var(--color-text-2);
-  line-height: 18px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
 .notif-empty {

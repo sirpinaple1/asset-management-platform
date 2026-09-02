@@ -1,57 +1,68 @@
 /**
- * 通知中心：B2 notifications 接口类型定义。
- * - 仅聚合审批相关通知，不展示普通登录/安全消息。
+ * 通知中心：notifications 接口类型定义（对齐后端 NotificationType / NotificationResp）。
  */
 
-/** 通知业务类型：审批单据相关；后续可扩展盘点、资产到期等 */
-export type NotificationBizType = 'APPROVAL'
+/** 通知类型（后端 NotificationType 枚举） */
+export type NotificationType =
+  | 'DOC_SUBMITTED' // 单据待处理（通知处理人）
+  | 'DOC_APPROVED' // 单据已通过（通知发起人）
+  | 'DOC_REJECTED' // 单据已拒绝（通知发起人）
+  | 'DOC_COMPLETED' // 单据已完成/已执行（通知发起人）
+  | 'DOC_PROGRESS' // 审批进度更新（两级审批链）
+  | 'DOC_CC' // 抄送我的（钉钉实例终态后按模板抄送人通知）
+  | 'APPROVAL_CONFIG_ALERT' // 审批链配置告警（systemAdmin）
+  | 'DINGTALK_SYNC_ALERT' // 钉钉同步告警（systemAdmin）
 
-/** 通知分类：审批待办提醒 + 审批处理结果反馈 */
-export type NotificationCategory = 'TODO_ASSIGNED' | 'TODO_SHARED_POOL_NEW' | 'APPROVAL_RESULT'
-
-/** 通知单条 */
+/** 通知单条（后端 NotificationResp） */
 export interface NotificationItem {
   id: number
-  bizType: NotificationBizType
-  category: NotificationCategory
-  /** 关联单据 id，可深链跳转到对应单据详情 */
-  refOrderId?: number
-  /** 关联单据类型，例如 RECEIVE / TRANSFER / CHANGE / STOCKTAKE（详情跳转对应模块列表页） */
-  refOrderBiz?: string
+  /** 通知类型（NotificationType 枚举值） */
+  type: NotificationType | string
+  /** 类型展示名（后端返回，如"抄送我的"、"单据待处理"） */
+  typeLabel: string
+  /** 通知标题 */
   title: string
-  content: string
-  read: boolean
-  /** 毫秒级时间戳（后端下发 ISO8601 字符串，前端由 axios deserialize） */
+  /** 业务单据类型：RECEIVE / BORROW / TRANSFER / CHANGE / RETURN（RETURN 且 bizId=0 为退还审批，无系统单据） */
+  bizType?: string
+  /** 业务单据 id（点击跳转单据详情） */
+  bizId?: number
+  /** 已读标记：0-未读 1-已读 */
+  readFlag: number
+  /** 创建时间（ISO8601 字符串） */
   createdAt: string
 }
 
-/** 通知分页参数 */
+/** 通知分页参数（GET /v1/notifications） */
 export interface NotificationListReq {
   page: number
   size: number
-  /** 仅未读：默认 true；false 代表全部 */
-  unreadOnly?: boolean
+  /** true=仅未读（默认 false） */
+  unread?: boolean
+  /** 类型过滤（可空=全部），如 DOC_CC=抄送我的 */
+  type?: string
 }
 
-/** 通知分页响应（服务端标准 Page<T> 结构，data.records 为数据行） */
+/** 通知分页响应（PageResp<NotificationResp>） */
 export interface NotificationListResp {
-  total: number
   records: NotificationItem[]
+  total: number
+  page?: number
+  size?: number
 }
 
-/** 未读计数响应 */
+/** 未读计数响应（GET /v1/notifications/unread-count，含抄送类） */
 export interface NotificationUnreadResp {
-  unreadCount: number
-  /** 定向待办新通知数（更紧急：优先展示在铃铛角标红点上） */
-  urgentCount: number
+  count: number
 }
 
-/** 分类文案映射（抽屉顶部 chip 分组） */
-export const NOTIFICATION_CATEGORY_META: Record<
-  NotificationCategory,
-  { label: string; type: 'urgent' | 'info' | 'result' }
-> = {
-  TODO_ASSIGNED: { label: '指定给我', type: 'urgent' },
-  TODO_SHARED_POOL_NEW: { label: '共享池新增', type: 'info' },
-  APPROVAL_RESULT: { label: '审批结果', type: 'result' },
+/** 类型 → 标签颜色映射（typeLabel 文案由后端返回，前端只管配色） */
+export const NOTIFICATION_TYPE_TAG: Record<string, 'warning' | 'success' | 'danger' | 'info' | 'primary'> = {
+  DOC_SUBMITTED: 'warning',
+  DOC_APPROVED: 'success',
+  DOC_COMPLETED: 'success',
+  DOC_REJECTED: 'danger',
+  DOC_PROGRESS: 'primary',
+  DOC_CC: 'info',
+  APPROVAL_CONFIG_ALERT: 'danger',
+  DINGTALK_SYNC_ALERT: 'danger',
 }
