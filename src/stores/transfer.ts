@@ -12,12 +12,18 @@ export const useTransferStore = defineStore('transfer', () => {
   const transfers = ref<TransferOrder[]>([])
   const loading = ref(false)
 
+  /** 请求序号：快速连续触发时只保留最新一次请求的结果（竞态保护） */
+  let fetchSeq = 0
+
   const fetchTransfers = async () => {
+    const seq = ++fetchSeq
     loading.value = true
     try {
-      transfers.value = await transferApi.getTransfers()
+      const list = await transferApi.getTransfers()
+      if (seq !== fetchSeq) return
+      transfers.value = list
     } finally {
-      loading.value = false
+      if (seq === fetchSeq) loading.value = false
     }
   }
 

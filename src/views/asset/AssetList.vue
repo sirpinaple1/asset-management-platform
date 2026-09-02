@@ -12,10 +12,12 @@ import { useUserStore } from '@/stores/user'
 import { useTabsStore } from '@/stores/tabs'
 import { useListInteractions, type ContextMenuItem } from '@/composables/useListInteractions'
 import { useColumnConfig, type ColumnDef } from '@/composables/useColumnConfig'
+import { useTableDensity, DENSITY_META } from '@/composables/useTableDensity'
 import { buildTree } from '@/utils/tree'
 import type { Category, Location } from '@/api/interface/basedata'
 import AssetModal from './components/AssetModal.vue'
 import AssetDetailDrawer from './components/AssetDetailDrawer.vue'
+import LabelPrintModal from './components/LabelPrintModal.vue'
 import ColumnConfigPopover from './components/ColumnConfigPopover.vue'
 import ContextMenu from '@/components/ContextMenu.vue'
 
@@ -278,6 +280,26 @@ const handleExport = async () => {
   }
 }
 
+/* ---------------- 空状态引导：有筛选时提供「清空筛选」，无筛选时引导「新增资产」 ---------------- */
+const hasActiveFilter = computed(
+  () =>
+    activeTab.value !== 'ALL' ||
+    !!searchKeyword.value ||
+    !!filterCategoryId.value ||
+    !!filterLocationId.value ||
+    !!filterCompanyId.value ||
+    onlyMine.value,
+)
+const clearFilters = () => {
+  activeTab.value = 'ALL'
+  keyword.value = ''
+  searchKeyword.value = ''
+  filterCategoryId.value = undefined
+  filterLocationId.value = undefined
+  filterCompanyId.value = undefined
+  onlyMine.value = false
+}
+
 /* ---------------- 展示工具 ---------------- */
 const formatText = (_row: Asset, _column: unknown, cellValue: unknown) =>
   cellValue === undefined || cellValue === null || cellValue === '' ? '—' : cellValue
@@ -285,6 +307,9 @@ const formatText = (_row: Asset, _column: unknown, cellValue: unknown) =>
 /** 使用人：后端经 UserDirectory 实时反查 sys_user 返回 userName；未命中兜底 #id */
 const userText = (row: Asset) =>
   row.userId ? row.userName ?? `#${row.userId}` : '—'
+
+/* ---------------- 表格密度：紧凑/默认/宽松（localStorage 记住偏好） ---------------- */
+const { density, cycleDensity } = useTableDensity('assets')
 
 /* ---------------- 列配置：显隐 / 拖拽排序 / localStorage 记住偏好 ---------------- */
 const COLUMN_DEFAULTS: ColumnDef[] = [
@@ -299,6 +324,7 @@ const COLUMN_DEFAULTS: ColumnDef[] = [
   { key: 'user', label: '使用人', visible: true },
   { key: 'companyName', label: '归属公司', visible: true },
   { key: 'purchaseDate', label: '购置日期', visible: true },
+  { key: 'remark', label: '备注', visible: false },
 ]
 const { columns, visibleColumns, toggle: toggleColumn, reset: resetColumns, move: moveColumn } =
   useColumnConfig('asset.columns.config.v1', COLUMN_DEFAULTS)
@@ -309,6 +335,43 @@ const columnValue = (row: Asset, key: string): string => {
   if (key === 'status') return row.statusLabel
   const v = (row as unknown as Record<string, unknown>)[key]
   return v === undefined || v === null || v === '' ? '' : String(v)
+}
+
+/* ---------------- 备注行内编辑（双击/铅笔进入，Enter/失焦保存，Esc 取消） ---------------- */
+const editingRemarkId = ref<number>()
+const remarkDraft = ref('')
+const remarkSaving = ref(false)
+
+const startEditRemark = (row: Asset) => {
+  editingRemarkId.value = row.id
+  remarkDraft.value = row.remark || ''
+}
+const cancelRemark = () => {
+  editingRemarkId.value = undefined
+}
+/** 保存备注：普通用户 payload 与 AssetModal 一致（仅 barcode/name 原值 + remark），后端跳过未提交字段 */
+const saveRemark = async (row: Asset) => {
+  if (remarkSaving.value) return
+  const next = remarkDraft.value.trim()
+  if (next === (row.remark || '').trim()) {
+    cancelRemark()
+    return
+  }
+  remarkSaving.value = true
+  try {
+    const saved = await assetApi.updateAsset(row.id, {
+      barcode: row.barcode,
+      name: row.name,
+      remark: next || undefined,
+    })
+    store.upsertLocal(saved)
+    ElMessage.success('备注已更新')
+  } catch {
+    /* 失败已由拦截器提示 */
+  } finally {
+    remarkSaving.value = false
+    cancelRemark()
+  }
 }
 
 /* ---------------- 行多选 + 批量操作 ---------------- */
@@ -342,6 +405,16 @@ const exportSelected = () => {
   a.download = `资产选中导出_${new Date().toISOString().slice(0, 10)}.csv`
   a.click()
   URL.revokeObjectURL(url)
+}
+
+/* ---------------- 打印标签（40×30mm 二维码） ---------------- */
+const labelPrintVisible = ref(false)
+const openLabelPrint = () => {
+  if (!selectedRows.value.length) {
+    ElMessage.warning('请先勾选要打印标签的资产')
+    return
+  }
+  labelPrintVisible.value = true
 }
 
 /** 批量报废：逐项调报废端点（有确认框；不可报废项自动跳过并汇总） */
@@ -466,11 +539,12 @@ const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown
       <!-- 工具栏：新增/导出 + 高级筛选 + 搜索 -->
       <div class="toolbar">
         <div class="toolbar-left">
-          <el-button type="primary" @click="handleAdd">
+          <el-button v-permission="'asset:create'" type="primary" @click="handleAdd">
             <span class="btn-plus">+</span>
             <span>新增资产</span>
           </el-button>
-          <el-button :loading="exporting" @click="handleExport">导出</el-button>
+          <el-button v-permission="'asset:export'" :loading="exporting" @click="handleExport">导出</el-button>
+          <el-button v-permission="'asset:label-print'" @click="openLabelPrint">打印标签</el-button>
           <el-button
             :type="onlyMine ? 'primary' : 'default'"
             :plain="onlyMine"
@@ -491,6 +565,10 @@ const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown
               @reset="resetColumns"
             />
           </el-popover>
+          <!-- 密度切换：紧凑/默认/宽松 -->
+          <el-tooltip content="切换表格密度" placement="top" :show-after="300">
+            <el-button @click="cycleDensity">密度·{{ DENSITY_META[density].label }}</el-button>
+          </el-tooltip>
         </div>
         <div class="toolbar-filters">
           <el-tree-select
@@ -533,7 +611,7 @@ const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown
             ref="searchInputRef"
             v-model="keyword"
             class="search-box"
-            placeholder="搜索编码 / 名称 / 序列号（Ctrl+F）"
+            placeholder="搜索编码 / 名称 / 序列号（空格=或，- =且）"
             clearable
           >
             <template #prefix>
@@ -555,8 +633,8 @@ const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown
         row-key="id"
         border
         tabindex="0"
+        :size="DENSITY_META[density].size"
         highlight-current-row
-        empty-text="暂无资产数据"
         @row-dblclick="openDetail"
         @row-contextmenu="onRowContextmenu"
         @current-change="onCurrentChange"
@@ -612,11 +690,33 @@ const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown
             v-else-if="col.key === 'purchaseDate'"
             prop="purchaseDate" label="购置日期" width="110" sortable="custom" :formatter="formatText"
           />
+          <el-table-column v-else-if="col.key === 'remark'" label="备注" min-width="160">
+            <template #default="{ row }">
+              <el-input
+                v-if="editingRemarkId === row.id"
+                v-model="remarkDraft"
+                size="small"
+                maxlength="500"
+                placeholder="输入备注，Enter 保存 / Esc 取消"
+                @keyup.enter="saveRemark(row)"
+                @keyup.esc="cancelRemark"
+                @blur="saveRemark(row)"
+              />
+              <div v-else class="remark-cell" title="双击编辑备注" @dblclick="startEditRemark(row)">
+                <span class="remark-text">{{ row.remark || '—' }}</span>
+                <button class="remark-edit-btn" type="button" aria-label="编辑备注" @click.stop="startEditRemark(row)">
+                  <svg width="12" height="12" viewBox="0 0 20 20" fill="none">
+                    <path d="M13.5 3.5L16.5 6.5L7 16H4V13L13.5 3.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+                  </svg>
+                </button>
+              </div>
+            </template>
+          </el-table-column>
         </template>
         <el-table-column label="操作" width="170" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-            <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
+            <el-button v-permission="'asset:edit'" link type="primary" @click="handleEdit(row)">编辑</el-button>
             <el-tooltip
               v-if="!canDiscard(row)"
               :content="row.status === 'DISCARD' ? '已报废' : '待确认资产不可报废'"
@@ -628,11 +728,25 @@ const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown
             <el-button v-else link type="danger" @click="handleDiscard(row)">报废</el-button>
           </template>
         </el-table-column>
+        <template #empty>
+          <div class="table-empty">
+            <p class="table-empty-text">{{ hasActiveFilter ? '没有符合条件的资产' : '暂无资产数据' }}</p>
+            <div class="table-empty-actions">
+              <el-button v-if="hasActiveFilter" size="small" @click="clearFilters">清空筛选</el-button>
+              <el-button v-permission="'asset:create'" type="primary" size="small" plain @click="handleAdd">
+                新增资产
+              </el-button>
+            </div>
+          </div>
+        </template>
       </el-table>
 
       <!-- 窄屏（≤768px）：表格降级为卡片列表，避免横向滚动崩溃 -->
       <div v-else v-loading="loading" class="asset-cards">
-        <div v-if="!assets.length" class="cards-empty">暂无资产数据</div>
+        <div v-if="!assets.length" class="cards-empty">
+          <p>{{ hasActiveFilter ? '没有符合条件的资产' : '暂无资产数据' }}</p>
+          <el-button v-if="hasActiveFilter" size="small" @click="clearFilters">清空筛选</el-button>
+        </div>
         <div
           v-for="row in assets"
           :key="row.id"
@@ -660,7 +774,7 @@ const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown
         <div v-if="selectedRows.length" class="batch-bar">
           <span class="batch-bar__count">已选 {{ selectedRows.length }} 项</span>
           <el-button size="small" @click="exportSelected">导出选中</el-button>
-          <el-button size="small" type="danger" :loading="batchDiscarding" @click="handleBatchDiscard">
+          <el-button v-permission="'asset:discard'" size="small" type="danger" :loading="batchDiscarding" @click="handleBatchDiscard">
             批量报废{{ selectedRows.filter(canDiscard).length ? `（${selectedRows.filter(canDiscard).length}）` : '' }}
           </el-button>
           <el-button size="small" text @click="clearSelection">取消选择</el-button>
@@ -693,6 +807,9 @@ const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown
     <!-- 新增/编辑 -->
     <AssetModal v-model:visible="modalVisible" :data="editingAsset" @success="handleSaved" />
 
+    <!-- 打印标签（40×30mm 二维码） -->
+    <LabelPrintModal v-model:visible="labelPrintVisible" :rows="selectedRows" />
+
     <!-- 详情（含操作日志/编辑/退库/报废入口） -->
     <AssetDetailDrawer
       v-model:visible="drawerVisible"
@@ -705,6 +822,67 @@ const { ctxMenu, ctxMenuItems, onRowContextmenu, onCtxMenuSelect, onTableKeydown
 </template>
 
 <style scoped>
+/* 备注行内编辑单元格 */
+.remark-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  cursor: text;
+}
+
+.remark-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-2);
+}
+
+.remark-edit-btn {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--color-text-4);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.remark-cell:hover .remark-edit-btn {
+  display: flex;
+}
+
+.remark-edit-btn:hover {
+  color: var(--color-primary);
+  background: var(--color-primary-bg);
+}
+
+/* 空状态引导 */
+.table-empty {
+  padding: 24px 0 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.table-empty-text {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
+}
+
+.table-empty-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .page-container {
   background: var(--color-bg-2);
   border-radius: var(--radius-xl);

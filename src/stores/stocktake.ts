@@ -12,12 +12,18 @@ export const useStocktakeStore = defineStore('stocktake', () => {
   const stocktakes = ref<Stocktake[]>([])
   const loading = ref(false)
 
+  /** 请求序号：快速连续触发时只保留最新一次请求的结果（竞态保护） */
+  let fetchSeq = 0
+
   const fetchStocktakes = async () => {
+    const seq = ++fetchSeq
     loading.value = true
     try {
-      stocktakes.value = await stocktakeApi.getStocktakes()
+      const list = await stocktakeApi.getStocktakes()
+      if (seq !== fetchSeq) return
+      stocktakes.value = list
     } finally {
-      loading.value = false
+      if (seq === fetchSeq) loading.value = false
     }
   }
 

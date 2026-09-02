@@ -9,15 +9,20 @@
   <body>
     <div id="app"></div>
     <script>
-      // 暗色模式：跟随系统偏好，同步 html.dark 类（Element Plus 暗色变量依赖该类）
-      // 内联在首屏执行，避免暗色用户看到白色闪烁
+      // 暗色模式：三态（auto 跟随系统 / light / dark），偏好存 localStorage(asset.theme)
+      // 内联在首屏执行，避免暗色用户看到白色闪烁；运行时切换由 src/utils/theme.ts 接管
       ;(function () {
+        var mode = 'auto'
+        try {
+          var s = localStorage.getItem('asset.theme')
+          if (s === 'light' || s === 'dark') mode = s
+        } catch (e) {}
         var mq = window.matchMedia('(prefers-color-scheme: dark)')
-        var apply = function (dark) {
-          document.documentElement.classList.toggle('dark', dark)
+        var apply = function () {
+          document.documentElement.classList.toggle('dark', mode === 'dark' || (mode === 'auto' && mq.matches))
         }
-        apply(mq.matches)
-        mq.addEventListener('change', function (e) { apply(e.matches) })
+        apply()
+        mq.addEventListener('change', function () { if (mode === 'auto') apply() })
       })()
     </script>
     <script type="module" src="/src/main.ts"></script>

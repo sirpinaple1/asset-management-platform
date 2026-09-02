@@ -225,6 +225,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
     :title="isEdit ? '编辑资产' : '新增资产'"
     width="680px"
     :close-on-click-modal="false"
+    :before-close="guardBeforeClose"
     @update:model-value="handleClose"
     @opened="(isEdit ? barcodeInputRef : nameInputRef)?.focus()"
   >

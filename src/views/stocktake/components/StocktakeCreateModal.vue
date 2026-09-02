@@ -105,6 +105,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
     title="创建盘点任务"
     width="560px"
     :close-on-click-modal="false"
+    :before-close="guardBeforeClose"
     @update:model-value="handleClose"
   >
     <el-form ref="formRef" :model="formData" :rules="rules" label-width="96px" @submit.prevent="handleSubmit">

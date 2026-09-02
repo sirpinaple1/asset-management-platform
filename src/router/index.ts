@@ -3,11 +3,40 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { resetLoginRedirectFlag } from '@/api/config/request'
 import { clearToken, extractTokenFromUrl, getToken, redirectToAuthCenter, setToken, stripAuthParamsFromUrl } from '@/utils/token'
 import { dingTalkLogin, isInDingTalk } from '@/utils/dingtalk'
+import { isMobileUA } from '@/utils/device'
 import { setBaseTitle } from '@/utils/tabTitle'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    {
+      path: '/m',
+      component: () => import('@/layouts/MobileLayout.vue'),
+      children: [
+        {
+          path: '',
+          redirect: '/m/approvals'
+        },
+        {
+          path: 'approvals',
+          name: 'm-approvals',
+          component: () => import('@/views/mobile/MApprovals.vue'),
+          meta: { title: '审批中心', mobile: true }
+        },
+        {
+          path: 'assets',
+          name: 'm-assets',
+          component: () => import('@/views/mobile/MAssets.vue'),
+          meta: { title: '我的资产', mobile: true }
+        },
+        {
+          path: 'scan',
+          name: 'm-scan',
+          component: () => import('@/views/mobile/MScan.vue'),
+          meta: { title: '扫码查资产', mobile: true }
+        }
+      ]
+    },
     {
       path: '/',
       component: () => import('@/layouts/DefaultLayout.vue'),
@@ -111,6 +140,41 @@ const router = createRouter({
           name: 'stocktakes-list',
           component: () => import('@/views/stocktake/StocktakeList.vue'),
           meta: { title: '盘点管理' }
+        },
+        {
+          path: 'exception/:type?',
+          name: 'exception',
+          component: () => import('@/views/error/ExceptionPage.vue'),
+          meta: { title: '系统异常' }
+        }
+      ]
+    },
+    {
+      /* 移动 H5 子应用：手机 UA 自动分流进入（审批/我的资产/扫码） */
+      path: '/m',
+      component: () => import('@/layouts/MobileLayout.vue'),
+      children: [
+        {
+          path: '',
+          redirect: '/m/approvals'
+        },
+        {
+          path: 'approvals',
+          name: 'm-approvals',
+          component: () => import('@/views/mobile/MApprovals.vue'),
+          meta: { title: '审批' }
+        },
+        {
+          path: 'assets',
+          name: 'm-assets',
+          component: () => import('@/views/mobile/MAssets.vue'),
+          meta: { title: '我的资产' }
+        },
+        {
+          path: 'scan',
+          name: 'm-scan',
+          component: () => import('@/views/mobile/MScan.vue'),
+          meta: { title: '扫码' }
         }
       ]
     },
@@ -142,6 +206,12 @@ router.beforeEach(async (to, from) => {
     return { path: to.path, query: {}, hash: to.hash, replace: true }
   }
 
+  // 1.5 移动端 UA 分流：手机访问桌面路径 → 跳移动版首页（/m/* 不受影响；
+  // 放在 token 处理后，免登/登录回调的目标路径即移动页，登录完直接回到移动版）
+  if (isMobileUA() && !to.path.startsWith('/m/')) {
+    return { path: '/m/approvals', replace: true }
+  }
+
   // 2. 未登录（无 token）：钉钉容器内静默免登；失败或非钉钉环境则跳 auth-center 登录页
   if (!getToken()) {
     clearToken()
@@ -157,6 +227,12 @@ router.beforeEach(async (to, from) => {
     }
     redirectToAuthCenter()
     return false
+  }
+
+  // 3. 手机 UA（手机浏览器 / 钉钉手机容器）进入移动 H5 布局；
+  //    放在 token 处理之后，避免吞掉 auth-center 携 token 返回的 query
+  if (isMobileUA() && !to.path.startsWith('/m')) {
+    return { path: '/m/approvals', replace: true }
   }
 
   return true
@@ -178,8 +254,8 @@ router.afterEach((to) => {
 /** 最近使用足迹（localStorage）：同 fullPath 去重置顶，上限 8 条 */
 const RECENT_KEY = 'asset.recent.routes'
 const RECENT_MAX = 8
-function recordRecentRoute(to: { fullPath: string; name?: unknown; meta: { title?: unknown } }) {
-  if (to.fullPath === '/dashboard' || to.name === 'not-found' || !to.meta.title) return
+function recordRecentRoute(to: { fullPath: string; name?: unknown; meta: { title?: unknown; mobile?: unknown } }) {
+  if (to.fullPath === '/dashboard' || to.name === 'not-found' || !to.meta.title || to.meta.mobile) return
   try {
     const list: { path: string; title: string; ts: number }[] = JSON.parse(
       localStorage.getItem(RECENT_KEY) || '[]',

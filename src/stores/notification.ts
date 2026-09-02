@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { notificationApi } from '@/api/modules/notification'
 import { setTitleBadge } from '@/utils/tabTitle'
+import { connectNotificationSse, closeNotificationSse } from '@/utils/notificationSse'
 
 /**
  * 通知未读数共享 store：右上角 + 左下角两个铃铛实例共用同一份 unreadCount 与 60s 轮询，
@@ -26,21 +27,33 @@ export const useNotificationStore = defineStore('notification', () => {
     }
   }
 
+  const startPolling = () => {
+    if (!pollTimer) pollTimer = setInterval(refreshCount, 60 * 1000)
+  }
+  const stopPolling = () => {
+    if (pollTimer) {
+      clearInterval(pollTimer)
+      pollTimer = undefined
+    }
+  }
+
   /**
-   * 铃铛实例挂载时调用：引用计数共享 60s 轮询（首个实例启动、全部卸载后停止）。
-   * 返回卸载函数，供 onBeforeUnmount 调用。
+   * 铃铛实例挂载时调用：引用计数共享通知刷新（首个实例启动、全部卸载后停止）。
+   * 优先尝试 SSE 推送（需配置 VITE_NOTIFICATION_SSE_URL）；
+   * 不可用/断连时自动降级为 60s 轮询。返回卸载函数，供 onBeforeUnmount 调用。
    */
   const bindPolling = () => {
     binderCount += 1
     if (binderCount === 1) {
       void refreshCount()
-      pollTimer = setInterval(refreshCount, 60 * 1000)
+      const sseUp = connectNotificationSse(refreshCount, startPolling)
+      if (!sseUp) startPolling()
     }
     return () => {
       binderCount -= 1
-      if (binderCount <= 0 && pollTimer) {
-        clearInterval(pollTimer)
-        pollTimer = undefined
+      if (binderCount <= 0) {
+        stopPolling()
+        closeNotificationSse()
       }
     }
   }

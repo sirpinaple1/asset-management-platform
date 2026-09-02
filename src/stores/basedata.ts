@@ -115,46 +115,61 @@ export const useBasedataStore = defineStore('basedata', () => {
     models: false,
   })
 
+  /** 各类基础数据的请求序号（竞态保护）：快速连续触发时只保留最新一次请求的结果 */
+  const fetchSeqMap: Record<string, number> = {}
+  const nextSeq = (key: string) => (++fetchSeqMap[key] || (fetchSeqMap[key] = 1))
+  const isLatest = (key: string, seq: number) => fetchSeqMap[key] === seq
+
   // 操作方法
   const fetchCompanies = async () => {
+    const seq = nextSeq('companies')
     loading.value.companies = true
     try {
-      companies.value = await basedataApi.getCompanies()
+      const list = await basedataApi.getCompanies()
+      if (!isLatest('companies', seq)) return
+      companies.value = list
     } finally {
-      loading.value.companies = false
+      if (isLatest('companies', seq)) loading.value.companies = false
     }
   }
 
   /** 厂商列表（服务端分页：列表页传 page/size/keyword/status；下拉等全量场景传 size:500） */
   const fetchManufacturers = async (query?: BasedataPageQuery) => {
+    const seq = nextSeq('manufacturers')
     loading.value.manufacturers = true
     try {
       const page = await basedataApi.getManufacturers(query)
+      if (!isLatest('manufacturers', seq)) return
       manufacturers.value = page.records
       manufacturerTotal.value = page.total
     } finally {
-      loading.value.manufacturers = false
+      if (isLatest('manufacturers', seq)) loading.value.manufacturers = false
     }
   }
 
   /** 供应商列表（服务端分页，语义同厂商） */
   const fetchSuppliers = async (query?: BasedataPageQuery) => {
+    const seq = nextSeq('suppliers')
     loading.value.suppliers = true
     try {
       const page = await basedataApi.getSuppliers(query)
+      if (!isLatest('suppliers', seq)) return
       suppliers.value = page.records
       supplierTotal.value = page.total
     } finally {
-      loading.value.suppliers = false
+      if (isLatest('suppliers', seq)) loading.value.suppliers = false
     }
   }
 
   const fetchCategories = async () => {
+    const seq = nextSeq('categories')
     loading.value.categories = true
     try {
-      categories.value = await basedataApi.getCategories()
+      const list = await basedataApi.getCategories()
+      if (!isLatest('categories', seq)) return
+      categories.value = list
     } finally {
-      loading.value.categories = false
+      if (isLatest('categories', seq)) loading.value.categories = false
     }
   }
 
@@ -162,11 +177,14 @@ export const useBasedataStore = defineStore('basedata', () => {
   const deleteCategory = (id: number) => basedataApi.deleteCategory(id)
 
   const fetchLocations = async (parentId?: number) => {
+    const seq = nextSeq('locations')
     loading.value.locations = true
     try {
-      locations.value = await basedataApi.getLocations(parentId)
+      const list = await basedataApi.getLocations(parentId)
+      if (!isLatest('locations', seq)) return
+      locations.value = list
     } finally {
-      loading.value.locations = false
+      if (isLatest('locations', seq)) loading.value.locations = false
     }
   }
 
@@ -174,11 +192,14 @@ export const useBasedataStore = defineStore('basedata', () => {
   const deleteLocation = (id: number) => basedataApi.deleteLocation(id)
 
   const fetchModels = async (categoryId?: number) => {
+    const seq = nextSeq('models')
     loading.value.models = true
     try {
-      models.value = await basedataApi.getModels(categoryId)
+      const list = await basedataApi.getModels(categoryId)
+      if (!isLatest('models', seq)) return
+      models.value = list
     } finally {
-      loading.value.models = false
+      if (isLatest('models', seq)) loading.value.models = false
     }
   }
 

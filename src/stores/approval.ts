@@ -28,14 +28,20 @@ export const useApprovalStore = defineStore('approval', () => {
   /** 我处理的数（审批人/确认人是我，含拒绝记录） */
   const handledCount = computed(() => items.value.filter((it) => isHandledBy(it, meUserId())).length)
 
+  /** 请求序号：快速连续触发时只保留最新一次请求的结果（竞态保护） */
+  let fetchSeq = 0
+
   const refresh = async (): Promise<ApprovalItem[]> => {
+    const seq = ++fetchSeq
     loading.value = true
     try {
-      items.value = await fetchAllApprovalItems()
+      const list = await fetchAllApprovalItems()
+      if (seq !== fetchSeq) return list
+      items.value = list
       loadedAt.value = Date.now()
       return items.value
     } finally {
-      loading.value = false
+      if (seq === fetchSeq) loading.value = false
     }
   }
 

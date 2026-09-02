@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useApprovalStore } from '@/stores/approval'
 import { useTabsStore } from '@/stores/tabs'
 import { clearAuthCenterLocalSession, clearToken, redirectToAuthCenter } from '@/utils/token'
 import { isInDingTalk } from '@/utils/dingtalk'
+import { cycleTheme, themeMode, THEME_LABELS } from '@/utils/theme'
 import TabBar from '@/components/TabBar.vue'
 import NotificationBell from '@/components/NotificationBell.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
@@ -24,6 +25,30 @@ const approvalStore = useApprovalStore()
 const tabsStore = useTabsStore()
 
 const commandPaletteRef = ref<InstanceType<typeof CommandPalette>>()
+
+/* 主题三态切换（auto 跟随系统 / light / dark），顶栏按钮循环切换 */
+const themeLabel = computed(() => THEME_LABELS[themeMode.value])
+
+/* 窄屏（<768px）：二级子侧边栏抽屉化（图标导航栏保留），汉堡按钮开关 */
+const isNarrow = ref(false)
+const subDrawerOpen = ref(false)
+let narrowMql: MediaQueryList | null = null
+const onNarrowChange = (e: MediaQueryListEvent) => {
+  isNarrow.value = e.matches
+  if (!e.matches) subDrawerOpen.value = false
+}
+onMounted(() => {
+  narrowMql = window.matchMedia('(max-width: 768px)')
+  isNarrow.value = narrowMql.matches
+  narrowMql.addEventListener('change', onNarrowChange)
+})
+onBeforeUnmount(() => narrowMql?.removeEventListener('change', onNarrowChange))
+
+/** 抽屉内点击菜单链接后自动收起（事件委托，不影响分组折叠按钮） */
+const onSubSidebarClick = (e: MouseEvent) => {
+  if (!isNarrow.value) return
+  if ((e.target as HTMLElement).closest('a')) subDrawerOpen.value = false
+}
 
 /* 多页签工作台：路由变化登记页签（fullPath 含 query），keep-alive 缓存已打开页签 */
 watch(
@@ -177,7 +202,16 @@ const handleLogout = () => {
   <div class="app">
     <!-- 顶部导航栏：公司信息 + 用户区 -->
     <header class="topbar">
-      <div class="topbar-logo">
+      <div class="topbar-left">
+        <!-- 窄屏汉堡：打开二级菜单抽屉 -->
+        <button v-if="isNarrow && isAssetModule" class="nav-toggle" type="button" aria-label="打开菜单" @click="subDrawerOpen = true">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+            <line x1="3" y1="5" x2="17" y2="5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            <line x1="3" y1="10" x2="17" y2="10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            <line x1="3" y1="15" x2="17" y2="15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+        </button>
+        <div class="topbar-logo">
         <div class="logo-image">森</div>
         <div class="logo-texts">
           <div class="logo-text">森科五金（深圳）有限公司</div>
@@ -186,6 +220,25 @@ const handleLogout = () => {
       </div>
 
       <div class="user-area">
+        <!-- 主题三态切换：跟随系统 → 浅色 → 深色 -->
+        <el-tooltip :content="`主题：${themeLabel}（点击切换）`" placement="bottom">
+          <button class="theme-toggle" type="button" :aria-label="`主题：${themeLabel}`" @click="cycleTheme">
+            <!-- 浅色：太阳 -->
+            <svg v-if="themeMode === 'light'" width="16" height="16" viewBox="0 0 20 20" fill="none">
+              <circle cx="10" cy="10" r="4" stroke="currentColor" stroke-width="1.5" />
+              <path d="M10 2V4M10 16V18M2 10H4M16 10H18M4.3 4.3L5.7 5.7M14.3 14.3L15.7 15.7M15.7 4.3L14.3 5.7M5.7 14.3L4.3 15.7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            </svg>
+            <!-- 深色：月亮 -->
+            <svg v-else-if="themeMode === 'dark'" width="16" height="16" viewBox="0 0 20 20" fill="none">
+              <path d="M16 12.5C16 16.6 12.9 19 9.5 19C5.4 19 2 15.6 2 11.5C2 8.1 4.4 5 8.5 5C8.6 7.4 10 8.9 12 9.4C13.4 9.8 15 9.4 16 8.5C16 9.8 16 11 16 12.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+            </svg>
+            <!-- 跟随系统：显示器 -->
+            <svg v-else width="16" height="16" viewBox="0 0 20 20" fill="none">
+              <rect x="2.5" y="4" width="15" height="10" rx="1.5" stroke="currentColor" stroke-width="1.5" />
+              <path d="M7 17H13M10 14V17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            </svg>
+          </button>
+        </el-tooltip>
         <button class="cmdk-trigger" type="button" title="命令面板（Ctrl+K）" @click="commandPaletteRef?.open()">
           <svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
             <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="1.5" />
@@ -285,8 +338,14 @@ const handleLogout = () => {
         </div>
       </aside>
 
-      <!-- 二级子侧边栏：资产管理模块菜单 -->
-      <aside v-if="isAssetModule" class="sub-sidebar">
+      <!-- 二级子侧边栏：资产管理模块菜单（窄屏转为抽屉） -->
+      <transition name="sub-drawer">
+        <aside
+          v-if="isAssetModule"
+          class="sub-sidebar"
+          :class="{ 'sub-sidebar--drawer': isNarrow, 'sub-sidebar--open': isNarrow && subDrawerOpen }"
+          @click="onSubSidebarClick"
+        >
         <div class="sidebar-header">
           <h1 class="sidebar-title">资产管理</h1>
         </div>
@@ -377,6 +436,10 @@ const handleLogout = () => {
           </div>
         </div>
       </aside>
+      </transition>
+
+      <!-- 窄屏抽屉遮罩 -->
+      <div v-if="isNarrow && subDrawerOpen" class="drawer-mask" @click="subDrawerOpen = false"></div>
 
       <div class="content">
         <!-- 多页签工作台 + 面包屑 -->
@@ -405,6 +468,7 @@ const handleLogout = () => {
       :append-to-body="true"
     >
       <div class="version-panel">
+        <div class="version-scroll">
         <!-- 前端版本：本地常量直渲 -->
         <section class="version-block">
           <div class="version-block-head">
@@ -434,6 +498,7 @@ const handleLogout = () => {
             </ul>
           </template>
         </section>
+        </div>
 
         <div class="version-credit">{{ CREDIT }}</div>
       </div>
@@ -447,7 +512,13 @@ const handleLogout = () => {
   display: flex;
   flex-direction: column;
   background: var(--color-bg-1);
-  min-width: 1200px;
+}
+
+/* 宽屏锁定最小宽度（窄屏由下方媒体查询解锁） */
+@media (min-width: 769px) {
+  .app {
+    min-width: 1200px;
+  }
 }
 
 /* 顶部导航栏 */
@@ -818,11 +889,117 @@ const handleLogout = () => {
   min-height: 0;
 }
 
+/* 主题切换 / 窄屏汉堡按钮 */
+.theme-toggle,
+.nav-toggle {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-2);
+  color: var(--color-text-3);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.theme-toggle:hover,
+.nav-toggle:hover {
+  border-color: var(--color-primary);
+  color: var(--color-text-2);
+}
+
+.nav-toggle {
+  display: none;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 窄屏抽屉遮罩 */
+.drawer-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+/* 子侧边栏抽屉过渡 */
+.sub-drawer-enter-active,
+.sub-drawer-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+/* ---------- 窄屏（<768px）全局兜底：布局不再锁 1200px，二级菜单转抽屉 ---------- */
+@media (max-width: 768px) {
+  .app {
+    min-width: 0;
+  }
+
+  .topbar {
+    padding: 0 12px;
+    height: 52px;
+  }
+
+  .nav-toggle {
+    display: flex;
+  }
+
+  .logo-subtitle {
+    display: none;
+  }
+
+  .logo-text {
+    font-size: 14px;
+  }
+
+  .cmdk-trigger span {
+    display: none;
+  }
+
+  .user-name {
+    display: none;
+  }
+
+  .sub-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 280px;
+    z-index: 2001;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    box-shadow: none;
+  }
+
+  .sub-sidebar--open {
+    transform: none;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .content-scroll {
+    padding: 12px;
+  }
+}
+
 /* 版本信息面板（el-drawer 贴左侧滑出） */
 .version-panel {
   display: flex;
   flex-direction: column;
   height: 100%;
+}
+
+/* 版本内容区：独立滚动，版权行不受更新内容变长影响 */
+.version-scroll {
+  flex: 1;
+  overflow-y: auto;
 }
 
 .version-block-head {

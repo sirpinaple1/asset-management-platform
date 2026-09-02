@@ -200,6 +200,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
     width="920px"
     top="6vh"
     :close-on-click-modal="false"
+    :before-close="guardBeforeClose"
     @update:model-value="handleClose"
   >
     <div class="apply-layout">
@@ -210,7 +211,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
           <el-input
             v-model="keyword"
             class="picker-search"
-            placeholder="搜索编码 / 名称 / 序列号"
+            placeholder="搜索编码 / 名称 / 序列号（空格=或，- =且）"
             clearable
           >
             <template #prefix>

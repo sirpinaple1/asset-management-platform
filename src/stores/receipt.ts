@@ -17,21 +17,31 @@ export const useReceiptStore = defineStore('receipt', () => {
   const allocations = ref<Allocation[]>([])
   const allocationsLoading = ref(false)
 
+  /** 请求序号（竞态保护）：领用/借用切换时只保留最新一次请求的结果 */
+  let receiptSeq = 0
+  let allocSeq = 0
+
   const fetchReceipts = async (type: ReceiptType) => {
+    const seq = ++receiptSeq
     loading.value = true
     try {
-      receipts.value = await receiptApi.getReceipts({ type })
+      const list = await receiptApi.getReceipts({ type })
+      if (seq !== receiptSeq) return
+      receipts.value = list
     } finally {
-      loading.value = false
+      if (seq === receiptSeq) loading.value = false
     }
   }
 
   const fetchAllocations = async (type: ReceiptType) => {
+    const seq = ++allocSeq
     allocationsLoading.value = true
     try {
-      allocations.value = await receiptApi.getAllocations({ type })
+      const list = await receiptApi.getAllocations({ type })
+      if (seq !== allocSeq) return
+      allocations.value = list
     } finally {
-      allocationsLoading.value = false
+      if (seq === allocSeq) allocationsLoading.value = false
     }
   }
 

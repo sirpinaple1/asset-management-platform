@@ -76,3 +76,26 @@ export async function dingTalkLogin(): Promise<string> {
   }
   return body.data.token
 }
+
+/**
+ * 钉钉扫码（dd.biz.util.scan，二维码/条形码均支持）。
+ * 返回扫到的文本（资产条码场景）。需在钉钉容器内调用，失败以 Error 抛出。
+ */
+export function scanBarcode(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    dd.ready(() => {
+      dd.biz.util
+        .scan({
+          type: 'all',
+          onSuccess: (res: { text?: string }) => {
+            const text = res?.text?.trim()
+            if (text) resolve(text)
+            else reject(new Error('未识别到条码内容'))
+          },
+          onFail: (err: unknown) => reject(new Error(`扫码失败: ${JSON.stringify(err)}`)),
+        })
+        .catch((err: unknown) => reject(new Error(`扫码失败: ${JSON.stringify(err)}`)))
+    })
+    dd.error((err: unknown) => reject(new Error(`钉钉 JSAPI 异常: ${JSON.stringify(err)}`)))
+  })
+}

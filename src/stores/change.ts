@@ -12,12 +12,18 @@ export const useChangeStore = defineStore('change', () => {
   const changeOrders = ref<ChangeOrder[]>([])
   const loading = ref(false)
 
+  /** 请求序号：快速连续触发时只保留最新一次请求的结果（竞态保护） */
+  let fetchSeq = 0
+
   const fetchChangeOrders = async () => {
+    const seq = ++fetchSeq
     loading.value = true
     try {
-      changeOrders.value = await changeApi.getChangeOrders()
+      const list = await changeApi.getChangeOrders()
+      if (seq !== fetchSeq) return
+      changeOrders.value = list
     } finally {
-      loading.value = false
+      if (seq === fetchSeq) loading.value = false
     }
   }
 

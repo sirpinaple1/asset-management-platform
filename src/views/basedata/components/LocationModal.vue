@@ -126,6 +126,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
     :title="isEdit ? '编辑位置' : '新增位置'"
     width="520px"
     :close-on-click-modal="false"
+    :before-close="guardBeforeClose"
     @update:model-value="handleClose"
     @opened="nameInputRef?.focus()"
   >

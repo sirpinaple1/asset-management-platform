@@ -98,6 +98,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
     :title="isEdit ? '编辑厂商' : '新增厂商'"
     width="520px"
     :close-on-click-modal="false"
+    :before-close="guardBeforeClose"
     @update:model-value="handleClose"
     @opened="nameInputRef?.focus()"
   >

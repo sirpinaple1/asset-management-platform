@@ -162,6 +162,7 @@ const handleSubmit = async () => {
     :title="isEdit ? '编辑审批链配置' : '新增审批链配置'"
     width="520px"
     :close-on-click-modal="false"
+    :before-close="guardBeforeClose"
     @update:model-value="handleClose"
   >
     <el-form
