@@ -212,10 +212,11 @@ const handleLogout = () => {
           </svg>
         </button>
         <div class="topbar-logo">
-        <div class="logo-image">森</div>
-        <div class="logo-texts">
-          <div class="logo-text">森科五金（深圳）有限公司</div>
-          <div class="logo-subtitle">Tritree Metal (Shenzhen) Co., Ltd</div>
+          <div class="logo-image">森</div>
+          <div class="logo-texts">
+            <div class="logo-text">森科五金（深圳）有限公司</div>
+            <div class="logo-subtitle">Tritree Metal (Shenzhen) Co., Ltd</div>
+          </div>
         </div>
       </div>
 
