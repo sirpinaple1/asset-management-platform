@@ -16,8 +16,8 @@ import { CHANGE_STATUS_META } from './change'
 /** 参与审批中心的单据类型 */
 export type ApprovalBizType = 'RECEIVE' | 'BORROW' | 'TRANSFER' | 'CHANGE'
 
-/** 审批中心 tab：待我处理 / 我发起的 / 我处理的 */
-export type ApprovalTabKey = 'todo' | 'mine' | 'handled'
+/** 审批中心 tab：待我处理 / 我发起的 / 我处理的 / 抄送我的（DOC_CC 通知） */
+export type ApprovalTabKey = 'todo' | 'mine' | 'handled' | 'cc'
 
 /** 归一化后的审批条目（三类单据统一结构） */
 export interface ApprovalItem {
@@ -68,6 +68,7 @@ export const APPROVAL_TAB_META: Record<ApprovalTabKey, { label: string }> = {
   todo: { label: '待我处理' },
   mine: { label: '我发起的' },
   handled: { label: '我处理的' },
+  cc: { label: '抄送我的' },
 }
 
 /** 状态 tag 类型（el-tag type） */

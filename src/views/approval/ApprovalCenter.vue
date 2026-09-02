@@ -5,9 +5,12 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Component } from 'vue'
 import { useUserStore } from '@/stores/user'
 import { useApprovalStore } from '@/stores/approval'
+import { useNotificationStore } from '@/stores/notification'
 import { receiptApi } from '@/api/modules/receipt'
 import { transferApi } from '@/api/modules/transfer'
 import { changeApi } from '@/api/modules/change'
+import { notificationApi } from '@/api/modules/notification'
+import type { NotificationItem } from '@/api/interface/notification'
 import type { ApprovalBizType, ApprovalItem, ApprovalTabKey } from '@/api/interface/approval'
 import {
   APPROVAL_BIZ_META,
@@ -35,13 +38,14 @@ const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 const store = useApprovalStore()
+const notifStore = useNotificationStore()
 
 const items = computed(() => store.items)
 const loading = computed(() => store.loading)
 const meUserId = computed(() => userStore.me?.userId)
 
 /* ---------------- 状态 tabs（前端过滤 + 计数） ---------------- */
-const TAB_KEYS: ApprovalTabKey[] = ['todo', 'mine', 'handled']
+const TAB_KEYS: ApprovalTabKey[] = ['todo', 'mine', 'handled', 'cc']
 const activeTab = ref<ApprovalTabKey>('todo')
 
 const tabs = computed(() => [
@@ -59,6 +63,12 @@ const tabs = computed(() => [
     key: 'handled' as ApprovalTabKey,
     label: APPROVAL_TAB_META.handled.label,
     count: items.value.filter((it) => isHandledBy(it, meUserId.value)).length,
+  },
+  /* 抄送我的：服务端分页计数，首次加载前不显示数字 */
+  {
+    key: 'cc' as ApprovalTabKey,
+    label: APPROVAL_TAB_META.cc.label,
+    count: ccLoaded.value ? ccTotal.value : undefined,
   },
 ])
 
@@ -88,6 +98,91 @@ watch(keyword, (val) => {
   }, 300)
 })
 onBeforeUnmount(() => searchTimer && clearTimeout(searchTimer))
+
+/* ---------------- 抄送我的（DOC_CC 通知，服务端分页） ---------------- */
+const CC_PAGE_SIZE = 10
+const ccRecords = ref<NotificationItem[]>([])
+const ccLoading = ref(false)
+const ccTotal = ref(0)
+const ccPage = ref(1)
+/** 首次加载前 tab 不显示计数 */
+const ccLoaded = ref(false)
+
+const loadCc = async (page = 1) => {
+  ccLoading.value = true
+  try {
+    const resp = await notificationApi.list({ page, size: CC_PAGE_SIZE, type: 'DOC_CC' })
+    ccPage.value = page
+    ccTotal.value = resp.total
+    ccRecords.value = resp.records
+    ccLoaded.value = true
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    ccLoading.value = false
+  }
+}
+
+/* 切到抄送 tab 时加载/刷新（immediate：兼容 ?tab=cc 深链直接进入） */
+watch(
+  activeTab,
+  (tab) => {
+    if (tab === 'cc') void loadCc(1)
+  },
+  { immediate: true },
+)
+onActivated(() => {
+  if (activeTab.value === 'cc') void loadCc(1)
+})
+
+/** 抄送条目业务类型文案：四类单据用 meta，RETURN=退还审批，其他原样展示 */
+const ccBizLabel = (row: NotificationItem) => {
+  if (row.bizType && row.bizType in APPROVAL_BIZ_META) {
+    return APPROVAL_BIZ_META[row.bizType as ApprovalBizType].label
+  }
+  return row.bizType === 'RETURN' ? '退还审批' : row.bizType || '—'
+}
+
+/** 抄送条目跳转：RETURN 且 bizId=0 为退还审批（无系统单据），不跳转 */
+const ccJumpPath = (row: NotificationItem) => {
+  if (!row.bizType || !row.bizId) return null
+  const meta = APPROVAL_BIZ_META[row.bizType as ApprovalBizType]
+  if (!meta) return null
+  return { path: meta.listPath, query: { id: String(row.bizId) } }
+}
+
+const ccActingId = ref<number>()
+
+const handleCcRowClick = async (row: NotificationItem) => {
+  if (ccActingId.value) return
+  const target = ccJumpPath(row)
+  if (!target) {
+    /* 无系统单据（如退还审批）：仅标记已读，不跳转 */
+    if (row.readFlag === 0) {
+      try {
+        await notificationApi.markRead(row.id)
+        row.readFlag = 1
+        notifStore.decreaseUnread()
+      } catch {
+        /* 拦截器已提示 */
+      }
+    }
+    return
+  }
+  ccActingId.value = row.id
+  try {
+    if (row.readFlag === 0) {
+      await notificationApi.markRead(row.id)
+      row.readFlag = 1
+      notifStore.decreaseUnread()
+    }
+    router.push(target)
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    ccActingId.value = undefined
+  }
+}
 
 /* ---------------- 前端过滤 + 分页（待我处理分 directed / pool 两池） ---------------- */
 const PAGE_SIZE = 10
@@ -294,7 +389,9 @@ const emptyText = computed(() =>
     ? '暂无待处理单据'
     : activeTab.value === 'mine'
       ? '暂无我发起的单据'
-      : '暂无我处理的单据',
+      : activeTab.value === 'cc'
+        ? '暂无抄送我的记录'
+        : '暂无我处理的单据',
 )
 </script>
 
@@ -320,12 +417,12 @@ const emptyText = computed(() =>
           @click="activeTab = tab.key"
         >
           <span>{{ tab.label }}</span>
-          <span class="tab-count">({{ tab.count }})</span>
+          <span v-if="tab.count !== undefined" class="tab-count">({{ tab.count }})</span>
         </div>
       </div>
 
-      <!-- 工具栏：类型筛选 chips + 搜索 -->
-      <div class="toolbar">
+      <!-- 工具栏：类型筛选 chips + 搜索（抄送 tab 为通知列表，不适用） -->
+      <div v-if="activeTab !== 'cc'" class="toolbar">
         <div class="type-chips">
           <button
             v-for="chip in typeChips"
@@ -347,8 +444,9 @@ const emptyText = computed(() =>
         />
       </div>
 
-      <!-- 聚合表格 -->
+      <!-- 聚合表格（todo/mine/handled） -->
       <el-table
+        v-if="activeTab !== 'cc'"
         v-loading="loading"
         :data="pageData"
         row-key="bizId"
@@ -410,8 +508,55 @@ const emptyText = computed(() =>
         </el-table-column>
       </el-table>
 
+      <!-- 抄送我的表格（DOC_CC 通知，服务端分页；点击行标已读并深链单据详情） -->
+      <div v-else class="cc-table-wrap">
+        <el-table
+          v-loading="ccLoading"
+          :data="ccRecords"
+          row-key="id"
+          border
+          highlight-current-row
+          empty-text="暂无抄送我的记录"
+          @row-click="handleCcRowClick"
+        >
+          <el-table-column label="类型" width="110">
+            <template #default="{ row }">
+              <el-tag type="info" effect="light" size="small">{{ row.typeLabel }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="标题" min-width="300" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span :class="{ 'cc-title-unread': row.readFlag === 0 }">{{ row.title }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="单据类型" width="100">
+            <template #default="{ row }">{{ ccBizLabel(row) }}</template>
+          </el-table-column>
+          <el-table-column label="已读状态" width="90">
+            <template #default="{ row }">
+              <el-tag :type="row.readFlag === 0 ? 'danger' : 'info'" effect="plain" size="small">
+                {{ row.readFlag === 0 ? '未读' : '已读' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="createdAt" label="抄送时间" min-width="160" />
+          <el-table-column label="操作" width="90" fixed="right">
+            <template #default="{ row }">
+              <el-button
+                link
+                type="primary"
+                :disabled="!ccJumpPath(row)"
+                @click.stop="handleCcRowClick(row)"
+              >
+                查看
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+
       <!-- 分页 -->
-      <div class="pagination">
+      <div v-if="activeTab !== 'cc'" class="pagination">
         <span class="pagination-info">共 {{ total }} 条</span>
         <el-pagination
           v-model:current-page="currentPage"
@@ -419,6 +564,17 @@ const emptyText = computed(() =>
           :total="total"
           layout="prev, pager, next"
           background
+        />
+      </div>
+      <div v-else class="pagination">
+        <span class="pagination-info">共 {{ ccTotal }} 条</span>
+        <el-pagination
+          v-model:current-page="ccPage"
+          :page-size="CC_PAGE_SIZE"
+          :total="ccTotal"
+          layout="prev, pager, next"
+          background
+          @current-change="loadCc"
         />
       </div>
     </div>
@@ -550,5 +706,14 @@ const emptyText = computed(() =>
 .pagination-info {
   font-size: var(--text-sm);
   color: var(--color-text-2);
+}
+
+/* 抄送我的表格：行可点击 + 未读标题加粗 */
+.cc-table-wrap :deep(.el-table__row) {
+  cursor: pointer;
+}
+.cc-title-unread {
+  font-weight: 600;
+  color: var(--color-text-1);
 }
 </style>

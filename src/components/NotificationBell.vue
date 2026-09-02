@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { notificationApi } from '@/api/modules/notification'
 import type { NotificationItem } from '@/api/interface/notification'
 import { NOTIFICATION_TYPE_TAG } from '@/api/interface/notification'
+import { useNotificationStore } from '@/stores/notification'
 
 /**
- * 通知铃铛（右上角）：
- * - 60s 轮询 unread-count，红点 + 未读数字角标（超过 99 显示 99+，含抄送类）
+ * 通知铃铛（本组件在顶栏与左下角各挂载一个实例）：
+ * - 未读数来自共享 store（两实例红点实时同步），60s 轮询由 store 引用计数管理
  * - 点击铃铛打开抽屉：「全部 / 抄送我的」两个视图 + 只看未读开关
  * - 点击单条通知：标记已读 + 深链跳对应单据详情（RETURN 且无 bizId 的退还审批不跳转）
  * - 右上角一键全部标记已读（会把抄送通知一并标读，后端暂无按 type 批量已读）
@@ -16,25 +17,18 @@ import { NOTIFICATION_TYPE_TAG } from '@/api/interface/notification'
 defineOptions({ name: 'notification-bell' })
 
 const router = useRouter()
+const notifStore = useNotificationStore()
 
-/* ---------------- 未读计数轮询 ---------------- */
-const unreadCount = ref(0)
-let pollTimer: ReturnType<typeof setInterval> | undefined
+/* ---------------- 未读计数（共享 store：与另一处铃铛同步） ---------------- */
+const unreadCount = computed(() => notifStore.unreadCount)
 
-const pollUnread = async () => {
-  try {
-    const resp = await notificationApi.unreadCount()
-    unreadCount.value = resp.count || 0
-  } catch {
-    /* 401/503 等已由 axios 拦截器统一处理 */
-  }
-}
-
-/** 立即执行一次（首次挂载展示角标不白等 60s） + 60s 轮询 */
-pollUnread()
-pollTimer = setInterval(pollUnread, 60 * 1000)
+/* 挂载即绑定共享轮询，卸载解绑（最后一个实例卸载时轮询停止） */
+let unbindPolling: (() => void) | undefined
+onMounted(() => {
+  unbindPolling = notifStore.bindPolling()
+})
 onBeforeUnmount(() => {
-  pollTimer && clearInterval(pollTimer)
+  unbindPolling?.()
 })
 
 /* ---------------- 抽屉与列表 ---------------- */
@@ -56,9 +50,10 @@ const badgeCount = computed(() => {
   return n > 99 ? 99 : n
 })
 
-/** 铃铛打开时立即重拉一次最新列表 */
+/** 铃铛打开时立即重拉一次最新计数 + 列表 */
 watch(drawerVisible, async (v) => {
   if (v) {
+    void notifStore.refreshCount()
     currentPage.value = 1
     await loadList(true)
   }
@@ -137,7 +132,7 @@ const handleClick = async (row: NotificationItem) => {
     if (row.readFlag === 0) {
       await notificationApi.markRead(row.id)
       row.readFlag = 1
-      unreadCount.value = Math.max(0, unreadCount.value - 1)
+      notifStore.decreaseUnread()
     }
     const target = jumpPath(row)
     if (target) {
@@ -158,7 +153,7 @@ const markAllRead = async () => {
   try {
     await notificationApi.markAllRead()
     ElMessage.success('已全部标记为已读')
-    unreadCount.value = 0
+    notifStore.clearUnread()
     records.value.forEach((r) => (r.readFlag = 1))
   } catch {
     /* 拦截器已提示 */

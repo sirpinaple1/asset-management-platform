@@ -275,12 +275,12 @@ const openVersionPanel = () => {
             </span>
             <span>我处理的</span>
           </router-link>
-          <a class="menu-item" @click="comingSoon">
+          <router-link to="/approvals?tab=cc" class="menu-item" :class="{ active: approvalsTabActive('cc') }">
             <span class="menu-icon">
               <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M3 6C3 4.34315 4.34315 3 6 3H14C15.6569 3 17 4.34315 17 6V12C17 13.6569 15.6569 15 14 15H9L6 17.5V15H6C4.34315 15 3 13.6569 3 12V6Z" stroke="currentColor" stroke-width="1.5" /></svg>
             </span>
             <span>抄送我的</span>
-          </a>
+          </router-link>
         </nav>
 
         <div class="menu-section">
