@@ -9,3 +9,7 @@ dist/
 # 本地环境配置（R3 红线：后端/鉴权中心地址不入库，模板见 .env.development.example）
 .env.development
 .env.production
+
+# 本地工具目录（Trae 会话/worktree，不入库）
+.trae/
+.worktrees/

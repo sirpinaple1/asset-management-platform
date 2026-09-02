@@ -2,15 +2,16 @@
 
 > 阶段性进展完成后更新本文件。最后更新时间见文末。
 >
-> 开发分支 `feat/m02-basedata`（worktree `.worktrees/feat-m02-basedata`，dev 端口 **5173**，主仓 5174）。
+> 开发直接在主仓 `main` 进行（push 即自动部署到 193.112.174.178），dev 端口 **5173**。
 
 ## 当前阶段
 
-**V20260832 规范对齐收尾**：
-- 分类管理页（两级树）+ 位置管理页（树形）+ 资产"细则"（spec）字段已完成，工作区待提交（vue-tsc 零错误）
-- 后端契约已核验对齐（2026-08-28）：spec 全链贯通（Req/Resp/导出"细则"列）、分类 CRUD 护栏（同级重名/两级上限/删除保护均 400 带原因）、位置删除保护 409→400、编码前缀父链继承
-- 审批中心 F3/F4（定向派单/通知铃铛/B3 概览卡）及四个修复批次已推送
-- 待办：浏览器 E2E 联调 V20260832（分类/位置增删改、资产细则保存回显）→ 用户确认后提交推送
+**钉钉免登上线（2026-09-02，v0.1.11/0.1.12 已推）**：
+- 钉钉 PC/手机工作台打开系统静默免登（authCode→`/auth-api/api/dingtalk/getUserInfo`→dd_user_id 映射→Redis token），401 自动静登重进；浏览器内仍走 auth-center
+- 服务器侧：网关 80 端口从 301 跳 HTTPS 改为直接代理（钉钉入口 HTTP，规避自签证书）；comm_public_basic 免登兑换密钥切到 stream 应用 `dingva0y6beuzfsrculs`（私改仓，随镜像部署不提交）
+- 安全补丁：生产 token TTL 从永久(-1) 收紧为 **4 小时**（compose 注入 `AUTH_TOKEN_TTLSECONDS=14400`），旧永久 token 已清除；登录页跳转改相对路径 `/auth-center`（http 入口不再撞自签证书）
+- 免登载体应用：钉钉开发者后台已配好网页应用能力（首页地址 `http://193.112.174.178/?corpid=$CORPID$`）
+- 生产遗留：服务器 2026-09-27 到期需续费；`.env.production` 由部署脚本 `deploy-frontend.sh` 注入（corpId 等）
 
 ## 已完成（按里程碑）
 
@@ -35,6 +36,11 @@
   - LocationModal：父位置 el-tree-select（不限层级），编辑时剔除自身及子孙防环
   - 资产 spec 全链：AssetModal 细则输入（maxlength 500 对齐后端 varchar(500)、占位"如：16G内存/512G固态"）、列表列、详情抽屉；AssetQuery 不支持 spec 搜索仅展示；导出"细则"列由后端提供前端零改动
 - [x] **帮助面板版本信息**（08-31）：左下角问号 → el-drawer（贴左侧）前后端版本分开展示——前端版本直渲 `src/version.ts` 常量（唯一来源），后端版本打开时拉一次 `GET /v1/version`，失败显示"后端版本获取失败"占位不弹错；`request` 封装新增 `skipErrorToast` 静默选项；AGENTS.md 建立并写入版本号纪律（每次 push 末位 +1 + CHANGELOG 增补）
+- [x] **钉钉免登 + 安全收紧**（09-02，acbfb8f/25188b1 已推）：
+  - 免登链路：`src/utils/dingtalk.ts`（JSAPI 检测/corpId 解析/authCode 兑换，requestAuthCode 必须包 `dd.ready`——PC 钉钉硬要求）；路由守卫钉钉容器内静默免登、失败降级登录页；401 拦截器钉钉内刷新页面重登（浏览器跳 auth-center 不变）；退出登录在钉钉内变为"重置并重登"
+  - tab 未读角标 + 退出登录跳 auth-center（returnUrl 带回）
+  - 生产网关/部署配套：80 端口直连代理、`deploy-frontend.sh` 注入 corpId、auth-center 跳转相对路径化
+  - 顺手修 `basedata.ts` approverUserId 类型错误（曾阻塞生产构建）
 
 ## 工程约定与决策点
 
@@ -58,4 +64,4 @@
 
 ---
 
-**最后更新**：2026-08-31（帮助面板版本信息完成：src/version.ts 唯一来源 + request skipErrorToast + AGENTS.md 版本号纪律）
+**最后更新**：2026-09-02（钉钉免登上线 + token TTL 收紧 4h + 网关 80 直连；开发回归主仓 main，push 即部署）
