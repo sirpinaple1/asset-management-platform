@@ -51,8 +51,17 @@ export async function dingTalkLogin(): Promise<string> {
     throw new Error('钉钉企业 corpId 未配置')
   }
 
-  // requestAuthCode 无需 dd.config 鉴权（官方类型注明），授权码 5 分钟有效且一次性
-  const { code } = await dd.runtime.permission.requestAuthCode({ corpId })
+  // requestAuthCode 无需 dd.config 鉴权（官方类型注明），授权码 5 分钟有效且一次性；
+  // 但 PC 钉钉要求 JSAPI 在 dd.ready 回调内调用，否则静默失败，故统一包一层
+  const { code } = await new Promise<{ code: string }>((resolve, reject) => {
+    dd.ready(() => {
+      dd.runtime.permission
+        .requestAuthCode({ corpId })
+        .then(resolve)
+        .catch(reject)
+    })
+    dd.error((err: unknown) => reject(new Error(`钉钉 JSAPI 异常: ${JSON.stringify(err)}`)))
+  })
 
   const resp = await axios.get<AuthResult<DingTalkLoginUserVo>>(
     `${AUTH_API_BASE}/api/dingtalk/getUserInfo`,

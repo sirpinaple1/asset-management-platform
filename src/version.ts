@@ -1,9 +1,10 @@
 import { request } from '@/api/config/request'
 
 // 前端版本信息（唯一来源）
-export const FRONTEND_VERSION = '0.1.11'
+export const FRONTEND_VERSION = '0.1.12'
 export const RELEASE_DATE = '2026-09-02'
 export const CHANGELOG: string[] = [
+  '修复 PC 钉钉免登静默失败（JSAPI 需在 dd.ready 内调用）；登录页跳转改为相对路径，http 入口不再被自签证书拦截',
   '钉钉免登：在钉钉 PC/手机工作台打开本系统可静默登录，无需输账号密码；token 失效自动免登重进（浏览器内仍走登录中心）',
   '浏览器 tab 标题新增未读角标：被抄送/审批新进展等通知未读数以【N】前缀显示在标签页标题（超99显示99+），切后台也不错过提醒',
   '新增退出登录：右上角用户菜单可退出账号，清理本地登录态后跳转登录中心，重新登录支持换账号并自动跳回',
