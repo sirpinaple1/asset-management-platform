@@ -218,6 +218,8 @@ public class ApprovalCallbackServiceImpl implements ApprovalCallbackService {
             applyRefuse(record, null, null, "钉钉审批拒绝（终审）");
         }
         appendCallback(record, "instance:finish", result, null);
+        // 终态抄送：钉钉模板配置的抄送人逐一站内通知（"抄送我的"）
+        notifyCcUsers(record, "agree".equals(result) ? "已通过" : "已拒绝");
     }
 
     private void handleInstanceTerminate(ApprovalInstance record, JsonNode data) {
@@ -250,6 +252,52 @@ public class ApprovalCallbackServiceImpl implements ApprovalCallbackService {
             default -> log.debug("忽略终止事件（bizType={}）", record.getBizType());
         }
         appendCallback(record, "instance:terminate", null, displayName(operator));
+        // 撤销抄送：与终态同语义，抄送人知晓流程已撤销
+        notifyCcUsers(record, "已撤销");
+    }
+
+    /**
+     * 实例终态抄送（M10）：回查钉钉实例详情取模板配置的抄送人（cc_userids），
+     * 逐一站内通知 DOC_CC（"抄送我的"）。钉钉侧已自行推送，此处为系统侧留痕，
+     * 失败仅记日志不影响主流程；抄送人未绑定系统账号则跳过该人。
+     */
+    private void notifyCcUsers(ApprovalInstance record, String resultLabel) {
+        try {
+            JsonNode detail = apiClient.getProcessInstance(record.getProcessInstanceId());
+            if (detail == null || detail.isEmpty()) {
+                return;
+            }
+            JsonNode cc = detail.path("cc_userids");
+            if (cc.isMissingNode() || cc.isNull() || cc.isEmpty()) {
+                return;
+            }
+            // 兼容数组与逗号分隔字符串两种返回形态
+            List<String> ddUserIds = new java.util.ArrayList<>();
+            if (cc.isArray()) {
+                cc.forEach(n -> ddUserIds.add(n.asText()));
+            } else {
+                ddUserIds.addAll(List.of(cc.asText().split(",")));
+            }
+            String instanceTitle = detail.path("title").asText("钉钉审批");
+            for (String ddId : ddUserIds) {
+                String id = ddId.trim();
+                if (id.isEmpty()) {
+                    continue;
+                }
+                UserResp user = userDirectory.findByDdUserId(id);
+                if (user == null) {
+                    log.debug("抄送人未绑定系统账号，跳过站内通知（ddUserId={}，instanceId={}）",
+                            id, record.getProcessInstanceId());
+                    continue;
+                }
+                notificationService.notify(user.id(), NotificationType.DOC_CC,
+                        "【抄送】" + instanceTitle + "（" + resultLabel + "）",
+                        record.getBizType(), record.getBizId());
+            }
+        } catch (Exception e) {
+            // 抄送属辅助通知：失败不告警不外抛，不影响终态落库与业务推进
+            log.warn("抄送通知失败（instanceId={}）：{}", record.getProcessInstanceId(), e.getMessage());
+        }
     }
 
     // ------------------------------------------------------------ 审批动作落地（复用状态机）

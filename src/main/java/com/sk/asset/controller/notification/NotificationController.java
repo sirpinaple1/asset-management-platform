@@ -1,11 +1,13 @@
 package com.sk.asset.controller.notification;
 
 import com.sk.asset.auth.AuthContext;
+import com.sk.asset.common.BusinessException;
 import com.sk.asset.auth.UserContext;
 import com.sk.asset.common.PageResp;
 import com.sk.asset.common.Result;
 import com.sk.asset.dto.notification.NotificationResp;
 import com.sk.asset.entity.notification.SysNotification;
+import com.sk.asset.enums.notification.NotificationType;
 import com.sk.asset.service.notification.NotificationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Arrays;
 import java.util.Map;
 
 /**
@@ -32,10 +35,12 @@ public class NotificationController {
 
     private final NotificationService notificationService;
 
-    @Operation(summary = "我的通知（分页，id 倒序；unread=true 只看未读）")
+    @Operation(summary = "我的通知（分页，id 倒序；unread=true 只看未读；type 过滤如 DOC_CC=抄送我的）")
     @SecurityRequirement(name = "BearerAuth")
     @GetMapping
     public Result<PageResp<NotificationResp>> page(
+            @Parameter(description = "通知类型过滤（可空=全部），如 DOC_CC=抄送我的")
+            @RequestParam(required = false) String type,
             @Parameter(description = "true=仅未读")
             @RequestParam(defaultValue = "false") boolean unread,
             @Parameter(description = "页码，从 1 起")
@@ -43,8 +48,15 @@ public class NotificationController {
             @Parameter(description = "每页条数（1-100）")
             @RequestParam(defaultValue = "20") long size) {
         AuthContext user = UserContext.require();
+        NotificationType typeFilter = null;
+        if (type != null && !type.isBlank()) {
+            typeFilter = Arrays.stream(NotificationType.values())
+                    .filter(t -> t.name().equalsIgnoreCase(type.trim()))
+                    .findFirst()
+                    .orElseThrow(() -> new BusinessException(400, "未知通知类型：" + type));
+        }
         return Result.ok(notificationService.page(
-                Long.valueOf(user.getUserId()), unread, page, size));
+                Long.valueOf(user.getUserId()), typeFilter, unread, page, size));
     }
 
     @Operation(summary = "未读数（徽标轮询）")

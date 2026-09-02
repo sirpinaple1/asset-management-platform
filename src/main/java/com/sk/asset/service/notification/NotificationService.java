@@ -16,8 +16,13 @@ public interface NotificationService {
      */
     void notify(Long recipientUserId, NotificationType type, String title, String bizType, Long bizId);
 
-    /** 我的通知（分页，id 倒序；unreadOnly=true 只看未读） */
-    PageResp<NotificationResp> page(Long userId, boolean unreadOnly, long page, long size);
+    /**
+     * 我的通知（分页，id 倒序）。
+     *
+     * @param type      通知类型过滤（null=全部；如 DOC_CC=抄送我的）
+     * @param unreadOnly true=仅未读
+     */
+    PageResp<NotificationResp> page(Long userId, NotificationType type, boolean unreadOnly, long page, long size);
 
     /** 未读数（徽标轮询） */
     long unreadCount(Long userId);

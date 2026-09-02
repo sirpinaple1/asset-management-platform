@@ -13,13 +13,14 @@ public final class AppVersion {
     }
 
     /** 后端版本号（语义：功能上线 +1 末位） */
-    public static final String VERSION = "0.1.4";
+    public static final String VERSION = "0.1.5";
 
     /** 发布日期（yyyy-MM-dd） */
-    public static final String RELEASE_DATE = "2026-09-01";
+    public static final String RELEASE_DATE = "2026-09-02";
 
     /** 本版本新增功能（简要，供前端帮助面板展示） */
     public static final List<String> CHANGELOG = List.of(
+            "抄送我的：钉钉审批终态（通过/拒绝/撤销）后按模板抄送人逐一站内通知，通知中心支持按类型筛选",
             "多级主管审批链终态同步：单据完成状态与钉钉实例终审严格同步，快照二级同意不再提前关单，第2/3级主管同意仅记日志",
             "钉钉退还审批对接：钉钉发起的资产退还单终审通过后系统自动执行归还（含位置回置），拒绝/撤销仅通知不动资产",
             "钉钉 userid 全公司批量同步：超管一键遍历钉钉通讯录自动绑定，员工无需自报 userid",

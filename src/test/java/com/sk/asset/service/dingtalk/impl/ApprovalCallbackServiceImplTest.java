@@ -147,6 +147,17 @@ class ApprovalCallbackServiceImplTest {
                                 + "\",\"result\":\"" + result + "\"}");
     }
 
+    /** 钉钉实例详情（含抄送人 cc_userids）——终态抄送通知用 */
+    private com.fasterxml.jackson.databind.node.ObjectNode detailWithCc(
+            String status, String result, String... ccIds) throws Exception {
+        String cc = String.join("\",\"", ccIds);
+        return (com.fasterxml.jackson.databind.node.ObjectNode)
+                new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readTree("{\"title\":\"IT资产领用单\",\"status\":\"" + status
+                                + "\",\"result\":\"" + result
+                                + "\",\"cc_userids\":[\"" + cc + "\"]}");
+    }
+
     // ------------------------------------------------------------ task_change：逐级推进
 
     @Test
@@ -382,6 +393,85 @@ class ApprovalCallbackServiceImplTest {
         // 钉钉侧已终审：approval_instance 终态必须落库（业务推进交由 task:finish 事件或人工介入）
         verify(approvalInstanceMapper).updateById(argThat((ApprovalInstance r) ->
                 "COMPLETED".equals(r.getStatus()) && "agree".equals(r.getResult())));
+    }
+
+    // ------------------------------------------------------------ 终态抄送（"抄送我的"）
+
+    @Test
+    void instanceFinishAgree_抄送人逐一站内通知DOC_CC() throws Exception {
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(record(ApprovalInstance.BIZ_RECEIVE, 1L));
+        ReceiveReceipt approved = pendingReceipt(2);
+        approved.setStatus("APPROVED");
+        when(receiptMapper.selectById(1L)).thenReturn(approved);
+        // 模板抄送人：肖鹏（已绑定）+ 未绑定者
+        when(apiClient.getProcessInstance(INSTANCE_ID))
+                .thenReturn(detailWithCc("COMPLETED", "agree", "dd691", "dd-unknown"));
+        mockOperator("dd691", 691L, "肖鹏");
+
+        service.onEvent("bpms_instance_change", instanceEvent("finish", "agree", "", CORP_ID));
+
+        // 绑定者收到 DOC_CC；未绑定者跳过；标题含实例标题与终态
+        verify(notificationService).notify(eq(691L), eq(NotificationType.DOC_CC),
+                eq("【抄送】IT资产领用单（已通过）"), eq("RECEIVE"), eq(1L));
+    }
+
+    @Test
+    void instanceFinishRefuse_抄送人收到已拒绝通知() throws Exception {
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(record(ApprovalInstance.BIZ_RECEIVE, 1L));
+        when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(2));
+        when(apiClient.getProcessInstance(INSTANCE_ID))
+                .thenReturn(detailWithCc("COMPLETED", "refuse", "dd691"));
+        mockOperator("dd691", 691L, "肖鹏");
+
+        service.onEvent("bpms_instance_change", instanceEvent("finish", "refuse", "", CORP_ID));
+
+        verify(notificationService).notify(eq(691L), eq(NotificationType.DOC_CC),
+                contains("已拒绝"), eq("RECEIVE"), eq(1L));
+    }
+
+    @Test
+    void instanceTerminate_抄送人收到已撤销通知() throws Exception {
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(record(ApprovalInstance.BIZ_RECEIVE, 1L));
+        when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(1));
+        when(apiClient.getProcessInstance(INSTANCE_ID))
+                .thenReturn(detailWithCc("TERMINATED", "", "dd691"));
+        mockOperator("dd100", 100L, "张三");
+        mockOperator("dd691", 691L, "肖鹏");
+
+        service.onEvent("bpms_instance_change", instanceEvent("terminate", "", "dd100", CORP_ID));
+
+        verify(notificationService).notify(eq(691L), eq(NotificationType.DOC_CC),
+                contains("已撤销"), eq("RECEIVE"), eq(1L));
+    }
+
+    @Test
+    void instanceFinish_无抄送人_不通知() throws Exception {
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(record(ApprovalInstance.BIZ_RECEIVE, 1L));
+        ReceiveReceipt approved = pendingReceipt(2);
+        approved.setStatus("APPROVED");
+        when(receiptMapper.selectById(1L)).thenReturn(approved);
+        when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(detail("COMPLETED", "agree"));
+
+        service.onEvent("bpms_instance_change", instanceEvent("finish", "agree", "", CORP_ID));
+
+        verify(notificationService, never()).notify(anyLong(),
+                eq(NotificationType.DOC_CC), anyString(), anyString(), anyLong());
+    }
+
+    @Test
+    void instanceFinish_抄送详情查询失败_不影响主流程() throws Exception {
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(record(ApprovalInstance.BIZ_RECEIVE, 1L));
+        ReceiveReceipt approved = pendingReceipt(2);
+        approved.setStatus("APPROVED");
+        when(receiptMapper.selectById(1L)).thenReturn(approved);
+        // 抄送回查抛异常：终态落库不受影响，仅记日志
+        when(apiClient.getProcessInstance(INSTANCE_ID))
+                .thenThrow(new RuntimeException("dingtalk api down"));
+
+        assertDoesNotThrow(() ->
+                service.onEvent("bpms_instance_change", instanceEvent("finish", "agree", "", CORP_ID)));
+        verify(notificationService, never()).notify(anyLong(),
+                eq(NotificationType.DOC_CC), anyString(), anyString(), anyLong());
     }
 
     // ------------------------------------------------------------ instance_change：撤销

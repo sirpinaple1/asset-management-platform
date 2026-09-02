@@ -49,12 +49,16 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     @Override
-    public PageResp<NotificationResp> page(Long userId, boolean unreadOnly, long page, long size) {
+    public PageResp<NotificationResp> page(Long userId, NotificationType type,
+                                            boolean unreadOnly, long page, long size) {
         long safePage = Math.max(page, 1);
         long safeSize = Math.min(Math.max(size, 1), 100);
 
         LambdaQueryWrapper<SysNotification> wrapper = new LambdaQueryWrapper<SysNotification>()
                 .eq(SysNotification::getUserId, userId);
+        if (type != null) {
+            wrapper.eq(SysNotification::getType, type.name());
+        }
         if (unreadOnly) {
             wrapper.eq(SysNotification::getReadFlag, 0);
         }

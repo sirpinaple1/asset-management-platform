@@ -25,6 +25,9 @@ public enum NotificationType {
     /** 审批进度更新（两级审批链：一级通过，通知发起人与二级审批人） */
     DOC_PROGRESS("审批进度更新"),
 
+    /** 抄送我的（钉钉实例终态后按模板抄送人逐一通知，"抄送我的"列表数据源） */
+    DOC_CC("抄送我的"),
+
     /** 审批链配置告警（解析失败/配置失效时通知 systemAdmin 补配置） */
     APPROVAL_CONFIG_ALERT("审批链配置告警"),
 

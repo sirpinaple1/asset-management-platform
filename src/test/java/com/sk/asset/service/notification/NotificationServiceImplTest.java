@@ -90,7 +90,7 @@ class NotificationServiceImplTest {
                     return page;
                 });
 
-        var resp = notificationService.page(100L, true, 0, 1000);
+        var resp = notificationService.page(100L, null, true, 0, 1000);
 
         assertEquals(1, resp.getRecords().size());
         assertEquals(1L, resp.getTotal());
