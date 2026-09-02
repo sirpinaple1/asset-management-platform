@@ -62,7 +62,7 @@ public class AssetController {
             @RequestParam(required = false) Long userId,
             @Parameter(description = "资产管理员 ID")
             @RequestParam(required = false) Long adminUserId,
-            @Parameter(description = "关键词（资产编码/名称/序列号模糊匹配）")
+            @Parameter(description = "关键词（编码/名称/序列号模糊匹配；空格分隔多组=或，组内\"-\"分隔=且）")
             @RequestParam(required = false) String keyword) {
 
         AssetQuery query = buildQuery(status, categoryId, locationId, companyId, userId, adminUserId, keyword);
@@ -89,7 +89,7 @@ public class AssetController {
             @RequestParam(required = false) Long userId,
             @Parameter(description = "资产管理员 ID")
             @RequestParam(required = false) Long adminUserId,
-            @Parameter(description = "关键词（资产编码/名称/序列号模糊匹配）")
+            @Parameter(description = "关键词（编码/名称/序列号模糊匹配；空格分隔多组=或，组内\"-\"分隔=且）")
             @RequestParam(required = false) String keyword,
             HttpServletResponse response) throws IOException {
 

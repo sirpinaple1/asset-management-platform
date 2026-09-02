@@ -33,6 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -98,14 +99,46 @@ public class AssetServiceImpl implements AssetService {
                 wrapper.eq(Asset::getAdminUserId, query.getAdminUserId());
             }
             if (query.getKeyword() != null && !query.getKeyword().isBlank()) {
-                String keyword = query.getKeyword().trim();
-                wrapper.and(w -> w.like(Asset::getBarcode, keyword)
-                        .or().like(Asset::getName, keyword)
-                        .or().like(Asset::getSn, keyword));
+                List<List<String>> groups = parseKeyword(query.getKeyword());
+                if (!groups.isEmpty()) {
+                    // 组间 OR（空格分隔）、组内子词 AND（"-"分隔），每个子词对 编码/名称/序列号 模糊匹配。
+                    // 注意：组间连接必须用 or(consumer) 重载，无参 or() 对 and(consumer) 不生效。
+                    wrapper.and(w -> {
+                        for (int i = 0; i < groups.size(); i++) {
+                            List<String> terms = groups.get(i);
+                            java.util.function.Consumer<LambdaQueryWrapper<Asset>> groupCond = g ->
+                                    terms.forEach(term -> g.and(t -> t.like(Asset::getBarcode, term)
+                                            .or().like(Asset::getName, term)
+                                            .or().like(Asset::getSn, term)));
+                            if (i == 0) {
+                                w.and(groupCond);
+                            } else {
+                                w.or(groupCond);
+                            }
+                        }
+                    });
+                }
             }
         }
         wrapper.orderByDesc(Asset::getId);
         return wrapper;
+    }
+
+    /**
+     * 解析搜索关键词：按空白切分为多个词组（组间 OR），词组内按 "-" 切分为多个子词（组内 AND），
+     * 每个子词对 编码/名称/序列号 三字段模糊匹配。
+     * 示例："笔记本 台式机" 命中含任一关键词的资产；"笔记本-Lenovo" 需同时包含两者。
+     * 纯分隔符输入（如 "--"）解析为空列表，等价于无关键词。
+     */
+    private List<List<String>> parseKeyword(String raw) {
+        return Arrays.stream(raw.trim().split("[\\s\\u3000]+"))
+                .filter(s -> !s.isBlank())
+                .map(group -> Arrays.stream(group.split("-"))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .toList())
+                .filter(terms -> !terms.isEmpty())
+                .toList();
     }
 
     @Override

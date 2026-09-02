@@ -2,6 +2,7 @@ package com.sk.asset.service.asset;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
@@ -540,5 +541,109 @@ class AssetServiceImplTest {
 
         assertEquals(1, result.size());
         assertEquals("新增", result.get(0).getOperationType());
+    }
+
+    // ---- keyword 多关键词解析（空格=或，"-"=且） ----
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private LambdaQueryWrapper<Asset> pageWithKeyword(String keyword) {
+        com.sk.asset.dto.asset.AssetQuery query = new com.sk.asset.dto.asset.AssetQuery();
+        query.setKeyword(keyword);
+        when(assetMapper.selectPage(any(Page.class), any())).thenReturn(new Page<>(1, 20));
+        assetService.page(1, 20, query);
+        ArgumentCaptor<Wrapper> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(assetMapper).selectPage(any(Page.class), captor.capture());
+        return (LambdaQueryWrapper<Asset>) captor.getValue();
+    }
+
+    private List<String> likeValues(LambdaQueryWrapper<Asset> wrapper) {
+        return wrapper.getParamNameValuePairs().values().stream()
+                .map(String::valueOf)
+                .toList();
+    }
+
+    @Test
+    void keyword_singleTerm_shouldKeepThreeFieldLike() {
+        LambdaQueryWrapper<Asset> wrapper = pageWithKeyword("笔记本");
+
+        // 单关键词：三字段各一次 LIKE，三个参数均为同一词（与旧实现行为一致）
+        assertEquals(3, countOccurrences(wrapper.getSqlSegment(), "LIKE"));
+        assertEquals(3, likeValues(wrapper).size());
+        assertTrue(likeValues(wrapper).stream().allMatch(v -> v.contains("笔记本")));
+    }
+
+    @Test
+    void keyword_spaceSeparated_shouldOrGroups() {
+        LambdaQueryWrapper<Asset> wrapper = pageWithKeyword("笔记本 台式机");
+
+        // 两组各 3 次 LIKE，组间 OR：6 次 LIKE + 5 个 OR（组内 2×2 + 组间 1）
+        assertEquals(6, countOccurrences(wrapper.getSqlSegment(), "LIKE"));
+        assertEquals(5, countOccurrences(wrapper.getSqlSegment().toUpperCase(), " OR "));
+        List<String> values = likeValues(wrapper);
+        assertTrue(values.stream().anyMatch(v -> v.contains("笔记本")));
+        assertTrue(values.stream().anyMatch(v -> v.contains("台式机")));
+    }
+
+    @Test
+    void keyword_dashSeparated_shouldAndTerms() {
+        LambdaQueryWrapper<Asset> wrapper = pageWithKeyword("笔记本-Lenovo");
+
+        // 同组两个子词：6 次 LIKE，组内 AND 连接两个子词条件
+        assertEquals(6, countOccurrences(wrapper.getSqlSegment(), "LIKE"));
+        assertTrue(countOccurrences(wrapper.getSqlSegment().toUpperCase(), " AND ") >= 1);
+        List<String> values = likeValues(wrapper);
+        assertTrue(values.stream().anyMatch(v -> v.contains("笔记本")));
+        assertTrue(values.stream().anyMatch(v -> v.contains("Lenovo")));
+    }
+
+    @Test
+    void keyword_mixed_shouldCombineOrAndAnd() {
+        LambdaQueryWrapper<Asset> wrapper = pageWithKeyword("台式机 笔记本-Lenovo");
+
+        // 第一组单词（3 LIKE），第二组两子词（6 LIKE），组间 OR
+        assertEquals(9, countOccurrences(wrapper.getSqlSegment(), "LIKE"));
+        List<String> values = likeValues(wrapper);
+        assertTrue(values.stream().anyMatch(v -> v.contains("台式机")));
+        assertTrue(values.stream().anyMatch(v -> v.contains("笔记本")));
+        assertTrue(values.stream().anyMatch(v -> v.contains("Lenovo")));
+    }
+
+    @Test
+    void keyword_barcodeWithDash_shouldSplitIntoAndTerms() {
+        LambdaQueryWrapper<Asset> wrapper = pageWithKeyword("SKBGDN-0001");
+
+        // 编码自带 "-"：切分为 AND 子词后仍能命中同一资产（SKBGDN 且 0001）
+        assertEquals(6, countOccurrences(wrapper.getSqlSegment(), "LIKE"));
+        List<String> values = likeValues(wrapper);
+        assertTrue(values.stream().anyMatch(v -> v.contains("SKBGDN")));
+        assertTrue(values.stream().anyMatch(v -> v.contains("0001")));
+    }
+
+    @Test
+    void keyword_separatorOnly_shouldBehaveAsNoKeyword() {
+        LambdaQueryWrapper<Asset> wrapper = pageWithKeyword(" -- ");
+
+        // 纯分隔符输入：解析为空，不生成任何关键词条件
+        assertEquals(0, countOccurrences(wrapper.getSqlSegment(), "LIKE"));
+    }
+
+    @Test
+    void keyword_fullWidthSpace_shouldAlsoSplitGroups() {
+        LambdaQueryWrapper<Asset> wrapper = pageWithKeyword("笔记本　台式机");
+
+        assertEquals(6, countOccurrences(wrapper.getSqlSegment(), "LIKE"));
+        List<String> values = likeValues(wrapper);
+        assertTrue(values.stream().anyMatch(v -> v.contains("笔记本")));
+        assertTrue(values.stream().anyMatch(v -> v.contains("台式机")));
+    }
+
+    private int countOccurrences(String haystack, String needle) {
+        int count = 0;
+        int idx = 0;
+        while ((idx = haystack.indexOf(needle, idx)) != -1) {
+            count++;
+            idx += needle.length();
+        }
+        return count;
     }
 }

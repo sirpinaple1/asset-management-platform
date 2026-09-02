@@ -27,6 +27,6 @@ public class AssetQuery {
     /** 资产管理员 */
     private Long adminUserId;
 
-    /** 关键词（barcode/name/sn 模糊匹配） */
+    /** 关键词（barcode/name/sn 模糊匹配；空格分隔多组=或，组内"-"分隔=且） */
     private String keyword;
 }
