@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { notificationApi } from '@/api/modules/notification'
+import { setTitleBadge } from '@/utils/tabTitle'
 
 /**
  * 通知未读数共享 store：右上角 + 左下角两个铃铛实例共用同一份 unreadCount 与 60s 轮询，
@@ -8,6 +9,9 @@ import { notificationApi } from '@/api/modules/notification'
  */
 export const useNotificationStore = defineStore('notification', () => {
   const unreadCount = ref(0)
+
+  /* 浏览器 tab 标题角标：未读数变化（轮询刷新/已读扣减）即时同步，与铃铛红点同源 */
+  watch(unreadCount, (n) => setTitleBadge(n), { immediate: true })
 
   let pollTimer: ReturnType<typeof setInterval> | undefined
   let binderCount = 0

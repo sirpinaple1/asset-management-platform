@@ -7,6 +7,8 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd())
   // 后端地址默认本地 asset-backend（6006），可用 VITE_PROXY_TARGET 覆盖
   const proxyTarget = env.VITE_PROXY_TARGET || 'http://localhost:6006'
+  // 鉴权服务默认本地 comm_public_basic（6002），钉钉免登接口走此代理
+  const authProxyTarget = env.VITE_AUTH_PROXY_TARGET || 'http://localhost:6002'
 
   return {
     plugins: [vue()],
@@ -22,6 +24,12 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: proxyTarget,
           changeOrigin: true
+        },
+        // 钉钉免登等鉴权接口：/auth-api/... -> http://localhost:6002/...（去前缀）
+        '/auth-api': {
+          target: authProxyTarget,
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/auth-api/, '')
         }
       }
     }

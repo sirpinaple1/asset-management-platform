@@ -171,6 +171,7 @@ export interface ApprovalConfig {
 export interface ApprovalConfigForm {
   configType: ApprovalConfigType
   configKey: string
-  approverUserId: number
+  /** 表单未选择审批人时无值（提交前有必填校验） */
+  approverUserId?: number
   remark?: string
 }

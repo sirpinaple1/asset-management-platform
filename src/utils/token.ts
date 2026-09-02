@@ -83,9 +83,30 @@ export function stripAuthParamsFromUrl(): void {
   }
 }
 
+/** auth-center-frontend 基础地址（未配置时回退同源部署） */
+function authCenterBase(): string {
+  return import.meta.env.VITE_AUTH_CENTER_URL || `${window.location.origin}`
+}
+
+/** 当前页面地址（作为 returnUrl，供 auth-center 登录后跳回） */
+function currentReturnUrl(): string {
+  return encodeURIComponent(window.location.origin + window.location.pathname)
+}
+
 /** 跳回 auth-center-frontend 登录页，携带 returnUrl 供登录后跳回 */
 export function redirectToAuthCenter(): void {
-  const base = import.meta.env.VITE_AUTH_CENTER_URL || `${window.location.origin}`
-  const returnUrl = encodeURIComponent(window.location.origin + window.location.pathname)
-  window.location.href = `${base}/login?returnUrl=${returnUrl}`
+  window.location.href = `${authCenterBase()}/login?returnUrl=${currentReturnUrl()}`
+}
+
+/**
+ * 尽力清除 auth-center 的本地登录态（其登录页 zustand persist 到 localStorage 的 auth-storage）。
+ * 生产同 origin 部署时 localStorage 共享，清除后登录页不会再「已登录自动带旧 token 跳回」，
+ * 用户可换账号重新登录；本地开发跨 origin（5173/8321）时无法跨域清除，无副作用。
+ */
+export function clearAuthCenterLocalSession(): void {
+  try {
+    localStorage.removeItem('auth-storage')
+  } catch {
+    /* 隐私模式等 localStorage 不可用场景忽略 */
+  }
 }

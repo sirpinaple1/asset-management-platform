@@ -1,7 +1,8 @@
 import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { ElMessage } from 'element-plus'
 import type { Result } from '@/api/interface'
-import { clearToken, getToken, redirectToAuthCenter } from '@/utils/token'
+import { clearToken, getToken, redirectToAuthCenter, setToken } from '@/utils/token'
+import { dingTalkLogin, isInDingTalk } from '@/utils/dingtalk'
 
 /** 401 跳登录页防抖（并发请求同时 401 时只跳一次） */
 let redirectingToLogin = false
@@ -50,12 +51,26 @@ service.interceptors.response.use(
     const skipErrorToast = (error.config as RequestConfig | undefined)?.skipErrorToast
 
     if (status === 401) {
-      // token 无效/过期：清除本地态并跳回 auth-center 登录页
+      // token 无效/过期：钉钉容器内静默免登换新 token 后整页刷新；
+      // 浏览器环境清除本地态并跳回 auth-center 登录页
       clearToken()
       if (!redirectingToLogin) {
         redirectingToLogin = true
-        ElMessage.error(message || '登录已失效，请重新登录')
-        redirectToAuthCenter()
+        if (isInDingTalk()) {
+          dingTalkLogin()
+            .then((token) => {
+              setToken(token)
+              window.location.reload()
+            })
+            .catch((loginError) => {
+              console.warn('[dingtalk] 静默重登失败，降级登录页：', loginError)
+              ElMessage.error(message || '登录已失效，请重新登录')
+              redirectToAuthCenter()
+            })
+        } else {
+          ElMessage.error(message || '登录已失效，请重新登录')
+          redirectToAuthCenter()
+        }
       }
     } else if (!skipErrorToast) {
       if (status === 403) {

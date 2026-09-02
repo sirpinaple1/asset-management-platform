@@ -2,6 +2,8 @@ import { nextTick } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import { resetLoginRedirectFlag } from '@/api/config/request'
 import { clearToken, extractTokenFromUrl, getToken, redirectToAuthCenter, setToken, stripAuthParamsFromUrl } from '@/utils/token'
+import { dingTalkLogin, isInDingTalk } from '@/utils/dingtalk'
+import { setBaseTitle } from '@/utils/tabTitle'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -121,7 +123,7 @@ const router = createRouter({
   ]
 })
 
-router.beforeEach((to, from) => {
+router.beforeEach(async (to, from) => {
   // 0. 重置 401 跳登录防抖标志：新导航 = 新会话周期（含从 auth-center 携新 token 返回），
   //    防止上一次 401 置位后卡死，二次 token 过期时无法再次跳转登录
   resetLoginRedirectFlag()
@@ -140,9 +142,19 @@ router.beforeEach((to, from) => {
     return { path: to.path, query: {}, hash: to.hash, replace: true }
   }
 
-  // 2. 未登录（无 token）：跳回 auth-center 登录页，登录后可经 returnUrl 跳回
+  // 2. 未登录（无 token）：钉钉容器内静默免登；失败或非钉钉环境则跳 auth-center 登录页
   if (!getToken()) {
     clearToken()
+    if (isInDingTalk()) {
+      try {
+        const token = await dingTalkLogin()
+        setToken(token)
+        return true
+      } catch (e) {
+        // 免登失败（未绑定/默认密码/授权异常）：降级登录页，用户可用账密登录后跳回
+        console.warn('[dingtalk] 免登失败，降级登录页：', e)
+      }
+    }
     redirectToAuthCenter()
     return false
   }
@@ -151,7 +163,7 @@ router.beforeEach((to, from) => {
 })
 
 router.afterEach((to) => {
-  document.title = to.meta.title ? `${to.meta.title} - 资产管理系统` : '资产管理系统'
+  setBaseTitle(to.meta.title ? `${to.meta.title} - 资产管理系统` : '资产管理系统')
 
   // 最近使用足迹：工作台"最近使用"卡数据源（排除工作台自身与 404）
   recordRecentRoute(to)

@@ -4,6 +4,8 @@ import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useApprovalStore } from '@/stores/approval'
 import { useTabsStore } from '@/stores/tabs'
+import { clearAuthCenterLocalSession, clearToken, redirectToAuthCenter } from '@/utils/token'
+import { isInDingTalk } from '@/utils/dingtalk'
 import TabBar from '@/components/TabBar.vue'
 import NotificationBell from '@/components/NotificationBell.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
@@ -139,6 +141,36 @@ const openVersionPanel = () => {
 }
 
 /** 顶栏图标色由 .nav-item 的 color（currentColor）控制 */
+
+/** 退出登录：清本地登录态（含尽力清 auth-center 同 origin 登录态，避免登录页自动带旧 token 弹回）后跳 auth-center 登录页，重新登录可换账号并经 returnUrl 跳回。
+ *  钉钉容器内无独立登录页可跳：清态后整页刷新，路由守卫将重新静默免登（等效“重置登录态”）。 */
+const handleLogout = () => {
+  import('element-plus').then(({ ElMessageBox }) => {
+    const inDingTalk = isInDingTalk()
+    ElMessageBox.confirm(
+      inDingTalk ? '确定要重置当前登录态并重新免登吗？' : '确定要退出当前账号吗？',
+      '退出登录',
+      {
+        confirmButtonText: inDingTalk ? '重置并重登' : '退出',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+      .then(() => {
+        clearToken()
+        userStore.reset()
+        if (inDingTalk) {
+          window.location.reload()
+          return
+        }
+        clearAuthCenterLocalSession()
+        redirectToAuthCenter()
+      })
+      .catch(() => {
+        /* 取消退出 */
+      })
+  })
+}
 </script>
 
 <template>
@@ -180,6 +212,9 @@ const openVersionPanel = () => {
                   <span>{{ user?.roles?.length ? user.roles.join('、') : '未分配' }}</span>
                 </div>
               </div>
+              <el-dropdown-item divided @click="handleLogout">
+                <span style="color: var(--color-error-text)">退出登录</span>
+              </el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
