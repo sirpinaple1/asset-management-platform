@@ -1,14 +1,15 @@
 <template>
   <div class="m-page">
-    <!-- 顶部 segmented：待我处理 / 我发起的 -->
-    <div class="m-seg">
+    <!-- 顶部分段器：待我处理 / 我发起的（滑动指示器） -->
+    <div class="m-seg" :data-active="tab === 'mine' ? '1' : '0'">
+      <span class="m-seg-indicator" aria-hidden="true" />
       <button
         v-for="seg in SEGS"
         :key="seg.key"
         class="m-seg-btn"
         :class="{ active: tab === seg.key }"
         type="button"
-        @click="tab = seg.key"
+        @click="setTab(seg.key)"
       >
         {{ seg.label }}
         <span v-if="seg.key === 'todo' && todoList.length" class="m-seg-count">{{
@@ -17,24 +18,27 @@
       </button>
     </div>
 
-    <!-- 列表 -->
-    <div v-if="approvalStore.loading && !approvalStore.items.length" class="m-empty">加载中…</div>
+    <!-- 列表：骨架屏 → 空态/卡片 -->
+    <div v-if="approvalStore.loading && !approvalStore.items.length" class="skeleton-wrap">
+      <div v-for="n in 4" :key="n" class="m-skeleton-card" />
+    </div>
     <template v-else>
       <div v-if="curList.length === 0" class="m-empty">
         {{ tab === 'todo' ? '没有待处理的单据' : '没有发起过的单据' }}
       </div>
       <div
-        v-for="item in curList"
+        v-for="(item, i) in curList"
         :key="`${item.bizType}-${item.bizId}`"
         class="m-card"
-        @click="detail = item"
+        :style="{ '--i': Math.min(i, 8) }"
+        @click="openDetail(item)"
       >
         <div class="m-card-head">
           <span class="m-card-tag" :data-type="item.bizType">{{ bizLabel(item.bizType) }}</span>
-          <span class="m-card-serial">{{ item.serialNo }}</span>
-          <span class="m-card-status" :class="statusClass(item)">{{ statusLabel(item) }}</span>
+          <span class="m-card-title">{{ item.serialNo }}</span>
+          <span class="m-status" :class="statusClass(item)">{{ statusLabel(item) }}</span>
         </div>
-        <div class="m-card-summary">{{ item.summary }}</div>
+        <div class="m-card-sub summary">{{ item.summary }}</div>
         <div class="m-card-foot">
           <span>{{ item.applicantName || `用户${item.applicantUserId}` }}</span>
           <span>{{ fmtTime(item.createdAt) }}</span>
@@ -42,13 +46,18 @@
       </div>
     </template>
 
-    <!-- 详情弹层（全屏） -->
-    <div v-if="detail" class="m-detail">
-      <div class="m-detail-head">
-        <span class="m-card-serial">{{ detail.serialNo }}</span>
-        <button class="m-detail-close" type="button" @click="detail = undefined">✕</button>
+    <!-- 详情弹层（全屏，iOS 曲线上滑/下滑） -->
+    <div v-if="detail" class="m-sheet" :class="detailClosing ? 'out' : 'in'">
+      <div class="m-sheet-head">
+        <span class="m-sheet-head-title">{{ detail.serialNo }}</span>
+        <button class="m-sheet-close" type="button" aria-label="关闭" @click="closeDetail">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+            <line x1="5" y1="5" x2="15" y2="15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            <line x1="15" y1="5" x2="5" y2="15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+          </svg>
+        </button>
       </div>
-      <div class="m-detail-body">
+      <div class="m-sheet-body">
         <div class="m-row"><span>类型</span><b>{{ bizLabel(detail.bizType) }}</b></div>
         <div class="m-row"><span>状态</span><b>{{ statusLabel(detail) }}</b></div>
         <div class="m-row">
@@ -86,36 +95,67 @@
         </template>
 
         <!-- 明细行 -->
-        <div v-if="detailItems.length" class="m-detail-items">
-          <div class="m-detail-items-title">资产明细（{{ detailItems.length }}）</div>
-          <div v-for="it in detailItems" :key="it.id" class="m-item-row">
-            <div class="m-item-name">{{ it.assetName || `资产#${it.assetId}` }}</div>
-            <div class="m-item-sub">{{ it.assetBarcode }}{{ it.assetSn ? ` · SN ${it.assetSn}` : '' }}</div>
+        <div v-if="detailItems.length" class="detail-items">
+          <div class="detail-items-title">资产明细（{{ detailItems.length }}）</div>
+          <div v-for="it in detailItems" :key="it.id" class="m-card item-card">
+            <div class="item-name">{{ it.assetName || `资产#${it.assetId}` }}</div>
+            <div class="m-card-sub">{{ it.assetBarcode }}{{ it.assetSn ? ` · SN ${it.assetSn}` : '' }}</div>
           </div>
         </div>
       </div>
 
       <!-- 操作：仅"待我处理"且 PENDING -->
-      <div v-if="tab === 'todo' && detail.status === 'PENDING'" class="m-detail-actions">
+      <div v-if="tab === 'todo' && detail.status === 'PENDING'" class="m-actions">
         <button
           v-if="detail.bizType !== 'CHANGE'"
-          class="m-btn danger"
+          class="m-btn danger-ghost"
           type="button"
           :disabled="acting"
-          @click="onReject"
+          @click="rejectSheet = true"
         >
           拒绝
         </button>
         <button class="m-btn primary" type="button" :disabled="acting" @click="onApprove">
-          {{ approveText(detail.bizType) }}
+          {{ acting ? '处理中…' : approveText(detail.bizType) }}
         </button>
+      </div>
+    </div>
+
+    <!-- 拒绝原因弹层（底部半屏） -->
+    <div v-if="rejectSheet" class="reject-sheet" @click.self="rejectSheet = false">
+      <div class="reject-panel">
+        <div class="reject-head">
+          <span class="m-sheet-head-title">拒绝单据</span>
+          <button class="m-sheet-close" type="button" aria-label="关闭" @click="rejectSheet = false">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+              <line x1="5" y1="5" x2="15" y2="15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+              <line x1="15" y1="5" x2="5" y2="15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+        <div class="m-field reject-field">
+          <label class="m-field-label required">拒绝原因</label>
+          <textarea
+            v-model="rejectReason"
+            class="m-textarea"
+            maxlength="200"
+            placeholder="请填写拒绝原因，将通知发起人"
+          ></textarea>
+        </div>
+        <div class="reject-actions">
+          <button class="m-btn ghost" type="button" @click="rejectSheet = false">取消</button>
+          <button class="m-btn danger-ghost" type="button" :disabled="!rejectReason.trim() || acting" @click="onReject">
+            {{ acting ? '提交中…' : '确认拒绝' }}
+          </button>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useApprovalStore } from '@/stores/approval'
 import { useUserStore } from '@/stores/user'
@@ -132,6 +172,8 @@ import type { ApprovalBizType, ApprovalItem } from '@/api/interface/approval'
 import type { ReceiveReceipt, ReceiptItem } from '@/api/interface/receipt'
 import type { TransferOrder } from '@/api/interface/transfer'
 
+const route = useRoute()
+const router = useRouter()
 const approvalStore = useApprovalStore()
 const userStore = useUserStore()
 
@@ -139,12 +181,44 @@ const SEGS = [
   { key: 'todo', label: '待我处理' },
   { key: 'mine', label: '我发起的' },
 ] as const
-const tab = ref<'todo' | 'mine'>('todo')
+type TabKey = (typeof SEGS)[number]['key']
 
-/** 详情弹层当前单据 */
+/** tab 与 URL query 双向同步（/m/approvals?tab=mine，MApply 提交后深链跳入） */
+const tab = ref<TabKey>(route.query.tab === 'mine' ? 'mine' : 'todo')
+watch(
+  () => route.query.tab,
+  (v) => {
+    tab.value = v === 'mine' ? 'mine' : 'todo'
+  },
+)
+const setTab = (k: TabKey) => {
+  if (tab.value === k) return
+  router.replace({ query: k === 'todo' ? {} : { tab: k } })
+}
+
+/** 详情弹层当前单据（closing = 播放退场动画后再卸载） */
 const detail = ref<ApprovalItem>()
+const detailClosing = ref(false)
 /** 操作防重复提交 */
 const acting = ref(false)
+
+const openDetail = (item: ApprovalItem) => {
+  detail.value = item
+  detailClosing.value = false
+}
+
+const closeDetail = () => {
+  if (detailClosing.value) return
+  detailClosing.value = true
+  setTimeout(() => {
+    detail.value = undefined
+    detailClosing.value = false
+  }, 240)
+}
+
+/* ---------------- 拒绝弹层 ---------------- */
+const rejectSheet = ref(false)
+const rejectReason = ref('')
 
 const meUserId = () => userStore.me?.userId
 const todoList = computed(() => approvalStore.items.filter((it) => isTodoFor(it, meUserId())))
@@ -198,7 +272,7 @@ const onApprove = async () => {
     else if (bizType === 'TRANSFER') await transferApi.confirm(bizId)
     else await changeApi.confirm(bizId)
     ElMessage.success('处理成功')
-    detail.value = undefined
+    closeDetail()
     await approvalStore.refresh()
   } catch {
     /* axios 拦截器已统一提示 */
@@ -210,10 +284,7 @@ const onApprove = async () => {
 const onReject = async () => {
   if (!detail.value || acting.value) return
   const target = detail.value
-  let reason = ''
-  const res = window.prompt(`拒绝单据「${target.serialNo}」，请填写拒绝原因：`)
-  if (res === null) return
-  reason = res.trim()
+  const reason = rejectReason.value.trim()
   if (!reason) {
     ElMessage.warning('请填写拒绝原因')
     return
@@ -223,7 +294,9 @@ const onReject = async () => {
     if (target.bizType === 'TRANSFER') await transferApi.reject(target.bizId, reason)
     else await receiptApi.reject(target.bizId, reason)
     ElMessage.success('已拒绝')
-    detail.value = undefined
+    rejectSheet.value = false
+    rejectReason.value = ''
+    closeDetail()
     await approvalStore.refresh()
   } catch {
     /* 拦截器已提示 */
@@ -238,252 +311,89 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.m-page {
-  padding: 12px 12px 20px;
+.skeleton-wrap {
+  padding-top: 2px;
 }
 
-/* segmented 切换 */
-.m-seg {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
+.m-card-sub.summary {
+  font-size: var(--text-base);
+  color: var(--color-text-2);
 }
 
-.m-seg-btn {
-  flex: 1;
-  height: 36px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 18px;
-  background: var(--el-bg-color);
-  color: var(--el-text-color-regular);
-  font-size: 14px;
-  transition: background-color 0.2s, color 0.2s;
+.detail-items {
+  margin-top: 4px;
 }
 
-.m-seg-btn.active {
-  background: var(--el-color-primary);
-  border-color: var(--el-color-primary);
-  color: #fff;
-  font-weight: 600;
+.detail-items-title {
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
+  margin: 8px 2px;
 }
 
-.m-seg-count {
-  display: inline-block;
-  min-width: 18px;
-  margin-left: 4px;
-  padding: 0 5px;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.25);
-  font-size: 12px;
+.item-card {
+  animation: none;
 }
 
-.m-seg-btn:not(.active) .m-seg-count {
-  background: var(--el-color-danger);
-  color: #fff;
-}
-
-/* 列表卡片 */
-.m-card {
-  background: var(--el-bg-color);
-  border-radius: 10px;
-  padding: 12px 14px;
-  margin-bottom: 10px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  transition: transform 0.1s;
-}
-
-.m-card:active {
-  transform: scale(0.985);
-}
-
-.m-card-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.m-card-tag {
-  flex-shrink: 0;
-  padding: 1px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  color: #fff;
-  background: var(--el-color-info);
-}
-
-.m-card-tag[data-type='RECEIVE'] { background: var(--el-color-primary); }
-.m-card-tag[data-type='BORROW'] { background: #9a67ea; }
-.m-card-tag[data-type='TRANSFER'] { background: #e6a23c; }
-.m-card-tag[data-type='CHANGE'] { background: #409eff; }
-
-.m-card-serial {
-  flex: 1;
-  font-size: 13px;
-  color: var(--el-text-color-primary);
+.item-name {
+  font-size: var(--text-base);
+  color: var(--color-text-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.m-card-status {
-  flex-shrink: 0;
-  font-size: 12px;
-}
-
-.m-card-status.pending { color: var(--el-color-warning); }
-.m-card-status.ok { color: var(--el-color-success); }
-.m-card-status.bad { color: var(--el-color-danger); }
-.m-card-status.info { color: var(--el-text-color-secondary); }
-
-.m-card-summary {
-  margin-top: 8px;
-  font-size: 14px;
-  color: var(--el-text-color-primary);
-}
-
-.m-card-foot {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-
-.m-empty {
-  text-align: center;
-  padding: 48px 0;
-  color: var(--el-text-color-secondary);
-  font-size: 14px;
-}
-
-/* 详情弹层（全屏覆盖，动画上滑） */
-.m-detail {
+/* ---------- 拒绝原因弹层（底部半屏） ---------- */
+.reject-sheet {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: 110;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.reject-panel {
   display: flex;
   flex-direction: column;
-  background: var(--el-bg-color-page);
-  animation: m-slide-up 0.22s ease-out;
+  width: 100%;
+  background: var(--color-bg-2);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: reject-in 0.3s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-@keyframes m-slide-up {
-  from { transform: translateY(24px); opacity: 0.6; }
-  to { transform: translateY(0); opacity: 1; }
+@keyframes reject-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .m-detail { animation: none; }
-}
-
-.m-detail-head {
+.reject-head {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 16px;
   height: 46px;
-  background: var(--el-bg-color);
-  border-bottom: 1px solid var(--el-border-color-light);
+  border-bottom: 1px solid var(--color-border-light);
 }
 
-.m-detail-close {
-  border: none;
-  background: none;
-  font-size: 18px;
-  color: var(--el-text-color-secondary);
-  padding: 8px 4px 8px 12px;
+.reject-field {
+  margin: 12px 16px 0;
 }
 
-.m-detail-body {
-  flex: 1;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  padding: 12px;
-}
-
-.m-row {
+.reject-actions {
   display: flex;
   gap: 12px;
-  padding: 10px 14px;
-  background: var(--el-bg-color);
-  border-radius: 8px;
-  margin-bottom: 8px;
-  font-size: 14px;
+  padding: 12px 16px 16px;
 }
 
-.m-row span {
-  flex-shrink: 0;
-  width: 76px;
-  color: var(--el-text-color-secondary);
-}
-
-.m-row b {
-  flex: 1;
-  font-weight: 400;
-  color: var(--el-text-color-primary);
-  word-break: break-all;
-}
-
-.m-detail-items {
-  margin-top: 4px;
-}
-
-.m-detail-items-title {
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
-  margin: 8px 2px;
-}
-
-.m-item-row {
-  background: var(--el-bg-color);
-  border-radius: 8px;
-  padding: 10px 14px;
-  margin-bottom: 6px;
-}
-
-.m-item-name {
-  font-size: 14px;
-  color: var(--el-text-color-primary);
-}
-
-.m-item-sub {
-  margin-top: 3px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-
-/* 底部操作条 */
-.m-detail-actions {
-  flex-shrink: 0;
-  display: flex;
-  gap: 12px;
-  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-  background: var(--el-bg-color);
-  border-top: 1px solid var(--el-border-color-light);
-}
-
-.m-btn {
-  flex: 1;
-  height: 44px;
-  border-radius: 22px;
-  border: none;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.m-btn.primary {
-  background: var(--el-color-primary);
-  color: #fff;
-}
-
-.m-btn.danger {
-  background: var(--el-bg-color);
-  border: 1px solid var(--el-color-danger);
-  color: var(--el-color-danger);
-}
-
-.m-btn:disabled {
-  opacity: 0.5;
+@media (prefers-reduced-motion: reduce) {
+  .reject-panel {
+    animation: none;
+  }
 }
 </style>

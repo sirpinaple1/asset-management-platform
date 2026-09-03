@@ -3,41 +3,58 @@
     <!-- 扫码入口 -->
     <div class="m-scan-entry">
       <button class="m-scan-btn" type="button" @click="onScan">
-        <span class="m-scan-icon">📷</span>
-        <span>扫资产条码</span>
+        <svg width="36" height="36" viewBox="0 0 20 20" fill="none">
+          <path d="M3 7V5C3 3.89543 3.89543 3 5 3H7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          <path d="M13 3H15C16.1046 3 17 3.89543 17 5V7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          <path d="M17 13V15C17 16.1046 16.1046 17 15 17H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          <path d="M7 17H5C3.89543 17 3 16.1046 3 15V13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          <line x1="5.5" y1="10" x2="14.5" y2="10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        </svg>
+        <span>扫资产标签</span>
       </button>
-      <p class="m-scan-tip">扫描资产上的二维码 / 条形码，立即查看资产详情</p>
+      <p class="m-scan-tip">支持二维码与新旧条形码标签，扫完即查资产详情</p>
     </div>
 
-    <!-- 手动输入条码兜底 -->
+    <!-- 手动输入兜底 -->
     <div class="m-manual">
       <input
         v-model="manualCode"
-        class="m-input"
+        class="m-manual-input"
         type="text"
-        placeholder="或手动输入资产编码"
+        placeholder="或手动输入资产编码 / 序列号"
         enterkeyhint="search"
-        @keyup.enter="searchByBarcode(manualCode.trim())"
+        @keyup.enter="search(manualCode.trim())"
       />
       <button
-        class="m-search-btn"
+        class="m-manual-btn"
         type="button"
         :disabled="!manualCode.trim() || searching"
-        @click="searchByBarcode(manualCode.trim())"
+        @click="search(manualCode.trim())"
       >
         查询
       </button>
     </div>
 
-    <!-- 查询结果 -->
-    <div v-if="searching" class="m-empty">查询中…</div>
-    <div v-else-if="errorMsg" class="m-error">{{ errorMsg }}</div>
+    <!-- 查询状态 -->
+    <div v-if="searching" class="m-skeleton-list">
+      <div class="m-skeleton-card" />
+      <div class="m-skeleton-card" style="height: 44px" />
+      <div class="m-skeleton-card" style="height: 44px" />
+    </div>
+    <div v-else-if="errorMsg" class="m-error">
+      <svg width="36" height="36" viewBox="0 0 20 20" fill="none">
+        <circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.5" />
+        <path d="M10 6V11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        <circle cx="10" cy="13.5" r="0.75" fill="currentColor" />
+      </svg>
+      <p>{{ errorMsg }}</p>
+    </div>
 
     <template v-if="asset">
       <div class="m-asset-card">
         <div class="m-asset-head">
           <span class="m-asset-name">{{ asset.name }}</span>
-          <span class="m-card-status" :class="statusClass(asset.status)">{{ asset.statusLabel }}</span>
+          <span class="m-status" :class="statusClass(asset.status)">{{ asset.statusLabel }}</span>
         </div>
         <div class="m-row"><span>资产编码</span><b>{{ asset.barcode }}</b></div>
         <div v-if="asset.sn" class="m-row"><span>序列号</span><b>{{ asset.sn }}</b></div>
@@ -58,7 +75,7 @@
       <!-- 操作日志 -->
       <div v-if="logs.length" class="m-logs">
         <div class="m-logs-title">操作记录（{{ logs.length }}）</div>
-        <div v-for="log in logs" :key="log.id" class="m-log-row">
+        <div v-for="(log, i) in logs" :key="log.id" class="m-log-row" :style="{ '--i': Math.min(i, 8) }">
           <div class="m-log-content">{{ log.content }}</div>
           <div class="m-log-time">{{ fmtTime(log.createdAt) }}</div>
         </div>
@@ -80,7 +97,7 @@ const logs = ref<AssetLog[]>([])
 const errorMsg = ref('')
 
 const statusClass = (status: Asset['status']) =>
-  ({ IDLE: 'ok', IN_USE: 'pending', DISCARDED: 'bad' })[status] || 'info'
+  ({ IDLE: 'info', IN_USE: 'ok', PENDING_CONFIRM: 'pending', DISCARD: 'bad' })[status] || 'info'
 
 const fmtTime = (s: string) => {
   const d = new Date(s)
@@ -89,18 +106,25 @@ const fmtTime = (s: string) => {
     : d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-const searchByBarcode = async (barcode: string) => {
-  if (!barcode || searching.value) return
+/**
+ * 按编码/序列号查资产（兼容新旧标签）：
+ * keyword 为编码/名称/序列号三字段模糊匹配（后端契约），扫码内容含 "-" 或空格时
+ * 会被多关键词语法拆分，但子串 AND 语义仍能命中；精确匹配（编码→序列号）优先兜底。
+ */
+const search = async (code: string) => {
+  if (!code || searching.value) return
   searching.value = true
   asset.value = undefined
   logs.value = []
   errorMsg.value = ''
   try {
-    const page = await assetApi.getAssets({ keyword: barcode, page: 1, size: 20 })
-    // keyword 是模糊匹配，优先精确命中编码
-    const hit = page.records.find((a) => a.barcode === barcode) || page.records[0]
+    const page = await assetApi.getAssets({ keyword: code, page: 1, size: 20 })
+    const hit =
+      page.records.find((a) => a.barcode === code) ||
+      page.records.find((a) => a.sn === code) ||
+      page.records[0]
     if (!hit) {
-      errorMsg.value = `未找到编码为「${barcode}」的资产`
+      errorMsg.value = `未找到编码为「${code}」的资产`
       return
     }
     asset.value = await assetApi.getAssetById(hit.id)
@@ -114,13 +138,13 @@ const searchByBarcode = async (barcode: string) => {
 
 const onScan = async () => {
   if (!isInDingTalk()) {
-    errorMsg.value = '扫码需要在钉钉内打开使用'
+    errorMsg.value = '扫码需要在钉钉内打开使用，也可在上方手动输入编码查询'
     return
   }
   try {
     const text = await scanBarcode()
     manualCode.value = text
-    await searchByBarcode(text)
+    await search(text)
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : '扫码失败'
   }
@@ -128,98 +152,100 @@ const onScan = async () => {
 </script>
 
 <style scoped>
-.m-page {
-  padding: 16px 12px 20px;
-}
-
 .m-scan-entry {
   text-align: center;
-  padding: 20px 0 8px;
+  padding: 24px 0 12px;
 }
 
 .m-scan-btn {
-  width: 132px;
-  height: 132px;
-  border-radius: 50%;
+  width: 124px;
+  height: 124px;
+  border-radius: 34px;
   border: none;
-  background: var(--el-color-primary);
-  color: #fff;
+  background: var(--color-bg-2);
+  color: var(--color-primary);
   display: inline-flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  font-size: 15px;
+  gap: 10px;
+  font-size: var(--text-base);
   font-weight: 600;
-  box-shadow: 0 4px 16px rgba(64, 158, 255, 0.35);
-  transition: transform 0.1s;
+  box-shadow: var(--shadow-lg);
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .m-scan-btn:active {
-  transform: scale(0.96);
-}
-
-.m-scan-icon {
-  font-size: 34px;
-  line-height: 1;
+  transform: scale(0.93);
 }
 
 .m-scan-tip {
   margin-top: 14px;
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
 }
 
+/* ---------- 手动输入 ---------- */
 .m-manual {
   display: flex;
   gap: 8px;
-  margin-top: 20px;
+  margin-top: 16px;
 }
 
-.m-input {
+.m-manual-input {
   flex: 1;
+  min-width: 0;
   height: 40px;
   padding: 0 14px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 8px;
-  background: var(--el-bg-color);
-  color: var(--el-text-color-primary);
-  font-size: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-2);
+  color: var(--color-text-1);
+  font-size: var(--text-base);
 }
 
-.m-input:focus {
+.m-manual-input:focus {
   outline: none;
-  border-color: var(--el-color-primary);
+  border-color: var(--color-primary);
 }
 
-.m-search-btn {
+.m-manual-btn {
   height: 40px;
   padding: 0 20px;
   border: none;
-  border-radius: 8px;
-  background: var(--el-color-primary);
-  color: #fff;
-  font-size: 14px;
+  border-radius: var(--radius-lg);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-size: var(--text-base);
+  transition: opacity 0.15s;
 }
 
-.m-search-btn:disabled {
-  opacity: 0.5;
+.m-manual-btn:disabled {
+  opacity: 0.45;
 }
 
+.m-skeleton-list {
+  margin-top: 16px;
+}
+
+/* ---------- 错误态 ---------- */
 .m-error {
   text-align: center;
-  padding: 24px 0;
-  color: var(--el-color-danger);
-  font-size: 14px;
+  padding: 28px 0;
+  color: var(--color-text-3);
+  font-size: var(--text-base);
 }
 
-.m-empty {
-  text-align: center;
-  padding: 48px 0;
-  color: var(--el-text-color-secondary);
-  font-size: 14px;
+.m-error svg {
+  color: var(--color-warning);
+  margin-bottom: 8px;
 }
 
+.m-error p {
+  margin: 0;
+}
+
+/* ---------- 结果卡片 ---------- */
 .m-asset-card {
   margin-top: 16px;
 }
@@ -229,82 +255,63 @@ const onScan = async () => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  background: var(--el-bg-color);
-  border-radius: 10px 10px 0 0;
+  background: var(--color-bg-2);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   padding: 12px 14px;
   margin-bottom: 4px;
 }
 
 .m-asset-name {
-  font-size: 16px;
+  font-size: var(--text-md);
   font-weight: 600;
-  color: var(--el-text-color-primary);
+  color: var(--color-text-1);
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.m-card-status {
-  flex-shrink: 0;
-  font-size: 12px;
-}
-
-.m-card-status.pending { color: var(--el-color-warning); }
-.m-card-status.ok { color: var(--el-color-success); }
-.m-card-status.bad { color: var(--el-color-danger); }
-.m-card-status.info { color: var(--el-text-color-secondary); }
-
-.m-row {
-  display: flex;
-  gap: 12px;
-  padding: 10px 14px;
-  background: var(--el-bg-color);
+.m-asset-card .m-row {
   margin-bottom: 4px;
-  font-size: 14px;
+  border-radius: 0;
 }
 
-.m-row:last-child {
-  border-radius: 0 0 10px 10px;
+.m-asset-card .m-row:first-of-type {
+  border-radius: 0;
 }
 
-.m-row span {
-  flex-shrink: 0;
-  width: 88px;
-  color: var(--el-text-color-secondary);
+.m-asset-card .m-row:last-of-type {
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
 }
 
-.m-row b {
-  flex: 1;
-  font-weight: 400;
-  color: var(--el-text-color-primary);
-  word-break: break-all;
-}
-
+/* ---------- 日志 ---------- */
 .m-logs {
   margin-top: 16px;
 }
 
 .m-logs-title {
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
   margin: 8px 2px;
 }
 
 .m-log-row {
-  background: var(--el-bg-color);
-  border-radius: 8px;
+  background: var(--color-bg-2);
+  border-radius: var(--radius-lg);
   padding: 10px 14px;
   margin-bottom: 6px;
+  animation: m-enter 0.3s cubic-bezier(0.3, 0.7, 0.4, 1) both;
+  animation-delay: calc(var(--i, 0) * 32ms);
 }
 
 .m-log-content {
-  font-size: 13px;
-  color: var(--el-text-color-primary);
+  font-size: var(--text-sm);
+  color: var(--color-text-1);
 }
 
 .m-log-time {
   margin-top: 4px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
 }
 </style>

@@ -1,35 +1,43 @@
 <template>
   <div class="m-page">
-    <!-- 顶部 segmented：持有中 / 已归还 -->
-    <div class="m-seg">
+    <!-- 顶部分段器：持有中 / 已归还（滑动指示器） -->
+    <div class="m-seg" :data-active="tab === 'returned' ? '1' : '0'">
+      <span class="m-seg-indicator" aria-hidden="true" />
       <button
         v-for="seg in SEGS"
         :key="seg.key"
         class="m-seg-btn"
         :class="{ active: tab === seg.key }"
         type="button"
-        @click="tab = seg.key"
+        @click="setTab(seg.key)"
       >
         {{ seg.label }}
       </button>
     </div>
 
-    <div v-if="loading" class="m-empty">加载中…</div>
+    <div v-if="loading" class="skeleton-wrap">
+      <div v-for="n in 4" :key="n" class="m-skeleton-card" />
+    </div>
     <template v-else>
       <div v-if="curList.length === 0" class="m-empty">
         {{ tab === 'active' ? '当前没有持有中的资产' : '没有归还记录' }}
       </div>
-      <div v-for="a in curList" :key="a.id" class="m-card">
+      <div
+        v-for="(a, i) in curList"
+        :key="a.id"
+        class="m-card"
+        :style="{ '--i': Math.min(i, 8) }"
+      >
         <div class="m-card-head">
           <span class="m-card-tag" :data-type="a.type">{{ typeLabel(a.type) }}</span>
-          <span class="m-card-name">{{ a.assetName || `资产#${a.assetId}` }}</span>
+          <span class="m-card-title">{{ a.assetName || `资产#${a.assetId}` }}</span>
         </div>
         <div class="m-card-sub">{{ a.assetBarcode }}{{ a.assetSn ? ` · SN ${a.assetSn}` : '' }}</div>
         <div class="m-card-foot">
           <span>{{ tab === 'active' ? `领取于 ${fmtDate(a.allocatedAt)}` : `归还于 ${fmtDate(a.returnedAt || '')}` }}</span>
           <button
             v-if="tab === 'active'"
-            class="m-return-btn"
+            class="return-btn"
             type="button"
             :disabled="actingId === a.id"
             @click.stop="onReturn(a)"
@@ -43,19 +51,35 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { receiptApi } from '@/api/modules/receipt'
 import { useUserStore } from '@/stores/user'
 import type { Allocation } from '@/api/interface/receipt'
 
+const route = useRoute()
+const router = useRouter()
 const userStore = useUserStore()
 
 const SEGS = [
   { key: 'active', label: '持有中' },
   { key: 'returned', label: '已归还' },
 ] as const
-const tab = ref<'active' | 'returned'>('active')
+type TabKey = (typeof SEGS)[number]['key']
+
+/** tab 与 URL query 双向同步（?tab=returned） */
+const tab = ref<TabKey>(route.query.tab === 'returned' ? 'returned' : 'active')
+watch(
+  () => route.query.tab,
+  (v) => {
+    tab.value = v === 'returned' ? 'returned' : 'active'
+  },
+)
+const setTab = (k: TabKey) => {
+  if (tab.value === k) return
+  router.replace({ query: k === 'active' ? {} : { tab: k } })
+}
 
 const loading = ref(true)
 /** 归还动作防重复提交（记录 allocation id） */
@@ -120,104 +144,22 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.m-page {
-  padding: 12px 12px 20px;
+.skeleton-wrap {
+  padding-top: 2px;
 }
 
-.m-seg {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.m-seg-btn {
-  flex: 1;
-  height: 36px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 18px;
-  background: var(--el-bg-color);
-  color: var(--el-text-color-regular);
-  font-size: 14px;
-  transition: background-color 0.2s, color 0.2s;
-}
-
-.m-seg-btn.active {
-  background: var(--el-color-primary);
-  border-color: var(--el-color-primary);
-  color: #fff;
-  font-weight: 600;
-}
-
-.m-card {
-  background: var(--el-bg-color);
-  border-radius: 10px;
-  padding: 12px 14px;
-  margin-bottom: 10px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-}
-
-.m-card-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.m-card-tag {
-  flex-shrink: 0;
-  padding: 1px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  color: #fff;
-  background: var(--el-color-info);
-}
-
-.m-card-tag[data-type='RECEIVE'] { background: var(--el-color-primary); }
-.m-card-tag[data-type='BORROW'] { background: #9a67ea; }
-.m-card-tag[data-type='TRANSFER'] { background: #e6a23c; }
-
-.m-card-name {
-  flex: 1;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--el-text-color-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.m-card-sub {
-  margin-top: 6px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-
-.m-card-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 10px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-
-.m-return-btn {
+.return-btn {
   height: 30px;
   padding: 0 16px;
-  border-radius: 15px;
-  border: 1px solid var(--el-color-primary);
+  border-radius: var(--radius-round);
+  border: 1px solid var(--color-primary);
   background: transparent;
-  color: var(--el-color-primary);
-  font-size: 13px;
+  color: var(--color-primary);
+  font-size: var(--text-sm);
+  transition: opacity 0.15s;
 }
 
-.m-return-btn:disabled {
-  opacity: 0.5;
-}
-
-.m-empty {
-  text-align: center;
-  padding: 48px 0;
-  color: var(--el-text-color-secondary);
-  font-size: 14px;
+.return-btn:disabled {
+  opacity: 0.45;
 }
 </style>

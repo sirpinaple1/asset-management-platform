@@ -34,6 +34,18 @@ const router = createRouter({
           name: 'm-scan',
           component: () => import('@/views/mobile/MScan.vue'),
           meta: { title: '扫码查资产', mobile: true }
+        },
+        {
+          path: 'apply',
+          name: 'm-apply',
+          component: () => import('@/views/mobile/MApply.vue'),
+          meta: { title: '发起申请', mobile: true }
+        },
+        {
+          path: 'profile',
+          name: 'm-profile',
+          component: () => import('@/views/mobile/MProfile.vue'),
+          meta: { title: '我的', mobile: true }
         }
       ]
     },
@@ -146,35 +158,6 @@ const router = createRouter({
           name: 'exception',
           component: () => import('@/views/error/ExceptionPage.vue'),
           meta: { title: '系统异常' }
-        }
-      ]
-    },
-    {
-      /* 移动 H5 子应用：手机 UA 自动分流进入（审批/我的资产/扫码） */
-      path: '/m',
-      component: () => import('@/layouts/MobileLayout.vue'),
-      children: [
-        {
-          path: '',
-          redirect: '/m/approvals'
-        },
-        {
-          path: 'approvals',
-          name: 'm-approvals',
-          component: () => import('@/views/mobile/MApprovals.vue'),
-          meta: { title: '审批' }
-        },
-        {
-          path: 'assets',
-          name: 'm-assets',
-          component: () => import('@/views/mobile/MAssets.vue'),
-          meta: { title: '我的资产' }
-        },
-        {
-          path: 'scan',
-          name: 'm-scan',
-          component: () => import('@/views/mobile/MScan.vue'),
-          meta: { title: '扫码' }
         }
       ]
     },

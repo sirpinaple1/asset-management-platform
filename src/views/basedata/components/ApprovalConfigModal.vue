@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useFormDirtyGuard } from '@/composables/useFormDirtyGuard'
 /**
  * 审批链配置新增/编辑弹窗（仅超管）：
  * - 配置类型：部门主管（键=部门路径，从用户目录聚合的候选下拉）/ 领料仓管理员（键=位置树选择，提交位置 id 字符串）
@@ -31,6 +32,9 @@ const basedataStore = useBasedataStore()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
 const isEdit = ref(false)
+
+/* 表单未保存关闭拦截：X / Esc / 遮罩关闭时，已有修改则二次确认 */
+const { guardBeforeClose } = useFormDirtyGuard({ visible: () => props.visible, form: () => formData })
 
 const formData = reactive<ApprovalConfigForm & { locationId?: number }>({
   configType: 'DEPT_SUPERVISOR',

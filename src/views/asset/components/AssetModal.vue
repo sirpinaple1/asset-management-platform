@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useFormDirtyGuard } from '@/composables/useFormDirtyGuard'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules, InputInstance } from 'element-plus'
@@ -45,6 +46,9 @@ const identityLocked = computed(() => isEdit.value)
  * 当前位置/应归放位置必须随调拨单、领用单、借用单单据驱动变更。
  */
 const operationalLocked = computed(() => isEdit.value && !isSuperAdmin.value)
+
+/* 表单未保存关闭拦截：X / Esc / 遮罩关闭时，已有修改则二次确认 */
+const { guardBeforeClose } = useFormDirtyGuard({ visible: () => props.visible, form: () => formData })
 
 /** 表单状态（字段与后端 AssetReq 一一对应；状态不开放编辑） */
 const formData = reactive<AssetForm>({

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useFormDirtyGuard } from '@/composables/useFormDirtyGuard'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules, InputInstance } from 'element-plus'
@@ -22,6 +23,9 @@ const formRef = ref<FormInstance>()
 const nameInputRef = ref<InputInstance>()
 const loading = ref(false)
 const isEdit = ref(false)
+
+/* 表单未保存关闭拦截：X / Esc / 遮罩关闭时，已有修改则二次确认 */
+const { guardBeforeClose } = useFormDirtyGuard({ visible: () => props.visible, form: () => formData })
 
 const formData = reactive<CategoryForm>({
   name: '',

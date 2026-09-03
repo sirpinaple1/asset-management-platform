@@ -1,4 +1,4 @@
-import { onBeforeUnmount, watch } from 'vue'
+import { nextTick, onBeforeUnmount, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 
 /**
@@ -10,23 +10,34 @@ import { ElMessageBox } from 'element-plus'
  * 3. 路由切页 → keep-alive 下表单状态保留，切回仍在，无需拦截
  *
  * 用法：
- *   const { guardBeforeClose } = useFormDirtyGuard({ visible: () => props.visible, isDirty })
+ *   const { guardBeforeClose } = useFormDirtyGuard({ visible: () => props.visible, form: () => formData })
  *   <el-dialog :before-close="guardBeforeClose">
  *
+ * 脏判定：弹窗打开时对 form() 做一次快照，之后内容与快照不一致视为脏；
+ * 也可通过 isDirty 自定义（优先于 form 快照）。
  * 提交成功后的编程式关闭不走 before-close，无需特判。
  */
-export function useFormDirtyGuard(options: { visible: () => boolean; isDirty: () => boolean }) {
-  const { visible, isDirty } = options
+export function useFormDirtyGuard(options: {
+  visible: () => boolean
+  /** 表单数据 getter：打开时快照，与快照不一致视为脏 */
+  form?: () => unknown
+  /** 自定义脏判定（优先于 form 快照） */
+  isDirty?: () => boolean
+}) {
+  const { visible, form, isDirty } = options
+
+  let baseline = ''
+
+  const dirty = () => (isDirty ? isDirty() : form ? JSON.stringify(form()) !== baseline : false)
 
   /** 弹确认框；返回 true = 放弃修改继续关闭 */
   const confirmLeave = async (): Promise<boolean> => {
-    if (!visible.value || !isDirty()) return true
+    if (!visible() || !dirty()) return true
     try {
       await ElMessageBox.confirm('表单已有修改，关闭后将丢失未保存的内容', '放弃修改？', {
         type: 'warning',
         confirmButtonText: '放弃修改',
         cancelButtonText: '继续编辑',
-        autoFocusButton: 'cancel',
       })
       return true
     } catch {
@@ -39,9 +50,20 @@ export function useFormDirtyGuard(options: { visible: () => boolean; isDirty: ()
     void confirmLeave().then((ok) => ok && done())
   }
 
+  /* 打开时重置快照（nextTick 等表单回填完成）；关闭时清空 */
+  watch(visible, (v) => {
+    if (v) {
+      void nextTick(() => {
+        baseline = form ? JSON.stringify(form()) : ''
+      })
+    } else {
+      baseline = ''
+    }
+  }, { immediate: true })
+
   /* beforeunload：表单打开且脏时提醒（注册/注销随 visible 走） */
   const onBeforeUnload = (e: BeforeUnloadEvent) => {
-    if (visible.value && isDirty()) {
+    if (visible() && dirty()) {
       e.preventDefault()
       e.returnValue = ''
     }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useFormDirtyGuard } from '@/composables/useFormDirtyGuard'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules, TableInstance } from 'element-plus'
@@ -32,6 +33,9 @@ const tableRef = ref<TableInstance>()
 const submitting = ref(false)
 
 /* ---------------- 表单：变更字段（new_* 五选一以上）+ 指定处理人 + 变更原因 ---------------- */
+/* 表单未保存关闭拦截：X / Esc / 遮罩关闭时，已有修改则二次确认 */
+const { guardBeforeClose } = useFormDirtyGuard({ visible: () => props.visible, form: () => formData })
+
 const formData = reactive({
   newUserId: undefined as number | undefined,
   newUserName: '',

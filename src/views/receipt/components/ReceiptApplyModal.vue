@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useFormDirtyGuard } from '@/composables/useFormDirtyGuard'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules, TableInstance } from 'element-plus'
@@ -35,6 +36,9 @@ const typeLabel = computed(() => RECEIPT_TYPE_META[props.type].label)
 const locationTree = computed(() => buildTree<Location>(basedataStore.locations))
 
 /* ---------------- 表单：领用区域 + 部门 + 事由 + 指定处理人 ---------------- */
+/* 表单未保存关闭拦截：X / Esc / 遮罩关闭时，已有修改则二次确认 */
+const { guardBeforeClose } = useFormDirtyGuard({ visible: () => props.visible, form: () => formData })
+
 const formData = reactive({
   locationId: undefined as number | undefined,
   department: '',
