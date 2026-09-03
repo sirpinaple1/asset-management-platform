@@ -56,11 +56,12 @@ import java.util.stream.Collectors;
  * 资产状态联动统一走 AssetService.changeStatus（合法性校验 + 写日志），
  * 任一资产流转失败整个事务回滚（单据与资产状态保持一致）。
  *
- * <p>两级审批链（V20260833，依据《资产领用与借用操作流程指导》）：
- * 提交时经 ApprovalChainResolver 解析「部门主管 → 领料仓管理员」并冻结快照
- * （任一级解析不到 400 阻止提交 + 超管告警；解析人=申请人本人同样 400 死单防御）；
- * 单据状态保持 PENDING，approval_step 区分层级；assignee_user_id 列升级为
- * "当前审批层级快照审批人"（一级通过后物理推进为二级审批人）——
+ * <p>多级主管审批链（v1.0 改造，原两级链"部门主管+仓管员"仅调拨/变更/历史单据保留）：
+ * 提交时经 DeptManagerChainResolver 解析「固定一级（如谷仍山）→ 发起人部门逐级向上主管」，
+ * 站内快照只冻结前两级（step1=固定一级，step2=直接主管），钉钉推送完整链；
+ * 快照外审批节点的操作由钉钉回调侧记日志（单据终态与钉钉实例终审严格同步）。
+ * 解析失败 400 阻止提交 + 超管告警；固定一级=申请人本人同样 400 死单防御；
+ * assignee_user_id 列保持"当前审批层级快照审批人"（一级通过后物理推进为二级审批人）——
  * 列表筛选/B3 统计/审批中心"待我处理"口径零改动。
  * 存量单（approval_step2_user_id 为 NULL）保持 B1 旧单层审批语义。</p>
  */
@@ -85,6 +86,7 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
     private final AssetService assetService;
     private final NotificationService notificationService;
     private final ApprovalChainResolver approvalChainResolver;
+    private final com.sk.asset.service.approval.DeptManagerChainResolver deptManagerChainResolver;
     private final com.sk.asset.service.approval.ApprovalConfigService approvalConfigService;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -100,19 +102,19 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
             throw new BusinessException(400, "领用区域不存在（id=" + req.getLocationId() + "）");
         }
 
-        // 0b. 两级审批链解析（部门主管 → 领料仓管理员，提交时冻结快照）。
-        // 兜底 = 阻止提交：任一级解析不到 / 审批人已失效 / 审批人=申请人本人 → 400，
-        // 同时以独立事务告警 systemAdmin 补配置（告警不随本事务回滚丢失）。
-        ApprovalChainResolver.Resolution resolution = approvalChainResolver.tryResolve(
-                applicantUserId, req.getLocationId(), location.getName());
+        // 0b. 多级主管审批链解析（固定一级 + 发起人部门逐级向上主管，提交时冻结前两级快照）。
+        // 兜底 = 阻止提交：固定一级未配置/未绑定、无部门、链上无可绑定主管、固定一级=申请人本人
+        // → 400，同时以独立事务告警 systemAdmin（告警不随本事务回滚丢失）。
+        // DEPT_SUPERVISOR/WAREHOUSE_KEEPER 两级链配置保留（调拨/变更/历史单据依赖），领用/借用不再读取。
+        com.sk.asset.service.approval.DeptManagerChainResolver.MultiResolution resolution =
+                deptManagerChainResolver.tryResolveMultiLevel(applicantUserId);
         if (!resolution.resolvable()) {
             approvalChainResolver.alertAdmins(resolution.error(),
-                    displayName(applicantUserId, applicantName) + " 发起" + type.getLabel()
-                            + "，领用区域：" + location.getName());
+                    displayName(applicantUserId, applicantName) + " 发起" + type.getLabel());
             throw new BusinessException(400, resolution.error());
         }
 
-        return doCreate(req, type, location, applicantUserId, applicantName, resolution.chain(), false);
+        return doCreate(req, type, location, applicantUserId, applicantName, resolution.snapshot(), false);
     }
 
     @Override
@@ -285,14 +287,14 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
             resp.setMessage("领用区域不存在（id=" + locationId + "）");
             return resp;
         }
-        ApprovalChainResolver.Resolution resolution = approvalChainResolver.tryResolve(
-                applicantUserId, locationId, location.getName());
+        com.sk.asset.service.approval.DeptManagerChainResolver.MultiResolution resolution =
+                deptManagerChainResolver.tryResolveMultiLevel(applicantUserId);
         if (!resolution.resolvable()) {
             resp.setResolvable(false);
             resp.setMessage(resolution.error());
             return resp;
         }
-        ApprovalChainResolver.ResolvedChain chain = resolution.chain();
+        ApprovalChainResolver.ResolvedChain chain = resolution.snapshot();
         resp.setResolvable(true);
         resp.setStep1UserId(chain.getStep1UserId());
         resp.setStep1UserName(chain.getStep1Name());
@@ -475,23 +477,23 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
         // 通知二级审批人（B2）：待你审批
         notificationService.notify(receipt.getApprovalStep2UserId(), NotificationType.DOC_SUBMITTED,
                 applicantDisplay + " 的" + type.getLabel() + "单 " + receipt.getSerialNo()
-                        + " 部门主管已通过，待你审批",
+                        + " 一级审批已通过，待你审批",
                 receipt.getType(), receipt.getId());
-        // 通知发起人（B2）：一级通过进度
+        // 通知发起人（B2）：一级通过进度（后续层级在钉钉多级链完成，站内随终审同步）
         notificationService.notify(receipt.getApplicantUserId(), NotificationType.DOC_PROGRESS,
                 "你发起的" + type.getLabel() + "单 " + receipt.getSerialNo()
-                        + " 部门主管已通过（审批人：" + approverName + "），待仓管审批",
+                        + " 一级审批已通过（审批人：" + approverName + "），待部门主管审批",
                 receipt.getType(), receipt.getId());
         return getById(receipt.getId());
     }
 
-    /** 拒绝层级标签（通知展示用）：一级=部门主管；二级=领料仓管理员；合并单特殊标注 */
+    /** 拒绝层级标签（通知展示用）：一级=固定审批人；二级=直接主管；合并单特殊标注 */
     private static String rejectLevelLabel(ReceiveReceipt receipt) {
         boolean merged = Objects.equals(receipt.getApprovalStep1UserId(), receipt.getApprovalStep2UserId());
         if (Integer.valueOf(1).equals(receipt.getApprovalStep())) {
-            return "一级审批（部门主管）";
+            return "一级审批";
         }
-        return merged ? "合并审批（部门主管兼仓管）" : "二级审批（领料仓管理员）";
+        return merged ? "合并审批（一级兼二级审批人）" : "二级审批（部门主管）";
     }
 
     /** 两级链模式判定：二级审批人快照非空（新提单必有；存量单 NULL 走旧单层语义） */

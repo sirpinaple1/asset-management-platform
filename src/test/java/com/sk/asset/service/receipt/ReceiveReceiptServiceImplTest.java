@@ -104,6 +104,9 @@ class ReceiveReceiptServiceImplTest {
     private ApprovalChainResolver approvalChainResolver;
 
     @Mock
+    private com.sk.asset.service.approval.DeptManagerChainResolver deptManagerChainResolver;
+
+    @Mock
     private com.sk.asset.service.approval.ApprovalConfigService approvalConfigService;
 
     @Mock
@@ -153,10 +156,11 @@ class ReceiveReceiptServiceImplTest {
         when(locationMapper.selectBatchIds(any())).thenReturn(List.of(location()));
     }
 
-    /** 审批链解析成功 stub（一级李四 200 / 二级王五 300，非合并） */
+    /** 多级主管链解析成功 stub（一级李四 200 / 二级王五 300，非合并；快照两级 + 钉钉全链） */
     private void stubChainResolved() {
-        when(approvalChainResolver.tryResolve(eq(100L), eq(1L), any())).thenReturn(
-                new ApprovalChainResolver.Resolution(chain(false), null));
+        when(deptManagerChainResolver.tryResolveMultiLevel(100L)).thenReturn(
+                new com.sk.asset.service.approval.DeptManagerChainResolver.MultiResolution(
+                        chain(false), List.of("dd200", "dd300"), null));
     }
 
     private ApprovalChainResolver.ResolvedChain chain(boolean merged) {
@@ -337,17 +341,18 @@ class ReceiveReceiptServiceImplTest {
 
     @Test
     void create_shouldRejectAndAlertAdminsWhenChainUnresolvable() {
-        // 任一级解析不到 → 400 阻止提交 + 独立事务告警超管（此处模拟一级缺失）
+        // 链解析失败（固定一级未配置/无主管可绑定等）→ 400 阻止提交 + 独立事务告警超管
         stubLocationExists();
-        when(approvalChainResolver.tryResolve(eq(100L), eq(1L), any())).thenReturn(
-                new ApprovalChainResolver.Resolution(null, "未找到〔PMC部〕的主管审批人，请线下联系审批人，并联系管理员配置审批链"));
+        when(deptManagerChainResolver.tryResolveMultiLevel(100L)).thenReturn(
+                new com.sk.asset.service.approval.DeptManagerChainResolver.MultiResolution(
+                        null, List.of(), "固定一级审批人未绑定系统用户，请联系管理员处理"));
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> receiptService.create(applyReq("RECEIVE", List.of(1L)), 100L, "张三"));
 
         assertEquals(400, exception.getCode());
-        assertTrue(exception.getMessage().contains("主管审批人"));
-        verify(approvalChainResolver).alertAdmins(contains("主管审批人"), contains("张三"));
+        assertTrue(exception.getMessage().contains("固定一级审批人"));
+        verify(approvalChainResolver).alertAdmins(contains("固定一级审批人"), contains("张三"));
         verify(receiptMapper, never()).insert(any(ReceiveReceipt.class));
         verify(assetService, never()).changeStatus(anyLong(), any(), anyLong(), any(), any());
     }
@@ -358,8 +363,9 @@ class ReceiveReceiptServiceImplTest {
         AtomicReference<ReceiveReceipt> inserted = new AtomicReference<>();
         stubLocationExists();
         stubLocationNames();
-        when(approvalChainResolver.tryResolve(eq(100L), eq(1L), any())).thenReturn(
-                new ApprovalChainResolver.Resolution(chain(true), null));
+        when(deptManagerChainResolver.tryResolveMultiLevel(100L)).thenReturn(
+                new com.sk.asset.service.approval.DeptManagerChainResolver.MultiResolution(
+                        chain(true), List.of("dd200"), null));
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
         when(itemMapper.selectList(any())).thenReturn(List.of());
         when(receiptMapper.selectOne(any())).thenReturn(null);
@@ -654,9 +660,9 @@ class ReceiveReceiptServiceImplTest {
         assertEquals(STEP2_USER, advanced.getApprovalStep2UserId());
         // 通知二级审批人 + 发起人（进度）
         verify(notificationService).notify(eq(STEP2_USER), eq(NotificationType.DOC_SUBMITTED),
-                contains("部门主管已通过，待你审批"), eq("RECEIVE"), eq(1L));
+                contains("一级审批已通过，待你审批"), eq("RECEIVE"), eq(1L));
         verify(notificationService).notify(eq(100L), eq(NotificationType.DOC_PROGRESS),
-                contains("部门主管已通过"), eq("RECEIVE"), eq(1L));
+                contains("一级审批已通过"), eq("RECEIVE"), eq(1L));
         // 一级通过不动资产（终态逻辑留给二级）
         verify(assetService, never()).changeStatus(anyLong(), any(), anyLong(), any(), any());
         verify(allocationMapper, never()).insert(any(AssetAllocation.class));
@@ -783,7 +789,7 @@ class ReceiveReceiptServiceImplTest {
         verify(assetService).changeStatus(eq(1L), eq(AssetStatus.IDLE), eq(STEP1_USER),
                 eq("领用"), contains("审批拒绝：不需要"));
         verify(notificationService).notify(eq(100L), eq(NotificationType.DOC_REJECTED),
-                contains("一级审批（部门主管）"), eq("RECEIVE"), eq(1L));
+                contains("一级审批"), eq("RECEIVE"), eq(1L));
     }
 
     @Test
@@ -802,20 +808,22 @@ class ReceiveReceiptServiceImplTest {
     @Test
     void preview_shouldReturnUnresolvableWithMessage() {
         stubLocationExists();
-        when(approvalChainResolver.tryResolve(eq(100L), eq(1L), any())).thenReturn(
-                new ApprovalChainResolver.Resolution(null, "未找到〔一号车间〕的仓管审批人"));
+        when(deptManagerChainResolver.tryResolveMultiLevel(100L)).thenReturn(
+                new com.sk.asset.service.approval.DeptManagerChainResolver.MultiResolution(
+                        null, List.of(), "固定一级审批人未绑定系统用户"));
 
         ApprovalPreviewResp preview = receiptService.previewApprovalChain(100L, "张三", 1L);
 
         assertFalse(preview.getResolvable());
-        assertTrue(preview.getMessage().contains("仓管审批人"));
+        assertTrue(preview.getMessage().contains("固定一级审批人"));
     }
 
     @Test
     void preview_shouldReturnResolvedChain() {
         stubLocationExists();
-        when(approvalChainResolver.tryResolve(eq(100L), eq(1L), any())).thenReturn(
-                new ApprovalChainResolver.Resolution(chain(false), null));
+        when(deptManagerChainResolver.tryResolveMultiLevel(100L)).thenReturn(
+                new com.sk.asset.service.approval.DeptManagerChainResolver.MultiResolution(
+                        chain(false), List.of("dd200", "dd300"), null));
 
         ApprovalPreviewResp preview = receiptService.previewApprovalChain(100L, "张三", 1L);
 

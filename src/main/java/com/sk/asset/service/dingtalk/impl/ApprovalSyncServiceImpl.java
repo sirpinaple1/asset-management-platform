@@ -67,6 +67,7 @@ public class ApprovalSyncServiceImpl implements ApprovalSyncService {
     private final ApprovalInstanceMapper approvalInstanceMapper;
     private final UserDirectory userDirectory;
     private final NotificationService notificationService;
+    private final com.sk.asset.service.approval.DeptManagerChainResolver deptManagerChainResolver;
 
     private final ReceiveReceiptMapper receiptMapper;
     private final ReceiveReceiptItemMapper receiptItemMapper;
@@ -114,24 +115,26 @@ public class ApprovalSyncServiceImpl implements ApprovalSyncService {
             return;
         }
 
-        // 审批人快照 → 钉钉节点（两级=两个顺序节点；同人合并=一个节点，与 B4 合并语义一致）
-        List<Long> approverIds = new ArrayList<>();
-        if (!Objects.equals(receipt.getApprovalStep1UserId(), receipt.getApprovalStep2UserId())) {
-            approverIds.add(receipt.getApprovalStep1UserId());
-        }
-        approverIds.add(receipt.getApprovalStep2UserId());
-
-        List<Long> userIds = new ArrayList<>(approverIds);
-        userIds.add(receipt.getApplicantUserId());
-        Map<Long, String> ddIds = userDirectory.ddUserIdsByIds(userIds);
-        String originatorDd = ddIds.get(receipt.getApplicantUserId());
-        if (originatorDd == null || approverIds.stream().anyMatch(id -> ddIds.get(id) == null)) {
+        // 多级主管链：推送时重新解析完整节点序列（站内快照只记前两级，钉钉需完整链；
+        // 建单与推送毫秒级间隔，两次解析结果一致；解析失败降级站内审批 FAILED + 告警）
+        com.sk.asset.service.approval.DeptManagerChainResolver.MultiResolution resolution =
+                deptManagerChainResolver.tryResolveMultiLevel(receipt.getApplicantUserId());
+        if (!resolution.resolvable()) {
             recordFailure(bizTypeOfReceipt(type), receipt.getId(), processCode,
-                    "审批链或发起人未绑定钉钉（dd_user_id 缺失），已降级站内审批",
+                    resolution.error() + "，已降级站内审批",
                     receipt.getSerialNo());
             return;
         }
-        List<String> approverDdIds = approverIds.stream().map(ddIds::get).toList();
+        List<String> approverDdIds = resolution.allDdUserIds();
+
+        String originatorDd = userDirectory.ddUserIdsByIds(
+                List.of(receipt.getApplicantUserId())).get(receipt.getApplicantUserId());
+        if (originatorDd == null) {
+            recordFailure(bizTypeOfReceipt(type), receipt.getId(), processCode,
+                    "发起人未绑定钉钉（dd_user_id 缺失），已降级站内审批",
+                    receipt.getSerialNo());
+            return;
+        }
 
         List<ReceiveReceiptItem> items = receiptItemMapper.selectList(
                 new LambdaQueryWrapper<ReceiveReceiptItem>()

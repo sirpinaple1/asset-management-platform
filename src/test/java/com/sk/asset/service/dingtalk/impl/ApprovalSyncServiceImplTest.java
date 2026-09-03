@@ -26,6 +26,7 @@ import com.sk.asset.mapper.receipt.ReceiveReceiptItemMapper;
 import com.sk.asset.mapper.receipt.ReceiveReceiptMapper;
 import com.sk.asset.mapper.transfer.TransferOrderItemMapper;
 import com.sk.asset.mapper.transfer.TransferOrderMapper;
+import com.sk.asset.service.approval.DeptManagerChainResolver;
 import com.sk.asset.service.notification.NotificationService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
@@ -100,6 +101,8 @@ class ApprovalSyncServiceImplTest {
     private AssetMapper assetMapper;
     @Mock
     private LocationMapper locationMapper;
+    @Mock
+    private DeptManagerChainResolver deptManagerChainResolver;
 
     private DingtalkProperties props;
     private ApprovalSyncServiceImpl service;
@@ -112,8 +115,8 @@ class ApprovalSyncServiceImplTest {
         props.getProcessCodes().put("transfer", "PROC-T");
         props.getProcessCodes().put("change", "PROC-C");
         service = new ApprovalSyncServiceImpl(props, apiClient, approvalInstanceMapper,
-                userDirectory, notificationService, receiptMapper, receiptItemMapper,
-                transferOrderMapper, transferOrderItemMapper, changeOrderMapper,
+                userDirectory, notificationService, deptManagerChainResolver, receiptMapper,
+                receiptItemMapper, transferOrderMapper, transferOrderItemMapper, changeOrderMapper,
                 changeOrderItemMapper, assetMapper, locationMapper);
     }
 
@@ -129,6 +132,16 @@ class ApprovalSyncServiceImplTest {
         r.setApprovalStep2UserId(step2User);
         r.setReason("测试领用");
         return r;
+    }
+
+    /** 多级链解析成功 stub（完整钉钉节点序列 = 快照两级 + 后续层级） */
+    private void stubMultiLevelChain(List<String> allDdUserIds) {
+        when(deptManagerChainResolver.tryResolveMultiLevel(APPLICANT)).thenReturn(
+                new DeptManagerChainResolver.MultiResolution(null, allDdUserIds, null));
+    }
+
+    private void stubOriginatorDd() {
+        when(userDirectory.ddUserIdsByIds(any())).thenReturn(Map.of(APPLICANT, "dd100"));
     }
 
     private void mockNoExistingInstance() {
@@ -176,10 +189,11 @@ class ApprovalSyncServiceImplTest {
     // ------------------------------------------------------------ 降级矩阵
 
     @Test
-    void 审批链未绑定钉钉_FAILED告警() {
+    void 多级链解析失败_FAILED告警() {
         when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(STEP1_USER, STEP2_USER));
-        // 只回发起人映射，两级审批人均无 dd_user_id
-        when(userDirectory.ddUserIdsByIds(any())).thenReturn(Map.of(APPLICANT, "dd100"));
+        when(deptManagerChainResolver.tryResolveMultiLevel(APPLICANT)).thenReturn(
+                new DeptManagerChainResolver.MultiResolution(null, List.of(),
+                        "固定一级审批人未绑定系统用户"));
         when(userDirectory.userIdsByRole("systemAdmin")).thenReturn(List.of(999L));
 
         service.onSyncRequested(new OaSyncRequestedEvent(OaSyncRequestedEvent.KIND_RECEIPT, 1L));
@@ -189,14 +203,32 @@ class ApprovalSyncServiceImplTest {
         verify(approvalInstanceMapper).insert(captor.capture());
         assertEquals(ApprovalInstance.SYNC_FAILED, captor.getValue().getSyncStatus());
         verify(notificationService).notify(eq(999L), eq(NotificationType.DINGTALK_SYNC_ALERT),
-                contains("未绑定钉钉"), eq("DINGTALK"), eq(0L));
+                contains("降级站内审批"), eq("DINGTALK"), eq(0L));
+    }
+
+    @Test
+    void 发起人未绑定钉钉_FAILED告警() {
+        when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(STEP1_USER, STEP2_USER));
+        stubMultiLevelChain(List.of("dd200", "dd300"));
+        // 只回空映射：发起人无 dd_user_id
+        when(userDirectory.ddUserIdsByIds(any())).thenReturn(Map.of());
+        when(userDirectory.userIdsByRole("systemAdmin")).thenReturn(List.of(999L));
+
+        service.onSyncRequested(new OaSyncRequestedEvent(OaSyncRequestedEvent.KIND_RECEIPT, 1L));
+
+        verifyNoInteractions(apiClient);
+        ArgumentCaptor<ApprovalInstance> captor = ArgumentCaptor.forClass(ApprovalInstance.class);
+        verify(approvalInstanceMapper).insert(captor.capture());
+        assertEquals(ApprovalInstance.SYNC_FAILED, captor.getValue().getSyncStatus());
+        verify(notificationService).notify(eq(999L), eq(NotificationType.DINGTALK_SYNC_ALERT),
+                contains("发起人未绑定钉钉"), eq("DINGTALK"), eq(0L));
     }
 
     @Test
     void 钉钉API失败_FAILED告警_不外抛() {
         when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(STEP1_USER, STEP2_USER));
-        when(userDirectory.ddUserIdsByIds(any())).thenReturn(Map.of(
-                APPLICANT, "dd100", STEP1_USER, "dd200", STEP2_USER, "dd300"));
+        stubMultiLevelChain(List.of("dd200", "dd300"));
+        stubOriginatorDd();
         mockNoExistingInstance();
         when(apiClient.createProcessInstance(anyString(), anyString(), anyList(), anyList(), anyList()))
                 .thenThrow(new DingTalkApiException("errcode=40"));
@@ -233,8 +265,8 @@ class ApprovalSyncServiceImplTest {
     @Test
     void 两级不同人_两个顺序节点_成功回填() {
         when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(STEP1_USER, STEP2_USER));
-        when(userDirectory.ddUserIdsByIds(any())).thenReturn(Map.of(
-                APPLICANT, "dd100", STEP1_USER, "dd200", STEP2_USER, "dd300"));
+        stubMultiLevelChain(List.of("dd200", "dd300"));
+        stubOriginatorDd();
         mockNoExistingInstance();
         when(receiptItemMapper.selectList(any())).thenReturn(List.of());
         when(apiClient.createProcessInstance(eq("PROC-R"), eq("dd100"), anyList(), anyList(), anyList()))
@@ -262,8 +294,8 @@ class ApprovalSyncServiceImplTest {
     @Test
     void 两级同人_合并单节点() {
         when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(STEP1_USER, STEP1_USER));
-        when(userDirectory.ddUserIdsByIds(any())).thenReturn(Map.of(
-                APPLICANT, "dd100", STEP1_USER, "dd200"));
+        stubMultiLevelChain(List.of("dd200"));
+        stubOriginatorDd();
         mockNoExistingInstance();
         when(receiptItemMapper.selectList(any())).thenReturn(List.of());
         when(apiClient.createProcessInstance(eq("PROC-R"), eq("dd100"), anyList(), anyList(), anyList()))
@@ -279,12 +311,32 @@ class ApprovalSyncServiceImplTest {
     }
 
     @Test
+    void 多级主管链_完整节点序列推送() {
+        // 钉钉节点 = 固定一级 → 直接主管 → 部门主管 → …（站内快照只记前两级）
+        when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(STEP1_USER, STEP2_USER));
+        stubMultiLevelChain(List.of("dd200", "dd300", "dd400"));
+        stubOriginatorDd();
+        mockNoExistingInstance();
+        when(receiptItemMapper.selectList(any())).thenReturn(List.of());
+        when(apiClient.createProcessInstance(eq("PROC-R"), eq("dd100"), anyList(), anyList(), anyList()))
+                .thenReturn("inst-4");
+
+        service.onSyncRequested(new OaSyncRequestedEvent(OaSyncRequestedEvent.KIND_RECEIPT, 1L));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<String>> approvers = ArgumentCaptor.forClass(List.class);
+        verify(apiClient).createProcessInstance(eq("PROC-R"), eq("dd100"),
+                approvers.capture(), anyList(), anyList());
+        assertEquals(List.of("dd200", "dd300", "dd400"), approvers.getValue());
+    }
+
+    @Test
     void 表单字段_与模板强契约一致() {
         ReceiveReceipt receipt = pendingReceipt(STEP1_USER, STEP2_USER);
         receipt.setLocationId(10L);
         when(receiptMapper.selectById(1L)).thenReturn(receipt);
-        when(userDirectory.ddUserIdsByIds(any())).thenReturn(Map.of(
-                APPLICANT, "dd100", STEP1_USER, "dd200", STEP2_USER, "dd300"));
+        stubMultiLevelChain(List.of("dd200", "dd300"));
+        stubOriginatorDd();
         mockNoExistingInstance();
 
         ReceiveReceiptItem item = new ReceiveReceiptItem();

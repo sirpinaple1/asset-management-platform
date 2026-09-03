@@ -122,6 +122,60 @@ public class DingTalkApiClient {
     }
 
     /**
+     * 列子部门完整信息（通讯录只读权限；部门树与主管缓存同步用）。
+     *
+     * @param parentDeptId 父部门 id（根部门=1）
+     * @return 子部门列表（dept_id/name/parent_id；无子部门返回空）
+     */
+    public List<DeptBrief> listSubDepts(Long parentDeptId) {
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("dept_id", parentDeptId);
+        JsonNode resp = post("/topapi/v2/department/listsub", body);
+        List<DeptBrief> depts = new ArrayList<>();
+        for (JsonNode dept : resp.path("result")) {
+            depts.add(new DeptBrief(
+                    dept.path("dept_id").asLong(),
+                    dept.path("name").asText(""),
+                    dept.path("parent_id").asLong(1L)));
+        }
+        return depts;
+    }
+
+    /**
+     * 查部门主管（通讯录只读权限；多级主管审批链用）。
+     *
+     * @return 主管钉钉 userid 列表（未设主管返回空；兼容数组与逗号分隔两种返回形态）
+     */
+    public List<String> getDeptManagerIds(Long deptId) {
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("dept_id", deptId);
+        JsonNode resp = post("/topapi/v2/department/get", body);
+        JsonNode managers = resp.path("result").path("dept_manager_userid_list");
+        List<String> ids = new ArrayList<>();
+        if (managers.isArray()) {
+            managers.forEach(n -> {
+                if (!n.asText("").isBlank()) {
+                    ids.add(n.asText());
+                }
+            });
+        } else {
+            String joined = managers.asText("");
+            if (!joined.isBlank()) {
+                for (String s : joined.split(",")) {
+                    if (!s.isBlank()) {
+                        ids.add(s.trim());
+                    }
+                }
+            }
+        }
+        return ids;
+    }
+
+    /** 钉钉部门简要信息（部门树缓存同步用） */
+    public record DeptBrief(Long deptId, String name, Long parentId) {
+    }
+
+    /**
      * 按部门分页拉用户（通讯录只读权限；userid 批量同步用）。
      *
      * @return 单页结果（users: userid/name/mobile + nextCursor；末页 nextCursor=null）
