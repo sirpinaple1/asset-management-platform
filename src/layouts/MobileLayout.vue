@@ -154,6 +154,8 @@ onMounted(() => {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  /* tabbar 改为 fixed 后预留遮挡高度：48px 栏高 + 24px FAB 上凸 + 安全区 */
+  padding-bottom: calc(72px + env(safe-area-inset-bottom));
 }
 
 /* 页面切换过渡 */
@@ -172,9 +174,13 @@ onMounted(() => {
   transform: translateY(-4px);
 }
 
-/* ---------- 底部导航 ---------- */
+/* ---------- 底部导航（fixed 物理钉底，不随内容/整页弹性滚动移动） ---------- */
 .m-tabbar {
-  flex-shrink: 0;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 90; /* 低于全屏弹层 m-sheet(100)，弹层打开时被完整覆盖 */
   display: flex;
   align-items: stretch;
   background: var(--color-bg-2);

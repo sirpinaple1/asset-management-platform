@@ -1,9 +1,10 @@
 import { request } from '@/api/config/request'
 
 // 前端版本信息（唯一来源）
-export const FRONTEND_VERSION = '0.1.19'
+export const FRONTEND_VERSION = '0.1.20'
 export const RELEASE_DATE = '2026-09-03'
 export const CHANGELOG: string[] = [
+  '移动端底部导航栏固定屏幕底部（fixed 钉底），不再随页面内容滚动或整页弹性滚动移动；内容区预留栏高+FAB 凸出空间，全屏弹层层级高于导航栏',
   '旧条形码识别增强：自动剥离扫码器附加的 AIM 制式前缀与控制字符；查询按原始/去空白/大写归一多候选匹配；空结果自动切换条码模式重扫；未命中提示核对标签字符手动输入',
   '服务器缓存策略修复：HTML 入口改为 no-cache，发版后手机端即时可见（此前钉钉 webview 可能长时间缓存旧版）',
   '移动端 UI 全面升级：统一承袭 PC 端设计 token（颜色/圆角/阴影），底部导航改为 SVG 线性图标 + 中央「发起」FAB，页面切换/卡片入场/弹层滑动均采用自然缓动曲线，自动适配暗色模式',
