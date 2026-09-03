@@ -81,6 +81,14 @@
         </div>
       </div>
     </template>
+
+    <!-- 页内连续扫码层 -->
+    <MScanner
+      v-if="scannerOpen"
+      @scan="onScannerScan"
+      @error="onScannerError"
+      @close="scannerOpen = false"
+    />
   </div>
 </template>
 
@@ -88,6 +96,7 @@
 import { ref } from 'vue'
 import { isInDingTalk, scanBarcode } from '@/utils/dingtalk'
 import { assetApi } from '@/api/modules/asset'
+import MScanner from '@/components/mobile/MScanner.vue'
 import type { Asset, AssetLog } from '@/api/interface/asset'
 
 const manualCode = ref('')
@@ -95,6 +104,8 @@ const searching = ref(false)
 const asset = ref<Asset>()
 const logs = ref<AssetLog[]>([])
 const errorMsg = ref('')
+/** 页内连续扫码层（仅安全上下文可用时打开） */
+const scannerOpen = ref(false)
 
 const statusClass = (status: Asset['status']) =>
   ({ IDLE: 'info', IN_USE: 'ok', PENDING_CONFIRM: 'pending', DISCARD: 'bad' })[status] || 'info'
@@ -148,17 +159,44 @@ const search = async (code: string) => {
   }
 }
 
-const onScan = async () => {
-  if (!isInDingTalk()) {
-    errorMsg.value = '扫码需要在钉钉内打开使用，也可在上方手动输入编码查询'
-    return
-  }
+/** 钉钉原生扫码（降级通道） */
+const ddScan = async () => {
   try {
     const text = await scanBarcode()
     manualCode.value = text
     await search(text)
   } catch (e) {
     errorMsg.value = `${e instanceof Error ? e.message : '扫码失败'}。可尝试对准条码、保持 10-15cm 距离避免反光，或直接手动输入标签上的编码`
+  }
+}
+
+const onScan = () => {
+  // 优先页内连续扫码（zxing 逐帧解码，一维码识别率远高于单次拍照）；仅安全上下文可用
+  // （mediaDevices 仅在安全上下文存在，isSecureContext 即充分条件，不可用时组件自身会 emit error 降级）
+  if (window.isSecureContext) {
+    scannerOpen.value = true
+    return
+  }
+  if (isInDingTalk()) {
+    void ddScan()
+    return
+  }
+  errorMsg.value = '当前环境不支持摄像头扫码（需 HTTPS 或在钉钉内），请手动输入编码查询'
+}
+
+const onScannerScan = async (text: string) => {
+  scannerOpen.value = false
+  manualCode.value = text
+  await search(text)
+}
+
+/** 页内扫码失败（权限/无摄像头）→ 降级钉钉原生 */
+const onScannerError = (message: string) => {
+  scannerOpen.value = false
+  if (isInDingTalk()) {
+    void ddScan()
+  } else {
+    errorMsg.value = `${message}，请手动输入编码查询`
   }
 }
 </script>

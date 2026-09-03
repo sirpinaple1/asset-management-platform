@@ -1,9 +1,10 @@
 import { request } from '@/api/config/request'
 
 // 前端版本信息（唯一来源）
-export const FRONTEND_VERSION = '0.1.20'
+export const FRONTEND_VERSION = '0.1.21'
 export const RELEASE_DATE = '2026-09-03'
 export const CHANGELOG: string[] = [
+  '扫码识别率提升：新增页内连续扫码（zxing 逐帧解码 + 取景框引导 + 手电筒），对旧条形码容错远高于单次拍照识别；HTTPS 环境自动启用，摄像头不可用时降级钉钉原生扫码',
   '移动端底部导航栏固定屏幕底部（fixed 钉底），不再随页面内容滚动或整页弹性滚动移动；内容区预留栏高+FAB 凸出空间，全屏弹层层级高于导航栏',
   '旧条形码识别增强：自动剥离扫码器附加的 AIM 制式前缀与控制字符；查询按原始/去空白/大写归一多候选匹配；空结果自动切换条码模式重扫；未命中提示核对标签字符手动输入',
   '服务器缓存策略修复：HTML 入口改为 no-cache，发版后手机端即时可见（此前钉钉 webview 可能长时间缓存旧版）',

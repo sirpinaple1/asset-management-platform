@@ -11,6 +11,7 @@
     "type-check": "vue-tsc -b"
   },
   "dependencies": {
+    "@zxing/library": "^0.21.3",
     "axios": "^1.7.9",
     "dingtalk-jsapi": "^3.2.9",
     "element-plus": "^2.9.3",
