@@ -499,6 +499,7 @@ class ChangeOrderServiceImplTest {
     @Test
     void confirm_shouldUpdateAssetSyncAllocationAndWriteLog() {
         ChangeOrder order = pendingOrder();
+        when(orderMapper.selectOne(any())).thenReturn(order);
         when(orderMapper.selectById(1L)).thenReturn(order);
         when(itemMapper.selectList(any())).thenReturn(List.of(
                 item(1L, 1L, "user_id", "使用人", "张三", "李四"),
@@ -545,6 +546,7 @@ class ChangeOrderServiceImplTest {
     void confirm_shouldAllowApplicantSelfConfirm() {
         // 变更单为信息修正单据：发起人可自己确认执行（区别于 M04/M05 审批流）
         ChangeOrder order = pendingOrder();
+        when(orderMapper.selectOne(any())).thenReturn(order);
         when(orderMapper.selectById(1L)).thenReturn(order);
         when(itemMapper.selectList(any())).thenReturn(List.of(
                 item(1L, 1L, "user_id", "使用人", "张三", "李四")));
@@ -568,7 +570,7 @@ class ChangeOrderServiceImplTest {
     void confirm_shouldRejectWhenOperatorIsNotAssignee() {
         ChangeOrder order = pendingOrder();
         order.setAssigneeUserId(200L);
-        when(orderMapper.selectById(1L)).thenReturn(order);
+        when(orderMapper.selectOne(any())).thenReturn(order);
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> changeService.confirm(1L, 300L, "王五"));
@@ -582,6 +584,7 @@ class ChangeOrderServiceImplTest {
     void confirm_shouldAllowAssigneeToConfirm() {
         ChangeOrder order = pendingOrder();
         order.setAssigneeUserId(400L);
+        when(orderMapper.selectOne(any())).thenReturn(order);
         when(orderMapper.selectById(1L)).thenReturn(order);
         when(itemMapper.selectList(any())).thenReturn(List.of(
                 item(1L, 1L, "user_id", "使用人", "张三", "李四")));
@@ -601,6 +604,7 @@ class ChangeOrderServiceImplTest {
         order.setNewUserId(null);
         order.setNewUserName(null);
         order.setNewUserDepartment(null);
+        when(orderMapper.selectOne(any())).thenReturn(order);
         when(orderMapper.selectById(1L)).thenReturn(order);
         when(itemMapper.selectList(any())).thenReturn(List.of(
                 item(1L, 1L, "location_id", "区域", "A区", "B区")));
@@ -623,6 +627,7 @@ class ChangeOrderServiceImplTest {
         // 新使用人与当前使用人一致：持有关系无需转移
         ChangeOrder order = pendingOrder();
         order.setNewUserId(100L);
+        when(orderMapper.selectOne(any())).thenReturn(order);
         when(orderMapper.selectById(1L)).thenReturn(order);
         when(itemMapper.selectList(any())).thenReturn(List.of(
                 item(1L, 1L, "location_id", "区域", "A区", "B区")));
@@ -638,7 +643,7 @@ class ChangeOrderServiceImplTest {
 
     @Test
     void confirm_shouldRejectWhenOrderMissing() {
-        when(orderMapper.selectById(9L)).thenReturn(null);
+        when(orderMapper.selectOne(any())).thenReturn(null);
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> changeService.confirm(9L, 400L, "赵六"));
@@ -650,7 +655,7 @@ class ChangeOrderServiceImplTest {
     void confirm_shouldRejectWhenNotPending() {
         ChangeOrder order = pendingOrder();
         order.setStatus("CONFIRMED");
-        when(orderMapper.selectById(1L)).thenReturn(order);
+        when(orderMapper.selectOne(any())).thenReturn(order);
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> changeService.confirm(1L, 400L, "赵六"));
@@ -662,7 +667,7 @@ class ChangeOrderServiceImplTest {
     @Test
     void confirm_shouldRejectWhenAssetDiscardedDuringPending() {
         ChangeOrder order = pendingOrder();
-        when(orderMapper.selectById(1L)).thenReturn(order);
+        when(orderMapper.selectOne(any())).thenReturn(order);
         when(itemMapper.selectList(any())).thenReturn(List.of(
                 item(1L, 1L, "user_id", "使用人", "张三", "李四")));
         Asset discarded = inUseAsset(1L);
@@ -680,7 +685,7 @@ class ChangeOrderServiceImplTest {
     @Test
     void confirm_shouldRejectWhenAssetMissingDuringPending() {
         ChangeOrder order = pendingOrder();
-        when(orderMapper.selectById(1L)).thenReturn(order);
+        when(orderMapper.selectOne(any())).thenReturn(order);
         when(itemMapper.selectList(any())).thenReturn(List.of(
                 item(1L, 1L, "user_id", "使用人", "张三", "李四")));
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of());
@@ -697,6 +702,7 @@ class ChangeOrderServiceImplTest {
     @Test
     void cancel_shouldSetCancelledByApplicant() {
         ChangeOrder order = pendingOrder();
+        when(orderMapper.selectOne(any())).thenReturn(order);
         when(orderMapper.selectById(1L)).thenReturn(order);
         when(orderMapper.updateById(any(ChangeOrder.class))).thenReturn(1);
         when(itemMapper.selectList(any())).thenReturn(List.of());
@@ -712,7 +718,7 @@ class ChangeOrderServiceImplTest {
 
     @Test
     void cancel_shouldRejectWhenNotApplicant() {
-        when(orderMapper.selectById(1L)).thenReturn(pendingOrder());
+        when(orderMapper.selectOne(any())).thenReturn(pendingOrder());
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> changeService.cancel(1L, 400L));
@@ -725,7 +731,7 @@ class ChangeOrderServiceImplTest {
     void cancel_shouldRejectWhenNotPending() {
         ChangeOrder order = pendingOrder();
         order.setStatus("CONFIRMED");
-        when(orderMapper.selectById(1L)).thenReturn(order);
+        when(orderMapper.selectOne(any())).thenReturn(order);
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> changeService.cancel(1L, 100L));

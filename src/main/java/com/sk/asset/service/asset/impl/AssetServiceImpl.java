@@ -213,9 +213,16 @@ public class AssetServiceImpl implements AssetService {
             throw new BusinessException(409, "资产状态不允许从「" + current.getLabel()
                     + "」变更为「" + newStatus.getLabel() + "」");
         }
-        assetMapper.update(null, new LambdaUpdateWrapper<Asset>()
+        // 条件更新（CAS）：WHERE 携带旧状态，并发下后到者 affected=0 → 409 整体回滚。
+        // 防同一资产被两张单同时占用（如双单并发提领用：先提交者占住 PENDING_CONFIRM，
+        // 后提交者此处 IN_USE→PENDING_CONFIRM 条件不命中即失败，不再依赖前置校验的时序）
+        int updated = assetMapper.update(null, new LambdaUpdateWrapper<Asset>()
                 .eq(Asset::getId, assetId)
+                .eq(Asset::getStatus, current.name())
                 .set(Asset::getStatus, newStatus.name()));
+        if (updated == 0) {
+            throw new BusinessException(409, "资产状态已变化，操作冲突请刷新重试（id=" + assetId + "）");
+        }
         String content = "【状态】由【" + current.getLabel() + "】变更为【" + newStatus.getLabel() + "】";
         if (note != null && !note.isBlank()) {
             content += "：" + note.trim();

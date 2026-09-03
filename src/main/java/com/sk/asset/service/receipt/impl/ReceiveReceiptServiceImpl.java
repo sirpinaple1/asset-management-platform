@@ -476,10 +476,25 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
         ReceiptType type = ReceiptType.of(receipt.getType());
         String applicantDisplay = displayName(receipt.getApplicantUserId(), receipt.getApplicantName());
 
+        // 条件推进（CAS）：仅当单据仍为 PENDING 且处于一级时推进到二级。
+        // 防并发重复推进（双击/双端）：affected=0 → 409 回滚，避免重复通知二级审批人
+        // + 重复发布钉钉代执行事件
+        LocalDateTime step1At = LocalDateTime.now();
+        int advanced = receiptMapper.update(null, new LambdaUpdateWrapper<ReceiveReceipt>()
+                .eq(ReceiveReceipt::getId, receipt.getId())
+                .eq(ReceiveReceipt::getStatus, ReceiptStatus.PENDING.name())
+                .eq(ReceiveReceipt::getApprovalStep, 1)
+                .set(ReceiveReceipt::getApprovalStep, 2)
+                .set(ReceiveReceipt::getApprovalStep1At, step1At)
+                .set(ReceiveReceipt::getAssigneeUserId, receipt.getApprovalStep2UserId()));
+        if (advanced == 0) {
+            throw new BusinessException(409, "单据审批层级已变化，请刷新后重试（"
+                    + receipt.getSerialNo() + "）");
+        }
+        // 同步内存对象：后续通知/返回值仍读快照字段，保持与库内一致的可见性
         receipt.setApprovalStep(2);
-        receipt.setApprovalStep1At(LocalDateTime.now());
+        receipt.setApprovalStep1At(step1At);
         receipt.setAssigneeUserId(receipt.getApprovalStep2UserId());
-        receiptMapper.updateById(receipt);
 
         // 通知二级审批人（B2）：待你审批
         notificationService.notify(receipt.getApprovalStep2UserId(), NotificationType.DOC_SUBMITTED,
@@ -554,7 +569,11 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
     }
 
     private ReceiveReceipt requirePendingReceipt(Long id) {
-        ReceiveReceipt receipt = receiptMapper.selectById(id);
+        // SELECT ... FOR UPDATE 锁定读：串行化并发审批（站内双击 / 站内与钉钉回调双端并发），
+        // 后到事务阻塞至前序提交后读到最新状态，被下方 PENDING 校验 409 拦截
+        ReceiveReceipt receipt = receiptMapper.selectOne(new LambdaQueryWrapper<ReceiveReceipt>()
+                .eq(ReceiveReceipt::getId, id)
+                .last("LIMIT 1 FOR UPDATE"));
         if (receipt == null) {
             throw new BusinessException(404, "单据不存在（id=" + id + "）");
         }

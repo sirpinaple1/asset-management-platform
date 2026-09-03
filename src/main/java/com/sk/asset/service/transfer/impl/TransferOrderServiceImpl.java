@@ -554,7 +554,10 @@ public class TransferOrderServiceImpl implements TransferOrderService {
     }
 
     private TransferOrder requirePendingOrder(Long id) {
-        TransferOrder order = orderMapper.selectById(id);
+        // SELECT ... FOR UPDATE 锁定读：串行化并发确认/拒绝/撤销（站内双击 / 站内与钉钉回调双端并发）
+        TransferOrder order = orderMapper.selectOne(new LambdaQueryWrapper<TransferOrder>()
+                .eq(TransferOrder::getId, id)
+                .last("LIMIT 1 FOR UPDATE"));
         if (order == null) {
             throw new BusinessException(404, "调拨单不存在（id=" + id + "）");
         }

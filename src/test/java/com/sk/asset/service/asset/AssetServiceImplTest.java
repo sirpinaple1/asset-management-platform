@@ -324,6 +324,8 @@ class AssetServiceImplTest {
     @Test
     void changeStatus_shouldUpdateAndWriteLog() {
         when(assetMapper.selectById(1L)).thenReturn(idleAsset(1L, "SKSCDM-0001"));
+        // CAS 条件更新：mock 默认返回 0 会触发 409，需显式返回 1（更新命中）
+        when(assetMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
 
         assetService.changeStatus(1L, AssetStatus.IN_USE, 100L, "生产领用");
 
@@ -367,6 +369,7 @@ class AssetServiceImplTest {
     @Test
     void discard_shouldWriteScrapLogWithReason() {
         when(assetMapper.selectById(1L)).thenReturn(idleAsset(1L, "SKSCDM-0001"));
+        when(assetMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
 
         assetService.discard(1L, "设备老化", 100L);
 
@@ -382,6 +385,7 @@ class AssetServiceImplTest {
         inUse.setStatus(AssetStatus.IN_USE.name());
         when(assetMapper.selectById(1L)).thenReturn(inUse);
         when(allocationMapper.selectList(any())).thenReturn(List.of()); // 无持有中记录
+        when(assetMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
 
         assetService.discard(1L, null, 100L);
 
@@ -395,6 +399,7 @@ class AssetServiceImplTest {
         inUse.setStatus(AssetStatus.IN_USE.name());
         inUse.setUserId(100L);
         when(assetMapper.selectById(1L)).thenReturn(inUse);
+        when(assetMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
 
         AssetAllocation active = new AssetAllocation();
         active.setId(12L);
@@ -426,6 +431,7 @@ class AssetServiceImplTest {
         // 闲置报废（无持有关系）：不触碰 allocation，也无持有人清空的额外 update
         when(assetMapper.selectById(1L)).thenReturn(idleAsset(1L, "SKSCDM-0001"));
         when(allocationMapper.selectList(any())).thenReturn(List.of());
+        when(assetMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
 
         assetService.discard(1L, "设备老化", 100L);
 

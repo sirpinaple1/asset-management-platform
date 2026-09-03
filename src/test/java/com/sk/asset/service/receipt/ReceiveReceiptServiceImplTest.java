@@ -484,6 +484,7 @@ class ReceiveReceiptServiceImplTest {
     @Test
     void approve_shouldTransitionAssetsWriteAllocationsAndApprove() {
         ReceiveReceipt receipt = pendingReceipt();
+        when(receiptMapper.selectOne(any())).thenReturn(receipt);
         when(receiptMapper.selectById(1L)).thenReturn(receipt);
         when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
         Asset asset = idleAsset(1L);
@@ -533,6 +534,7 @@ class ReceiveReceiptServiceImplTest {
         // 存量单（加列前创建）location_id 为 NULL：审批跳过位置更新，仅写持有人
         ReceiveReceipt legacy = pendingReceipt();
         legacy.setLocationId(null);
+        when(receiptMapper.selectOne(any())).thenReturn(legacy);
         when(receiptMapper.selectById(1L)).thenReturn(legacy);
         when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
         when(assetMapper.selectById(1L)).thenReturn(idleAsset(1L));
@@ -552,7 +554,7 @@ class ReceiveReceiptServiceImplTest {
     void approve_shouldRejectWhenNotPending() {
         ReceiveReceipt receipt = pendingReceipt();
         receipt.setStatus("APPROVED");
-        when(receiptMapper.selectById(1L)).thenReturn(receipt);
+        when(receiptMapper.selectOne(any())).thenReturn(receipt);
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> receiptService.approve(1L, 200L, "李四"));
@@ -563,7 +565,7 @@ class ReceiveReceiptServiceImplTest {
 
     @Test
     void approve_shouldRejectWhenApproverIsApplicant() {
-        when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt());
+        when(receiptMapper.selectOne(any())).thenReturn(pendingReceipt());
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> receiptService.approve(1L, 100L, "张三"));
@@ -576,7 +578,7 @@ class ReceiveReceiptServiceImplTest {
     void approve_shouldRejectWhenOperatorIsNotAssignee() {
         ReceiveReceipt receipt = pendingReceipt();
         receipt.setAssigneeUserId(200L);
-        when(receiptMapper.selectById(1L)).thenReturn(receipt);
+        when(receiptMapper.selectOne(any())).thenReturn(receipt);
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> receiptService.approve(1L, 300L, "王五"));
@@ -590,6 +592,7 @@ class ReceiveReceiptServiceImplTest {
     void approve_shouldAllowAssigneeToApprove() {
         ReceiveReceipt receipt = pendingReceipt();
         receipt.setAssigneeUserId(200L);
+        when(receiptMapper.selectOne(any())).thenReturn(receipt);
         when(receiptMapper.selectById(1L)).thenReturn(receipt);
         when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
         Asset asset = idleAsset(1L);
@@ -607,7 +610,9 @@ class ReceiveReceiptServiceImplTest {
     @Test
     void approve_shouldKeepSharedPoolBehaviorWhenAssigneeNull() {
         // 存量单（assignee NULL）：任何非申请人可审批——回归保护
-        when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt());
+        ReceiveReceipt receipt = pendingReceipt();
+        when(receiptMapper.selectOne(any())).thenReturn(receipt);
+        when(receiptMapper.selectById(1L)).thenReturn(receipt);
         when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
         Asset asset = idleAsset(1L);
         when(assetMapper.selectById(1L)).thenReturn(asset);
@@ -621,7 +626,7 @@ class ReceiveReceiptServiceImplTest {
 
     @Test
     void approve_shouldRejectWhenReceiptMissing() {
-        when(receiptMapper.selectById(9L)).thenReturn(null);
+        when(receiptMapper.selectOne(any())).thenReturn(null);
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> receiptService.approve(9L, 200L, "李四"));
@@ -633,7 +638,7 @@ class ReceiveReceiptServiceImplTest {
 
     @Test
     void approve_step1ShouldRejectWhenOperatorIsNotStep1Approver() {
-        when(receiptMapper.selectById(1L)).thenReturn(chainPendingReceipt());
+        when(receiptMapper.selectOne(any())).thenReturn(chainPendingReceipt());
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> receiptService.approve(1L, STEP2_USER, STEP2_NAME));
@@ -646,9 +651,10 @@ class ReceiveReceiptServiceImplTest {
     @Test
     void approve_step1ShouldAdvanceToStep2AndNotifyBoth() {
         ReceiveReceipt receipt = chainPendingReceipt();
+        when(receiptMapper.selectOne(any())).thenReturn(receipt);
         when(receiptMapper.selectById(1L)).thenReturn(receipt);
         when(itemMapper.selectList(any())).thenReturn(List.of());
-        when(receiptMapper.updateById(any(ReceiveReceipt.class))).thenReturn(1);
+        when(receiptMapper.update(any(), any())).thenReturn(1);
         stubLocationNames();
 
         ReceiveReceipt advanced = receiptService.approve(1L, STEP1_USER, STEP1_NAME);
@@ -675,7 +681,7 @@ class ReceiveReceiptServiceImplTest {
         receipt.setApprovalStep(2);
         receipt.setApprovalStep1At(java.time.LocalDateTime.now());
         receipt.setAssigneeUserId(STEP2_USER);
-        when(receiptMapper.selectById(1L)).thenReturn(receipt);
+        when(receiptMapper.selectOne(any())).thenReturn(receipt);
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> receiptService.approve(1L, STEP1_USER, STEP1_NAME));
@@ -690,6 +696,7 @@ class ReceiveReceiptServiceImplTest {
         receipt.setApprovalStep(2);
         receipt.setApprovalStep1At(java.time.LocalDateTime.now());
         receipt.setAssigneeUserId(STEP2_USER);
+        when(receiptMapper.selectOne(any())).thenReturn(receipt);
         when(receiptMapper.selectById(1L)).thenReturn(receipt);
         when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
         Asset asset = idleAsset(1L);
@@ -714,6 +721,7 @@ class ReceiveReceiptServiceImplTest {
     void approve_mergedShouldFinalApproveInOneShot() {
         // 两级同一人：step=2 起步，一次审批即终态
         ReceiveReceipt receipt = mergedPendingReceipt();
+        when(receiptMapper.selectOne(any())).thenReturn(receipt);
         when(receiptMapper.selectById(1L)).thenReturn(receipt);
         when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
         Asset asset = idleAsset(1L);
@@ -734,6 +742,7 @@ class ReceiveReceiptServiceImplTest {
     @Test
     void reject_shouldReturnAssetsToIdleAndMarkRejected() {
         ReceiveReceipt receipt = pendingReceipt();
+        when(receiptMapper.selectOne(any())).thenReturn(receipt);
         when(receiptMapper.selectById(1L)).thenReturn(receipt);
         when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
@@ -755,7 +764,7 @@ class ReceiveReceiptServiceImplTest {
     void reject_shouldRejectWhenNotPending() {
         ReceiveReceipt receipt = pendingReceipt();
         receipt.setStatus("REJECTED");
-        when(receiptMapper.selectById(1L)).thenReturn(receipt);
+        when(receiptMapper.selectOne(any())).thenReturn(receipt);
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> receiptService.reject(1L, "不需要", 200L, "李四"));
@@ -765,7 +774,7 @@ class ReceiveReceiptServiceImplTest {
 
     @Test
     void reject_shouldRejectWhenApproverIsApplicant() {
-        when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt());
+        when(receiptMapper.selectOne(any())).thenReturn(pendingReceipt());
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> receiptService.reject(1L, "不需要", 100L, "张三"));
@@ -777,6 +786,7 @@ class ReceiveReceiptServiceImplTest {
     void reject_chainStep1ShouldRejectWholeDocWithLevelInNotification() {
         // 一级拒绝：整单 REJECTED + 资产回 IDLE + 通知带拒绝层级
         ReceiveReceipt receipt = chainPendingReceipt();
+        when(receiptMapper.selectOne(any())).thenReturn(receipt);
         when(receiptMapper.selectById(1L)).thenReturn(receipt);
         when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(idleAsset(1L)));
@@ -794,7 +804,7 @@ class ReceiveReceiptServiceImplTest {
 
     @Test
     void reject_chainShouldRejectWhenOperatorMismatch() {
-        when(receiptMapper.selectById(1L)).thenReturn(chainPendingReceipt());
+        when(receiptMapper.selectOne(any())).thenReturn(chainPendingReceipt());
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> receiptService.reject(1L, "不需要", STEP2_USER, STEP2_NAME));

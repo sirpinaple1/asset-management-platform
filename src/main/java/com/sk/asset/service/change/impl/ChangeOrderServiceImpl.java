@@ -598,7 +598,10 @@ public class ChangeOrderServiceImpl implements ChangeOrderService {
     }
 
     private ChangeOrder requirePendingOrder(Long id) {
-        ChangeOrder order = orderMapper.selectById(id);
+        // SELECT ... FOR UPDATE 锁定读：串行化并发确认/撤销（站内双击 / 站内与钉钉回调双端并发）
+        ChangeOrder order = orderMapper.selectOne(new LambdaQueryWrapper<ChangeOrder>()
+                .eq(ChangeOrder::getId, id)
+                .last("LIMIT 1 FOR UPDATE"));
         if (order == null) {
             throw new BusinessException(404, "变更单不存在（id=" + id + "）");
         }

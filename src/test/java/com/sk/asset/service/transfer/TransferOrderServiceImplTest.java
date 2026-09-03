@@ -52,6 +52,11 @@ class TransferOrderServiceImplTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), ReceiveReceiptItem.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), TransferOrder.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), TransferOrderItem.class);
+        // create 占用校验会构建 ChangeOrder/ChangeOrderItem wrapper（预存缺口：单独跑本类时无此缓存会抛 lambda cache 异常）
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""),
+                com.sk.asset.entity.change.ChangeOrder.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""),
+                com.sk.asset.entity.change.ChangeOrderItem.class);
     }
 
     @Mock
@@ -420,6 +425,7 @@ class TransferOrderServiceImplTest {
     @Test
     void confirm_shouldTransferOwnershipAllocationAndWriteLog() {
         TransferOrder order = pendingOrder();
+        when(orderMapper.selectOne(any())).thenReturn(order);
         when(orderMapper.selectById(1L)).thenReturn(order);
         when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(inUseAsset(1L)));
@@ -471,6 +477,7 @@ class TransferOrderServiceImplTest {
         TransferOrder order = pendingOrder();
         order.setToUserId(null);
         order.setToUserName(null);
+        when(orderMapper.selectOne(any())).thenReturn(order);
         when(orderMapper.selectById(1L)).thenReturn(order);
         when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(inUseAsset(1L)));
@@ -503,6 +510,7 @@ class TransferOrderServiceImplTest {
         order.setToUserId(null);
         order.setToUserName(null);
         order.setToDepartment(null);
+        when(orderMapper.selectOne(any())).thenReturn(order);
         when(orderMapper.selectById(1L)).thenReturn(order);
         when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(inUseAsset(1L)));
@@ -529,6 +537,7 @@ class TransferOrderServiceImplTest {
     void confirm_shouldFlipIdleToInUseWhenHolderAssigned() {
         // 闲置资产调拨给人/部门：IDLE→IN_USE 状态联动（有新持有必为在用）
         TransferOrder order = pendingOrder();
+        when(orderMapper.selectOne(any())).thenReturn(order);
         when(orderMapper.selectById(1L)).thenReturn(order);
         when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
         Asset idle = inUseAsset(1L);
@@ -553,7 +562,7 @@ class TransferOrderServiceImplTest {
     void confirm_shouldRejectWhenNotPending() {
         TransferOrder order = pendingOrder();
         order.setStatus("COMPLETED");
-        when(orderMapper.selectById(1L)).thenReturn(order);
+        when(orderMapper.selectOne(any())).thenReturn(order);
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> transferService.confirm(1L, 400L, "赵六"));
@@ -564,7 +573,7 @@ class TransferOrderServiceImplTest {
 
     @Test
     void confirm_shouldRejectWhenConfirmerIsApplicant() {
-        when(orderMapper.selectById(1L)).thenReturn(pendingOrder());
+        when(orderMapper.selectOne(any())).thenReturn(pendingOrder());
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> transferService.confirm(1L, 100L, "张三"));
@@ -579,7 +588,7 @@ class TransferOrderServiceImplTest {
     void confirm_shouldRejectWhenOperatorIsNotAssignee() {
         TransferOrder order = pendingOrder();
         order.setAssigneeUserId(200L);
-        when(orderMapper.selectById(1L)).thenReturn(order);
+        when(orderMapper.selectOne(any())).thenReturn(order);
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> transferService.confirm(1L, 300L, "王五"));
@@ -593,6 +602,7 @@ class TransferOrderServiceImplTest {
     void confirm_shouldAllowAssigneeToConfirm() {
         TransferOrder order = pendingOrder();
         order.setAssigneeUserId(400L);
+        when(orderMapper.selectOne(any())).thenReturn(order);
         when(orderMapper.selectById(1L)).thenReturn(order);
         when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
         when(assetMapper.selectBatchIds(any())).thenReturn(List.of(inUseAsset(1L)));
@@ -608,7 +618,7 @@ class TransferOrderServiceImplTest {
     @Test
     void confirm_shouldRejectWhenAssetDiscardedDuringPending() {
         TransferOrder order = pendingOrder();
-        when(orderMapper.selectById(1L)).thenReturn(order);
+        when(orderMapper.selectOne(any())).thenReturn(order);
         when(itemMapper.selectList(any())).thenReturn(List.of(item(1L, 1L)));
         Asset discarded = inUseAsset(1L);
         discarded.setStatus(AssetStatus.DISCARD.name());
@@ -624,7 +634,7 @@ class TransferOrderServiceImplTest {
 
     @Test
     void confirm_shouldRejectWhenOrderMissing() {
-        when(orderMapper.selectById(9L)).thenReturn(null);
+        when(orderMapper.selectOne(any())).thenReturn(null);
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> transferService.confirm(9L, 400L, "赵六"));
@@ -637,6 +647,7 @@ class TransferOrderServiceImplTest {
     @Test
     void reject_shouldMarkRejectedWithoutTouchingAssets() {
         TransferOrder order = pendingOrder();
+        when(orderMapper.selectOne(any())).thenReturn(order);
         when(orderMapper.selectById(1L)).thenReturn(order);
         when(orderMapper.updateById(any(TransferOrder.class))).thenReturn(1);
 
@@ -658,7 +669,7 @@ class TransferOrderServiceImplTest {
     void reject_shouldRejectWhenNotPending() {
         TransferOrder order = pendingOrder();
         order.setStatus("REJECTED");
-        when(orderMapper.selectById(1L)).thenReturn(order);
+        when(orderMapper.selectOne(any())).thenReturn(order);
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> transferService.reject(1L, "位置不符", 400L, "赵六"));
@@ -668,7 +679,7 @@ class TransferOrderServiceImplTest {
 
     @Test
     void reject_shouldRejectWhenConfirmerIsApplicant() {
-        when(orderMapper.selectById(1L)).thenReturn(pendingOrder());
+        when(orderMapper.selectOne(any())).thenReturn(pendingOrder());
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> transferService.reject(1L, "位置不符", 100L, "张三"));
@@ -681,6 +692,7 @@ class TransferOrderServiceImplTest {
     @Test
     void cancel_shouldMarkCancelledByApplicant() {
         TransferOrder order = pendingOrder();
+        when(orderMapper.selectOne(any())).thenReturn(order);
         when(orderMapper.selectById(1L)).thenReturn(order);
         when(orderMapper.updateById(any(TransferOrder.class))).thenReturn(1);
 
@@ -694,7 +706,7 @@ class TransferOrderServiceImplTest {
 
     @Test
     void cancel_shouldRejectWhenNotApplicant() {
-        when(orderMapper.selectById(1L)).thenReturn(pendingOrder());
+        when(orderMapper.selectOne(any())).thenReturn(pendingOrder());
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> transferService.cancel(1L, 400L));
@@ -707,7 +719,7 @@ class TransferOrderServiceImplTest {
     void cancel_shouldRejectWhenNotPending() {
         TransferOrder order = pendingOrder();
         order.setStatus("CANCELLED");
-        when(orderMapper.selectById(1L)).thenReturn(order);
+        when(orderMapper.selectOne(any())).thenReturn(order);
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> transferService.cancel(1L, 100L));
