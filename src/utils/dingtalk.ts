@@ -78,23 +78,43 @@ export async function dingTalkLogin(): Promise<string> {
 }
 
 /**
+ * 清洗扫码文本：剥离 AIM 制式标识（如 Code128 的 "]C1"）、GS 分隔符与控制字符、首尾空白。
+ * 部分扫码器（含钉钉 Android）对一维码会附加 AIM 前缀，原样拿去查库会 miss。
+ */
+function cleanScanText(raw: string): string {
+  return raw
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .replace(/^\][A-Za-z][0-9A-Za-z]?/, '')
+    .trim()
+}
+
+/**
  * 钉钉扫码（dd.biz.util.scan，二维码/条形码均支持）。
- * 返回扫到的文本（资产条码场景）。需在钉钉容器内调用，失败以 Error 抛出。
+ * 返回扫到的文本（资产条码场景，已清洗）。需在钉钉容器内调用，失败以 Error 抛出。
+ * all 模式回调空文本时（个别 Android 机型），自动降级 barCode 模式重扫一次。
  */
 export function scanBarcode(): Promise<string> {
   return new Promise((resolve, reject) => {
     dd.ready(() => {
-      dd.biz.util
-        .scan({
-          type: 'all',
-          onSuccess: (res: { text?: string }) => {
-            const text = res?.text?.trim()
-            if (text) resolve(text)
-            else reject(new Error('未识别到条码内容'))
-          },
-          onFail: (err: unknown) => reject(new Error(`扫码失败: ${JSON.stringify(err)}`)),
-        })
-        .catch((err: unknown) => reject(new Error(`扫码失败: ${JSON.stringify(err)}`)))
+      const attempt = (type: 'all' | 'barCode', allowFallback: boolean) => {
+        dd.biz.util
+          .scan({
+            type,
+            onSuccess: (res: { text?: string }) => {
+              const text = cleanScanText(res?.text || '')
+              if (text) {
+                resolve(text)
+              } else if (allowFallback) {
+                attempt('barCode', false)
+              } else {
+                reject(new Error('未识别到条码内容'))
+              }
+            },
+            onFail: (err: unknown) => reject(new Error(`扫码失败: ${JSON.stringify(err)}`)),
+          })
+          .catch((err: unknown) => reject(new Error(`扫码失败: ${JSON.stringify(err)}`)))
+      }
+      attempt('all', true)
     })
     dd.error((err: unknown) => reject(new Error(`钉钉 JSAPI 异常: ${JSON.stringify(err)}`)))
   })

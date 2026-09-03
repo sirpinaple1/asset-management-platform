@@ -12,7 +12,7 @@
         </svg>
         <span>扫资产标签</span>
       </button>
-      <p class="m-scan-tip">支持二维码与新旧条形码标签，扫完即查资产详情</p>
+      <p class="m-scan-tip">支持二维码与新旧条形码标签<br />条码请保持平整，距标签 10-15cm 避免反光</p>
     </div>
 
     <!-- 手动输入兜底 -->
@@ -107,8 +107,15 @@ const fmtTime = (s: string) => {
 }
 
 /**
+ * 生成扫码文本的候选变体：原始 / 去内部空白 / 大写归一。
+ * 旧条形码（Code128 等）可能被扫码器附加空格或大小写偏差，逐个候选尝试直到命中。
+ */
+const candidates = (code: string): string[] =>
+  Array.from(new Set([code, code.replace(/\s+/g, ''), code.toUpperCase()].filter(Boolean)))
+
+/**
  * 按编码/序列号查资产（兼容新旧标签）：
- * keyword 为编码/名称/序列号三字段模糊匹配（后端契约），扫码内容含 "-" 或空格时
+ * keyword 为编码/名称/序列号三字段模糊匹配（后端契约），扫码内容含 "-" 时
  * 会被多关键词语法拆分，但子串 AND 语义仍能命中；精确匹配（编码→序列号）优先兜底。
  */
 const search = async (code: string) => {
@@ -118,13 +125,18 @@ const search = async (code: string) => {
   logs.value = []
   errorMsg.value = ''
   try {
-    const page = await assetApi.getAssets({ keyword: code, page: 1, size: 20 })
-    const hit =
-      page.records.find((a) => a.barcode === code) ||
-      page.records.find((a) => a.sn === code) ||
-      page.records[0]
+    let hit: Asset | undefined
+    for (const kw of candidates(code)) {
+      const page = await assetApi.getAssets({ keyword: kw, page: 1, size: 20 })
+      hit =
+        page.records.find((a) => a.barcode === kw) ||
+        page.records.find((a) => a.sn === kw) ||
+        page.records.find((a) => a.barcode?.toUpperCase() === kw) ||
+        page.records[0]
+      if (hit) break
+    }
     if (!hit) {
-      errorMsg.value = `未找到编码为「${code}」的资产`
+      errorMsg.value = `未找到编码为「${code}」的资产，请核对标签印刷字符后手动输入`
       return
     }
     asset.value = await assetApi.getAssetById(hit.id)
@@ -146,7 +158,7 @@ const onScan = async () => {
     manualCode.value = text
     await search(text)
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : '扫码失败'
+    errorMsg.value = `${e instanceof Error ? e.message : '扫码失败'}。可尝试对准条码、保持 10-15cm 距离避免反光，或直接手动输入标签上的编码`
   }
 }
 </script>
