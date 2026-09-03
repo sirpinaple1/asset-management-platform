@@ -10,10 +10,12 @@ package com.sk.asset.service.dingtalk;
 public interface ApprovalCallbackService {
 
     /**
-     * 处理钉钉事件。
+     * 处理钉钉事件（先落 dingtalk_event_log 再处理：eventId 唯一键去重，崩溃/重启
+     * 滞留事件可查可回放；处理结果回写事件状态 PROCESSED/IGNORED/FAILED）。
      *
+     * @param eventId   事件推送唯一 id（Stream 头，持久化去重键）
      * @param eventType 事件类型（如 bpms_task_change / bpms_instance_change）
      * @param dataJson  事件数据 JSON（含 processInstanceId / staffId / result / corpId 等）
      */
-    void onEvent(String eventType, String dataJson);
+    void onEvent(String eventId, String eventType, String dataJson);
 }

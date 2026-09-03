@@ -9,11 +9,13 @@ import com.sk.asset.dingtalk.config.DingtalkProperties;
 import com.sk.asset.dto.user.UserResp;
 import com.sk.asset.entity.change.ChangeOrder;
 import com.sk.asset.entity.dingtalk.ApprovalInstance;
+import com.sk.asset.entity.dingtalk.DingtalkEventLog;
 import com.sk.asset.entity.receipt.ReceiveReceipt;
 import com.sk.asset.entity.transfer.TransferOrder;
 import com.sk.asset.enums.notification.NotificationType;
 import com.sk.asset.mapper.change.ChangeOrderMapper;
 import com.sk.asset.mapper.dingtalk.ApprovalInstanceMapper;
+import com.sk.asset.mapper.dingtalk.DingtalkEventLogMapper;
 import com.sk.asset.mapper.receipt.ReceiveReceiptMapper;
 import com.sk.asset.mapper.transfer.TransferOrderMapper;
 import com.sk.asset.service.change.ChangeOrderService;
@@ -68,6 +70,8 @@ class ApprovalCallbackServiceImplTest {
     @Mock
     private ApprovalInstanceMapper approvalInstanceMapper;
     @Mock
+    private DingtalkEventLogMapper eventLogMapper;
+    @Mock
     private UserDirectory userDirectory;
     @Mock
     private NotificationService notificationService;
@@ -94,9 +98,9 @@ class ApprovalCallbackServiceImplTest {
         props = new DingtalkProperties();
         props.setCorpId(CORP_ID);
         service = new ApprovalCallbackServiceImpl(props, apiClient, approvalInstanceMapper,
-                userDirectory, notificationService, receiptMapper, transferOrderMapper,
-                changeOrderMapper, receiveReceiptService, transferOrderService,
-                changeOrderService, importService);
+                eventLogMapper, userDirectory, notificationService, receiptMapper,
+                transferOrderMapper, changeOrderMapper, receiveReceiptService,
+                transferOrderService, changeOrderService, importService);
     }
 
     // ------------------------------------------------------------ 事件构造
@@ -168,7 +172,7 @@ class ApprovalCallbackServiceImplTest {
         when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(1));
         mockOperator("dd200", STEP1_USER, STEP1_NAME);
 
-        service.onEvent("bpms_task_change", taskEvent("agree", "dd200", CORP_ID));
+        service.onEvent("evt-task-x", "bpms_task_change", taskEvent("agree", "dd200", CORP_ID));
 
         verify(importService).tryImport(any());
         verify(receiveReceiptService).approve(1L, STEP1_USER, STEP1_NAME);
@@ -179,7 +183,7 @@ class ApprovalCallbackServiceImplTest {
         when(approvalInstanceMapper.selectOne(any())).thenReturn(null);
         when(importService.tryImport(any())).thenReturn(null);
 
-        service.onEvent("bpms_instance_change", instanceEvent("start", "", "", CORP_ID));
+        service.onEvent("evt-inst-x", "bpms_instance_change", instanceEvent("start", "", "", CORP_ID));
 
         verify(importService).tryImport(any());
         verifyNoInteractions(receiveReceiptService);
@@ -192,7 +196,7 @@ class ApprovalCallbackServiceImplTest {
         when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(1));
         mockOperator("dd200", STEP1_USER, STEP1_NAME);
 
-        service.onEvent("bpms_task_change", taskEvent("agree", "dd200", CORP_ID));
+        service.onEvent("evt-task-x", "bpms_task_change", taskEvent("agree", "dd200", CORP_ID));
 
         verify(receiveReceiptService).approve(1L, STEP1_USER, STEP1_NAME);
         verify(approvalInstanceMapper).updateById(any(ApprovalInstance.class));
@@ -204,7 +208,7 @@ class ApprovalCallbackServiceImplTest {
         when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(1));
         mockOperator("dd999", 999L, "快照外人");
 
-        service.onEvent("bpms_task_change", taskEvent("agree", "dd999", CORP_ID));
+        service.onEvent("evt-task-x", "bpms_task_change", taskEvent("agree", "dd999", CORP_ID));
 
         // 不推进、不落回调审计（记日志即可）
         verify(receiveReceiptService, never()).approve(anyLong(), anyLong(), anyString());
@@ -218,7 +222,7 @@ class ApprovalCallbackServiceImplTest {
         when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(detail("COMPLETED", "agree"));
         mockOperator("dd300", STEP2_USER, STEP2_NAME);
 
-        service.onEvent("bpms_task_change", taskEvent("agree", "dd300", CORP_ID));
+        service.onEvent("evt-task-x", "bpms_task_change", taskEvent("agree", "dd300", CORP_ID));
 
         verify(receiveReceiptService).approve(1L, STEP2_USER, STEP2_NAME);
     }
@@ -233,7 +237,7 @@ class ApprovalCallbackServiceImplTest {
         when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(detail("RUNNING", ""));
         mockOperator("dd300", STEP2_USER, STEP2_NAME);
 
-        service.onEvent("bpms_task_change", taskEvent("agree", "dd300", CORP_ID));
+        service.onEvent("evt-task-x", "bpms_task_change", taskEvent("agree", "dd300", CORP_ID));
 
         // 单据终态必须与钉钉实例同步：不提前关单，等 instance:finish 终审事件
         verify(receiveReceiptService, never()).approve(anyLong(), anyLong(), anyString());
@@ -246,7 +250,7 @@ class ApprovalCallbackServiceImplTest {
         when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(detail("RUNNING", ""));
         mockOperator("dd999", 999L, "第2级主管");
 
-        service.onEvent("bpms_task_change", taskEvent("agree", "dd999", CORP_ID));
+        service.onEvent("evt-task-x", "bpms_task_change", taskEvent("agree", "dd999", CORP_ID));
 
         // 第 2/3 级主管同意：记日志即可，不推进不落库
         verify(receiveReceiptService, never()).approve(anyLong(), anyLong(), anyString());
@@ -261,7 +265,7 @@ class ApprovalCallbackServiceImplTest {
         when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(detail("COMPLETED", "agree"));
         mockOperator("dd999", 999L, "第3级主管");
 
-        service.onEvent("bpms_task_change", taskEvent("agree", "dd999", CORP_ID));
+        service.onEvent("evt-task-x", "bpms_task_change", taskEvent("agree", "dd999", CORP_ID));
 
         // 以快照二级审批人身份过链关单（实际审批过程以钉钉侧记录为准）
         verify(receiveReceiptService).approve(1L, STEP2_USER, STEP2_NAME);
@@ -274,7 +278,7 @@ class ApprovalCallbackServiceImplTest {
         when(apiClient.getProcessInstance(INSTANCE_ID)).thenThrow(new RuntimeException("dingtalk api down"));
         mockOperator("dd300", STEP2_USER, STEP2_NAME);
 
-        service.onEvent("bpms_task_change", taskEvent("agree", "dd300", CORP_ID));
+        service.onEvent("evt-task-x", "bpms_task_change", taskEvent("agree", "dd300", CORP_ID));
 
         verify(receiveReceiptService, never()).approve(anyLong(), anyLong(), anyString());
     }
@@ -284,7 +288,7 @@ class ApprovalCallbackServiceImplTest {
         when(approvalInstanceMapper.selectOne(any())).thenReturn(record(ApprovalInstance.BIZ_BORROW, 1L));
         mockOperator("dd200", STEP1_USER, STEP1_NAME);
 
-        service.onEvent("bpms_task_change", taskEvent("refuse", "dd200", CORP_ID));
+        service.onEvent("evt-task-x", "bpms_task_change", taskEvent("refuse", "dd200", CORP_ID));
 
         verify(receiveReceiptService).reject(eq(1L), eq("钉钉审批拒绝"), eq(STEP1_USER), eq(STEP1_NAME));
     }
@@ -294,7 +298,7 @@ class ApprovalCallbackServiceImplTest {
         when(approvalInstanceMapper.selectOne(any())).thenReturn(record(ApprovalInstance.BIZ_TRANSFER, 5L));
         mockOperator("dd400", 400L, "赵六");
 
-        service.onEvent("bpms_task_change", taskEvent("agree", "dd400", CORP_ID));
+        service.onEvent("evt-task-x", "bpms_task_change", taskEvent("agree", "dd400", CORP_ID));
 
         verify(transferOrderService).confirm(5L, 400L, "赵六");
     }
@@ -304,7 +308,7 @@ class ApprovalCallbackServiceImplTest {
         when(approvalInstanceMapper.selectOne(any())).thenReturn(record(ApprovalInstance.BIZ_CHANGE, 6L));
         mockOperator("dd400", 400L, "赵六");
 
-        service.onEvent("bpms_task_change", taskEvent("agree", "dd400", CORP_ID));
+        service.onEvent("evt-task-x", "bpms_task_change", taskEvent("agree", "dd400", CORP_ID));
 
         verify(changeOrderService).confirm(6L, 400L, "赵六");
     }
@@ -315,7 +319,7 @@ class ApprovalCallbackServiceImplTest {
         when(userDirectory.findByDdUserId("dd-unknown")).thenReturn(null);
         when(userDirectory.userIdsByRole("systemAdmin")).thenReturn(List.of(999L));
 
-        service.onEvent("bpms_task_change", taskEvent("agree", "dd-unknown", CORP_ID));
+        service.onEvent("evt-task-x", "bpms_task_change", taskEvent("agree", "dd-unknown", CORP_ID));
 
         verify(notificationService).notify(eq(999L), eq(NotificationType.DINGTALK_SYNC_ALERT),
                 contains("操作人无法解析"), eq("DINGTALK"), eq(0L));
@@ -332,7 +336,7 @@ class ApprovalCallbackServiceImplTest {
         ReceiveReceipt step2 = pendingReceipt(2);
         when(receiptMapper.selectById(1L)).thenReturn(step1, step2);
 
-        service.onEvent("bpms_instance_change", instanceEvent("finish", "agree", "", CORP_ID));
+        service.onEvent("evt-inst-x", "bpms_instance_change", instanceEvent("finish", "agree", "", CORP_ID));
 
         verify(receiveReceiptService).approve(1L, STEP1_USER, STEP1_NAME);
         verify(receiveReceiptService).approve(1L, STEP2_USER, STEP2_NAME);
@@ -345,7 +349,7 @@ class ApprovalCallbackServiceImplTest {
         approved.setStatus("APPROVED");
         when(receiptMapper.selectById(1L)).thenReturn(approved);
 
-        service.onEvent("bpms_instance_change", instanceEvent("finish", "agree", "", CORP_ID));
+        service.onEvent("evt-inst-x", "bpms_instance_change", instanceEvent("finish", "agree", "", CORP_ID));
 
         verify(receiveReceiptService, never()).approve(anyLong(), anyLong(), anyString());
     }
@@ -355,7 +359,7 @@ class ApprovalCallbackServiceImplTest {
         when(approvalInstanceMapper.selectOne(any())).thenReturn(record(ApprovalInstance.BIZ_RECEIVE, 1L));
         when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(2));
 
-        service.onEvent("bpms_instance_change", instanceEvent("finish", "refuse", "", CORP_ID));
+        service.onEvent("evt-inst-x", "bpms_instance_change", instanceEvent("finish", "refuse", "", CORP_ID));
 
         verify(receiveReceiptService).reject(eq(1L), eq("钉钉审批拒绝（终审）"), eq(STEP2_USER), eq(STEP2_NAME));
     }
@@ -370,7 +374,7 @@ class ApprovalCallbackServiceImplTest {
         order.setToUserName("赵六");
         when(transferOrderMapper.selectById(5L)).thenReturn(order);
 
-        service.onEvent("bpms_instance_change", instanceEvent("finish", "agree", "", CORP_ID));
+        service.onEvent("evt-inst-x", "bpms_instance_change", instanceEvent("finish", "agree", "", CORP_ID));
 
         verify(transferOrderService).confirm(5L, 400L, "赵六");
     }
@@ -388,7 +392,7 @@ class ApprovalCallbackServiceImplTest {
         when(transferOrderService.confirm(5L, 762L, "潘雨松"))
                 .thenThrow(new BusinessException(403, "调入方确认/拒绝不能由发起人自己操作"));
 
-        service.onEvent("bpms_instance_change", instanceEvent("finish", "agree", "", CORP_ID));
+        service.onEvent("evt-inst-x", "bpms_instance_change", instanceEvent("finish", "agree", "", CORP_ID));
 
         // 钉钉侧已终审：approval_instance 终态必须落库（业务推进交由 task:finish 事件或人工介入）
         verify(approvalInstanceMapper).updateById(argThat((ApprovalInstance r) ->
@@ -408,7 +412,7 @@ class ApprovalCallbackServiceImplTest {
                 .thenReturn(detailWithCc("COMPLETED", "agree", "dd691", "dd-unknown"));
         mockOperator("dd691", 691L, "肖鹏");
 
-        service.onEvent("bpms_instance_change", instanceEvent("finish", "agree", "", CORP_ID));
+        service.onEvent("evt-inst-x", "bpms_instance_change", instanceEvent("finish", "agree", "", CORP_ID));
 
         // 绑定者收到 DOC_CC；未绑定者跳过；标题含实例标题与终态
         verify(notificationService).notify(eq(691L), eq(NotificationType.DOC_CC),
@@ -423,7 +427,7 @@ class ApprovalCallbackServiceImplTest {
                 .thenReturn(detailWithCc("COMPLETED", "refuse", "dd691"));
         mockOperator("dd691", 691L, "肖鹏");
 
-        service.onEvent("bpms_instance_change", instanceEvent("finish", "refuse", "", CORP_ID));
+        service.onEvent("evt-inst-x", "bpms_instance_change", instanceEvent("finish", "refuse", "", CORP_ID));
 
         verify(notificationService).notify(eq(691L), eq(NotificationType.DOC_CC),
                 contains("已拒绝"), eq("RECEIVE"), eq(1L));
@@ -438,7 +442,7 @@ class ApprovalCallbackServiceImplTest {
         mockOperator("dd100", 100L, "张三");
         mockOperator("dd691", 691L, "肖鹏");
 
-        service.onEvent("bpms_instance_change", instanceEvent("terminate", "", "dd100", CORP_ID));
+        service.onEvent("evt-inst-x", "bpms_instance_change", instanceEvent("terminate", "", "dd100", CORP_ID));
 
         verify(notificationService).notify(eq(691L), eq(NotificationType.DOC_CC),
                 contains("已撤销"), eq("RECEIVE"), eq(1L));
@@ -452,7 +456,7 @@ class ApprovalCallbackServiceImplTest {
         when(receiptMapper.selectById(1L)).thenReturn(approved);
         when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(detail("COMPLETED", "agree"));
 
-        service.onEvent("bpms_instance_change", instanceEvent("finish", "agree", "", CORP_ID));
+        service.onEvent("evt-inst-x", "bpms_instance_change", instanceEvent("finish", "agree", "", CORP_ID));
 
         verify(notificationService, never()).notify(anyLong(),
                 eq(NotificationType.DOC_CC), anyString(), anyString(), anyLong());
@@ -469,7 +473,7 @@ class ApprovalCallbackServiceImplTest {
                 .thenThrow(new RuntimeException("dingtalk api down"));
 
         assertDoesNotThrow(() ->
-                service.onEvent("bpms_instance_change", instanceEvent("finish", "agree", "", CORP_ID)));
+                service.onEvent("evt-inst-x", "bpms_instance_change", instanceEvent("finish", "agree", "", CORP_ID)));
         verify(notificationService, never()).notify(anyLong(),
                 eq(NotificationType.DOC_CC), anyString(), anyString(), anyLong());
     }
@@ -482,7 +486,7 @@ class ApprovalCallbackServiceImplTest {
         when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(1));
         mockOperator("dd100", 100L, "张三");
 
-        service.onEvent("bpms_instance_change", instanceEvent("terminate", "", "dd100", CORP_ID));
+        service.onEvent("evt-inst-x", "bpms_instance_change", instanceEvent("terminate", "", "dd100", CORP_ID));
 
         verify(receiveReceiptService).reject(eq(1L), contains("钉钉撤销"), eq(STEP1_USER), eq(STEP1_NAME));
     }
@@ -495,7 +499,7 @@ class ApprovalCallbackServiceImplTest {
         order.setApplicantUserId(100L);
         when(transferOrderMapper.selectById(5L)).thenReturn(order);
 
-        service.onEvent("bpms_instance_change", instanceEvent("terminate", "", "dd100", CORP_ID));
+        service.onEvent("evt-inst-x", "bpms_instance_change", instanceEvent("terminate", "", "dd100", CORP_ID));
 
         verify(transferOrderService).cancel(5L, 100L);
     }
@@ -508,7 +512,7 @@ class ApprovalCallbackServiceImplTest {
         order.setApplicantUserId(100L);
         when(changeOrderMapper.selectById(6L)).thenReturn(order);
 
-        service.onEvent("bpms_instance_change", instanceEvent("terminate", "", "dd100", CORP_ID));
+        service.onEvent("evt-inst-x", "bpms_instance_change", instanceEvent("terminate", "", "dd100", CORP_ID));
 
         verify(changeOrderService).cancel(6L, 100L);
     }
@@ -519,7 +523,7 @@ class ApprovalCallbackServiceImplTest {
         completed.setStatus("COMPLETED");
         when(approvalInstanceMapper.selectOne(any())).thenReturn(completed);
 
-        service.onEvent("bpms_instance_change", instanceEvent("start", "", "", CORP_ID));
+        service.onEvent("evt-inst-x", "bpms_instance_change", instanceEvent("start", "", "", CORP_ID));
 
         // 终态后收到乱序 start：不改 RUNNING、不落库
         verify(approvalInstanceMapper, never()).updateById(any(ApprovalInstance.class));
@@ -529,7 +533,7 @@ class ApprovalCallbackServiceImplTest {
 
     @Test
     void corpId不匹配_忽略() {
-        service.onEvent("bpms_task_change", taskEvent("agree", "dd200", "corpB"));
+        service.onEvent("evt-task-x", "bpms_task_change", taskEvent("agree", "dd200", "corpB"));
 
         verifyNoInteractions(approvalInstanceMapper, receiveReceiptService, notificationService);
     }
@@ -539,7 +543,7 @@ class ApprovalCallbackServiceImplTest {
         when(approvalInstanceMapper.selectOne(any())).thenReturn(null);
 
         assertDoesNotThrow(() ->
-                service.onEvent("bpms_task_change", taskEvent("agree", "dd200", CORP_ID)));
+                service.onEvent("evt-task-x", "bpms_task_change", taskEvent("agree", "dd200", CORP_ID)));
         verifyNoInteractions(receiveReceiptService);
     }
 
@@ -554,7 +558,7 @@ class ApprovalCallbackServiceImplTest {
                 .thenThrow(new BusinessException(409, "单据已审批"));
 
         assertDoesNotThrow(() ->
-                service.onEvent("bpms_task_change", taskEvent("agree", "dd300", CORP_ID)));
+                service.onEvent("evt-task-x", "bpms_task_change", taskEvent("agree", "dd300", CORP_ID)));
         verifyNoInteractions(notificationService);
     }
 
@@ -564,14 +568,111 @@ class ApprovalCallbackServiceImplTest {
         when(userDirectory.userIdsByRole("systemAdmin")).thenReturn(List.of(999L));
 
         assertDoesNotThrow(() ->
-                service.onEvent("bpms_task_change", taskEvent("agree", "dd200", CORP_ID)));
+                service.onEvent("evt-task-x", "bpms_task_change", taskEvent("agree", "dd200", CORP_ID)));
         verify(notificationService).notify(eq(999L), eq(NotificationType.DINGTALK_SYNC_ALERT),
                 contains("db down"), eq("DINGTALK"), eq(0L));
     }
 
     @Test
     void 空事件数据_直接忽略() {
-        assertDoesNotThrow(() -> service.onEvent("bpms_task_change", "{}"));
+        assertDoesNotThrow(() -> service.onEvent("evt-task-x", "bpms_task_change", "{}"));
         verifyNoInteractions(approvalInstanceMapper);
+    }
+
+    // ------------------------------------------------------------ 事件落表（先落库后处理）
+
+    /** 模拟真实 insert：回填自增 id，使 markEvent 状态回写可被观测 */
+    private void mockInsertFillsId() {
+        when(eventLogMapper.insert(any(DingtalkEventLog.class))).thenAnswer(inv -> {
+            inv.getArgument(0, DingtalkEventLog.class).setId(1L);
+            return 1;
+        });
+    }
+
+    @Test
+    void 事件先落库_处理成功_回写PROCESSED() {
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(record(ApprovalInstance.BIZ_RECEIVE, 1L));
+        when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(1));
+        mockOperator("dd200", STEP1_USER, STEP1_NAME);
+        mockInsertFillsId();
+
+        service.onEvent("evt-new-1", "bpms_task_change", taskEvent("agree", "dd200", CORP_ID));
+
+        // 落库行含去重键与实例索引字段（同一对象引用会被 markEvent 复用改状态，status 不断言在 insert 上）
+        verify(eventLogMapper).insert(argThat((DingtalkEventLog e) ->
+                "evt-new-1".equals(e.getEventId())
+                        && "bpms_task_change".equals(e.getEventType())
+                        && INSTANCE_ID.equals(e.getProcessInstanceId())));
+        verify(receiveReceiptService).approve(1L, STEP1_USER, STEP1_NAME);
+        verify(eventLogMapper).updateById(argThat((DingtalkEventLog e) ->
+                DingtalkEventLog.STATUS_PROCESSED.equals(e.getStatus())));
+    }
+
+    @Test
+    void 重复推送_eventId唯一键冲突_忽略不处理() {
+        // uk_dingtalk_event_id 冲突 = 钉钉重复推送（重启后内存去重失效场景的持久化兜底）
+        when(eventLogMapper.insert(any(DingtalkEventLog.class)))
+                .thenThrow(new org.springframework.dao.DuplicateKeyException("uk_dingtalk_event_id"));
+
+        service.onEvent("evt-dup-1", "bpms_task_change", taskEvent("agree", "dd200", CORP_ID));
+
+        verify(eventLogMapper, never()).updateById(any(DingtalkEventLog.class));
+        verifyNoInteractions(approvalInstanceMapper, receiveReceiptService);
+    }
+
+    @Test
+    void 业务校验拦截_回写IGNORED() throws Exception {
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(record(ApprovalInstance.BIZ_RECEIVE, 1L));
+        when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(2));
+        when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(detail("COMPLETED", "agree"));
+        mockOperator("dd300", STEP2_USER, STEP2_NAME);
+        // 站内已审批，钉钉事件后到 → 状态机 409 幂等拦截
+        when(receiveReceiptService.approve(1L, STEP2_USER, STEP2_NAME))
+                .thenThrow(new BusinessException(409, "单据已审批"));
+        mockInsertFillsId();
+
+        service.onEvent("evt-conflict-1", "bpms_task_change", taskEvent("agree", "dd300", CORP_ID));
+
+        verify(eventLogMapper).updateById(argThat((DingtalkEventLog e) ->
+                DingtalkEventLog.STATUS_IGNORED.equals(e.getStatus()) && e.getError() != null));
+        verifyNoInteractions(notificationService);
+    }
+
+    @Test
+    void 基础设施异常_回写FAILED() {
+        when(approvalInstanceMapper.selectOne(any())).thenThrow(new RuntimeException("db down"));
+        when(userDirectory.userIdsByRole("systemAdmin")).thenReturn(List.of(999L));
+        mockInsertFillsId();
+
+        service.onEvent("evt-fail-1", "bpms_task_change", taskEvent("agree", "dd200", CORP_ID));
+
+        // FAILED 留痕（重启后可按状态查滞留事件），且告警不外抛
+        verify(eventLogMapper).updateById(argThat((DingtalkEventLog e) ->
+                DingtalkEventLog.STATUS_FAILED.equals(e.getStatus())
+                        && "db down".equals(e.getError())));
+        verify(notificationService).notify(eq(999L), eq(NotificationType.DINGTALK_SYNC_ALERT),
+                contains("db down"), eq("DINGTALK"), eq(0L));
+    }
+
+    @Test
+    void 事件落库失败_降级继续处理() {
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(record(ApprovalInstance.BIZ_RECEIVE, 1L));
+        when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(1));
+        mockOperator("dd200", STEP1_USER, STEP1_NAME);
+        // 日志表写入失败不能阻断审批回传（内存锁 + 状态机幂等仍兜底）
+        when(eventLogMapper.insert(any(DingtalkEventLog.class)))
+                .thenThrow(new RuntimeException("event log table down"));
+
+        assertDoesNotThrow(() ->
+                service.onEvent("evt-degrade-1", "bpms_task_change", taskEvent("agree", "dd200", CORP_ID)));
+
+        verify(receiveReceiptService).approve(1L, STEP1_USER, STEP1_NAME);
+    }
+
+    @Test
+    void 非审批事件类型_不落表() {
+        service.onEvent("evt-other-1", "user_add_org", "{\"userid\":\"dd001\"}");
+
+        verifyNoInteractions(eventLogMapper, approvalInstanceMapper);
     }
 }

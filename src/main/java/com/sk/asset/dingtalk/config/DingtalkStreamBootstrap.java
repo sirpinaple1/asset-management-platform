@@ -84,7 +84,8 @@ public class DingtalkStreamBootstrap implements SmartLifecycle {
     private EventAckStatus onEvent(GenericOpenDingTalkEvent event) {
         try {
             String dataJson = event.getData() == null ? "{}" : event.getData().toJSONString();
-            callbackService.onEvent(event.getEventType(), mergeCorpId(dataJson, event.getEventCorpId()));
+            callbackService.onEvent(event.getEventId(), event.getEventType(),
+                    mergeCorpId(dataJson, event.getEventCorpId()));
         } catch (Exception e) {
             // 双保险：回调服务已内捕异常；此处再漏即记日志，仍 ACK 避免重推放大
             log.error("钉钉事件分发异常（eventType={}）：{}", event.getEventType(), e.getMessage(), e);

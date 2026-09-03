@@ -11,6 +11,7 @@ import com.sk.asset.dingtalk.client.DingTalkApiClient;
 import com.sk.asset.dingtalk.config.DingtalkProperties;
 import com.sk.asset.dto.user.UserResp;
 import com.sk.asset.entity.dingtalk.ApprovalInstance;
+import com.sk.asset.entity.dingtalk.DingtalkEventLog;
 import com.sk.asset.entity.receipt.ReceiveReceipt;
 import com.sk.asset.entity.transfer.TransferOrder;
 import com.sk.asset.entity.change.ChangeOrder;
@@ -18,6 +19,7 @@ import com.sk.asset.enums.receipt.ReceiptStatus;
 import com.sk.asset.enums.transfer.TransferStatus;
 import com.sk.asset.enums.change.ChangeStatus;
 import com.sk.asset.mapper.dingtalk.ApprovalInstanceMapper;
+import com.sk.asset.mapper.dingtalk.DingtalkEventLogMapper;
 import com.sk.asset.mapper.receipt.ReceiveReceiptMapper;
 import com.sk.asset.mapper.transfer.TransferOrderMapper;
 import com.sk.asset.mapper.change.ChangeOrderMapper;
@@ -46,6 +48,10 @@ import java.util.concurrent.locks.ReentrantLock;
  *
  * <p>事件不回查 processinstance/get 校验：Stream 通道经应用凭证鉴权（TLS 长连接），
  * 且操作人必须命中审批链快照，伪造/重复事件最多被 403/409 拒绝，无越权面。</p>
+ *
+ * <p>事件先落 dingtalk_event_log 再处理（V20260904）：eventId 唯一键持久化去重
+ * （钉钉重复推送/重启后内存锁失效的兜底）；恒回 SUCCESS 导致事件不重发，
+ * 崩溃/重启瞬间的滞留事件（RECEIVED/FAILED 行）经日志表可查可人工回放。</p>
  */
 @Slf4j
 @Service
@@ -77,6 +83,7 @@ public class ApprovalCallbackServiceImpl implements ApprovalCallbackService {
     private final DingtalkProperties props;
     private final DingTalkApiClient apiClient;
     private final ApprovalInstanceMapper approvalInstanceMapper;
+    private final DingtalkEventLogMapper eventLogMapper;
     private final UserDirectory userDirectory;
     private final NotificationService notificationService;
     private final ReceiveReceiptMapper receiptMapper;
@@ -89,13 +96,27 @@ public class ApprovalCallbackServiceImpl implements ApprovalCallbackService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
-    public void onEvent(String eventType, String dataJson) {
+    public void onEvent(String eventId, String eventType, String dataJson) {
         if (eventType == null || dataJson == null || dataJson.isBlank()) {
+            return;
+        }
+        // 仅审批事件落表（Stream 订阅全部事件，其余类型无业务含义，log.debug 忽略）
+        if (!"bpms_task_change".equals(eventType) && !"bpms_instance_change".equals(eventType)) {
+            log.debug("忽略钉钉事件类型：{}", eventType);
+            return;
+        }
+        // 事件先落库（幂等去重：uk 冲突 = 钉钉重复推送，直接忽略）。
+        // 落库失败降级继续处理（日志表是审计/去重层，不能阻断审批回传——
+        // 内存条带锁 + 状态机 409 幂等仍兜底），记 error 留痕
+        DingtalkEventLog entry = persistEvent(eventId, eventType, dataJson);
+        if (entry == null) {
+            log.info("钉钉事件重复推送，忽略（eventId={}, type={}）", eventId, eventType);
             return;
         }
         try {
             JsonNode data = objectMapper.readTree(dataJson);
             if (data == null || data.isEmpty()) {
+                markEvent(entry, DingtalkEventLog.STATUS_IGNORED, "空事件数据");
                 return;
             }
             log.info("收到钉钉事件（type={}, instanceId={}, staffId={}, result={}）", eventType,
@@ -106,6 +127,7 @@ public class ApprovalCallbackServiceImpl implements ApprovalCallbackService {
             if (!props.getCorpId().isBlank() && !eventCorpId.isBlank()
                     && !props.getCorpId().equals(eventCorpId)) {
                 log.warn("忽略非本企业钉钉事件（corpId={}）", eventCorpId);
+                markEvent(entry, DingtalkEventLog.STATUS_IGNORED, "非本企业事件（corpId=" + eventCorpId + "）");
                 return;
             }
             switch (eventType) {
@@ -113,14 +135,62 @@ public class ApprovalCallbackServiceImpl implements ApprovalCallbackService {
                 case "bpms_instance_change" -> handleInstanceChange(data);
                 default -> log.debug("忽略钉钉事件类型：{}", eventType);
             }
+            markEvent(entry, DingtalkEventLog.STATUS_PROCESSED, null);
         } catch (BusinessException e) {
             // 业务校验拦截（409 已审批 / 403 非当前审批人）：幂等或越权，记日志不告警重试
             log.warn("钉钉事件被业务校验拦截（{}）：code={}, message={}",
                     eventType, e.getCode(), e.getMessage());
+            markEvent(entry, DingtalkEventLog.STATUS_IGNORED,
+                    "业务校验拦截：code=" + e.getCode() + "，" + e.getMessage());
         } catch (Exception e) {
             // 基础设施异常：记日志 + 告警（不抛给 Stream，避免 LATER 无限重推放大）
             log.error("钉钉事件处理异常（{}）：{}", eventType, e.getMessage(), e);
+            markEvent(entry, DingtalkEventLog.STATUS_FAILED, e.getMessage());
             alertAdmins("钉钉事件处理异常：" + e.getMessage() + "（eventType=" + eventType + "）");
+        }
+    }
+
+    /**
+     * 事件落库（RECEIVED）：eventId 唯一键冲突视为钉钉重复推送返回 null。
+     * 提取 processInstanceId/corpId 便于按实例排查；payload 留原始 JSON 供审计回放。
+     * 落库基础设施异常时降级返回非 null 的内存行（无 id，状态回写跳过），不阻断处理。
+     */
+    private DingtalkEventLog persistEvent(String eventId, String eventType, String dataJson) {
+        DingtalkEventLog entry = new DingtalkEventLog();
+        entry.setEventId(eventId);
+        entry.setEventType(eventType);
+        entry.setPayload(dataJson);
+        entry.setStatus(DingtalkEventLog.STATUS_RECEIVED);
+        try {
+            JsonNode data = objectMapper.readTree(dataJson);
+            entry.setProcessInstanceId(data.path("processInstanceId").asText(null));
+            entry.setCorpId(data.path("corpId").asText(null));
+        } catch (Exception e) {
+            log.warn("钉钉事件 payload 解析失败，落库不带索引字段（eventId={}）：{}", eventId, e.getMessage());
+        }
+        try {
+            eventLogMapper.insert(entry);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            return null; // uk_dingtalk_event_id 冲突：重复推送
+        } catch (Exception e) {
+            // 日志表写入失败：降级继续处理（无 id 行，markEvent 跳过回写）
+            log.error("钉钉事件落库失败，降级继续处理（eventId={}）：{}", eventId, e.getMessage(), e);
+        }
+        return entry;
+    }
+
+    /** 回写事件处理结果（落库降级的无 id 行跳过；回写失败仅记日志不影响主流程） */
+    private void markEvent(DingtalkEventLog entry, String status, String error) {
+        if (entry.getId() == null) {
+            return;
+        }
+        try {
+            entry.setStatus(status);
+            entry.setError(error != null && error.length() > 1000 ? error.substring(0, 1000) : error);
+            eventLogMapper.updateById(entry);
+        } catch (Exception e) {
+            log.warn("钉钉事件状态回写失败（eventId={}, status={}）：{}",
+                    entry.getEventId(), status, e.getMessage());
         }
     }
 
