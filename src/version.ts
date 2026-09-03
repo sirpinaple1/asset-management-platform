@@ -1,7 +1,7 @@
 import { request } from '@/api/config/request'
 
 // 前端版本信息（唯一来源）
-export const FRONTEND_VERSION = '0.1.21'
+export const FRONTEND_VERSION = '0.3.1'
 export const RELEASE_DATE = '2026-09-03'
 export const CHANGELOG: string[] = [
   '扫码识别率提升：新增页内连续扫码（zxing 逐帧解码 + 取景框引导 + 手电筒），对旧条形码容错远高于单次拍照识别；HTTPS 环境自动启用，摄像头不可用时降级钉钉原生扫码',
