@@ -1,5 +1,6 @@
 package com.sk.asset.dingtalk.config;
 
+import jakarta.annotation.PostConstruct;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -58,8 +59,35 @@ public class DingtalkProperties {
      * 特殊部门主管覆盖：部门名 → 主管钉钉 userid。
      * 森丰/锐鑫智能等不在钉钉部门树内的部门，其链上主管经此配置指定
      * （同样命中钉钉树内同名部门，优先于 dept_manager_userid_list）。
+     * 注意：环境变量无法承载中文 Map 键（非 ASCII 键在属性名转换中丢失），
+     * 生产经 {@link #specialDeptManagersText} 扁平文本配置，@PostConstruct 解析合并进本 Map。
      */
     private Map<String, String> specialDeptManagers = new HashMap<>();
+
+    /**
+     * 特殊部门主管覆盖（扁平文本形态，供环境变量配置）：
+     * {@code 部门名:钉钉userid} 逗号分隔（中英文逗号/冒号均可），如
+     * {@code 森丰:0346334069651060985,锐鑫智能:0346334069651060985}。
+     */
+    private String specialDeptManagersText = "";
+
+    @PostConstruct
+    public void parseSpecialDeptManagersText() {
+        if (specialDeptManagersText == null || specialDeptManagersText.isBlank()) {
+            return;
+        }
+        for (String pair : specialDeptManagersText.split("[,，]")) {
+            int idx = Math.max(pair.indexOf(':'), pair.indexOf('：'));
+            if (idx <= 0 || idx == pair.length() - 1) {
+                continue; // 非法片段忽略（配置值仅此一个来源，错误片段静默跳过）
+            }
+            String key = pair.substring(0, idx).trim();
+            String value = pair.substring(idx + 1).trim();
+            if (!key.isEmpty() && !value.isEmpty()) {
+                specialDeptManagers.putIfAbsent(key, value);
+            }
+        }
+    }
 
     /** 部门树缓存每日刷新时刻（cron；同步失败仅告警不阻断业务） */
     private String deptSyncCron = "0 40 2 * * ?";

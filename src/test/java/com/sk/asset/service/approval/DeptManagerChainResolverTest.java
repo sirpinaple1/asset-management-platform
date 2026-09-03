@@ -231,6 +231,16 @@ class DeptManagerChainResolverTest {
         assertEquals("森丰", r.snapshot().getStep2SourceKey());
     }
 
+    @Test
+    void 特殊部门_扁平文本配置解析_中英文分隔符兼容() {
+        // 环境变量无法承载中文 Map 键，生产经 special-dept-managers-text 扁平文本配置
+        props.setSpecialDeptManagersText("森丰:dd-xiao，锐鑫智能：dd-xp");
+        props.parseSpecialDeptManagersText();
+
+        assertEquals("dd-xiao", props.getSpecialDeptManagers().get("森丰"));
+        assertEquals("dd-xp", props.getSpecialDeptManagers().get("锐鑫智能"));
+    }
+
     // ------------------------------------------------------------ 兜底报错
 
     @Test
