@@ -13,13 +13,14 @@ public final class AppVersion {
     }
 
     /** 后端版本号（语义：功能上线 +1 末位） */
-    public static final String VERSION = "0.1.7";
+    public static final String VERSION = "0.1.8";
 
     /** 发布日期（yyyy-MM-dd） */
     public static final String RELEASE_DATE = "2026-09-03";
 
     /** 本版本新增功能（简要，供前端帮助面板展示） */
     public static final List<String> CHANGELOG = List.of(
+            "站内审批与钉钉待办双向同步：站内同意/拒绝后自动代执行钉钉侧审批任务，审批人无需在两个系统各操作一次",
             "B5 多级主管审批链：领用/借用改为谷仍山（固定一级）→发起人部门逐级向上主管，部门树每日自动同步，森丰/锐鑫智能主管兜底肖鹏，审批链预览实时展示全链",
             "资产列表多关键词搜索：空格分隔多组=或，组内\"-\"分隔=且（作用于编码/名称/序列号）",
             "抄送我的：钉钉审批终态（通过/拒绝/撤销）后按模板抄送人逐一站内通知，通知中心支持按类型筛选",

@@ -35,6 +35,7 @@ import com.sk.asset.service.approval.ApprovalChainResolver;
 import com.sk.asset.service.notification.NotificationService;
 import com.sk.asset.service.receipt.ReceiveReceiptService;
 import com.sk.asset.dingtalk.event.OaSyncRequestedEvent;
+import com.sk.asset.dingtalk.event.OaTaskExecuteRequestedEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -411,6 +412,9 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
         receipt.setApproveTime(LocalDateTime.now());
         receiptMapper.updateById(receipt);
 
+        // B5 双向同步：站内终审通过 → 代执行钉钉侧待办（事务提交后；无钉钉实例则跳过）
+        publishOaTaskExecute(receipt, approverUserId, "agree", null);
+
         // 通知发起人（B2）：审批人与申请人必不同人（requireNotApplicant），必通知
         notificationService.notify(receipt.getApplicantUserId(), NotificationType.DOC_APPROVED,
                 "你发起的" + ReceiptType.of(receipt.getType()).getLabel() + "单 " + receipt.getSerialNo()
@@ -451,6 +455,9 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
         receipt.setApproveRemark(reason);
         receiptMapper.updateById(receipt);
 
+        // B5 双向同步：站内拒绝 → 代执行钉钉侧待办（refuse，携带拒绝原因）
+        publishOaTaskExecute(receipt, approverUserId, "refuse", "站内拒绝：" + reason);
+
         // 通知发起人（B2）：含拒绝原因 + 拒绝层级（两级链单据）
         String levelPart = rejectLevelLabel != null ? "，" + rejectLevelLabel : "";
         notificationService.notify(receipt.getApplicantUserId(), NotificationType.DOC_REJECTED,
@@ -484,7 +491,21 @@ public class ReceiveReceiptServiceImpl implements ReceiveReceiptService {
                 "你发起的" + type.getLabel() + "单 " + receipt.getSerialNo()
                         + " 一级审批已通过（审批人：" + approverName + "），待部门主管审批",
                 receipt.getType(), receipt.getId());
+
+        // B5 双向同步：站内一级通过 → 代执行钉钉侧一级待办（后续节点仍由钉钉多级链推进）
+        publishOaTaskExecute(receipt, approverUserId, "agree", null);
+
         return getById(receipt.getId());
+    }
+
+    /** 站内审批结果同步钉钉（B5 双向同步）：单据关联钉钉实例才发布，AFTER_COMMIT 代执行 */
+    private void publishOaTaskExecute(ReceiveReceipt receipt, Long approverUserId,
+                                      String result, String remark) {
+        if (receipt.getDingtalkInstanceId() == null || receipt.getDingtalkInstanceId().isBlank()) {
+            return;
+        }
+        eventPublisher.publishEvent(new OaTaskExecuteRequestedEvent(
+                receipt.getDingtalkInstanceId(), approverUserId, result, remark));
     }
 
     /** 拒绝层级标签（通知展示用）：一级=固定审批人；二级=直接主管；合并单特殊标注 */

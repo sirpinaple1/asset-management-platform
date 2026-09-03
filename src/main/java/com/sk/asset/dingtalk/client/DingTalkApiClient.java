@@ -207,6 +207,54 @@ public class DingTalkApiClient {
     public record DeptUserPage(List<DeptUser> users, Long nextCursor) {
     }
 
+    /**
+     * 代执行审批任务（B5 双向同步：站内审批同意/拒绝后同步钉钉侧待办）。
+     *
+     * <p>v1.0 新版接口，权限=工作流实例写权限；以应用身份替审批人执行指定任务。
+     * 实例非 RUNNING 或任务已完成时报 aflowProcessInstStatusException 等业务错误，
+     * 由调用方按幂等语义处理（查无待办时本就不发起调用）。</p>
+     *
+     * @param processInstanceId 审批实例 id
+     * @param taskId            待办任务节点 id（实例详情 tasks[].taskid）
+     * @param actionerDdUserId  实际执行人（站内审批人）钉钉 userid
+     * @param result            agree / refuse
+     * @param remark            审批意见，可空
+     */
+    public void executeApprovalTask(String processInstanceId, long taskId,
+                                    String actionerDdUserId, String result, String remark) {
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("processInstanceId", processInstanceId);
+        body.put("taskId", taskId);
+        body.put("actionerUserId", actionerDdUserId);
+        body.put("result", result);
+        if (remark != null && !remark.isBlank()) {
+            body.put("remark", remark);
+        }
+        String token = tokenClient.getAccessToken();
+        try {
+            String respBody = restClient.post()
+                    .uri("https://api.dingtalk.com/v1.0/workflow/processInstances/execute")
+                    .header("x-acs-dingtalk-access-token", token)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(String.class);
+            // v1.0 风格：成功响应无 code 字段；失败 code=业务错误码（如 aflowProcessInstStatusException）
+            JsonNode resp = objectMapper.readTree(respBody == null ? "{}" : respBody);
+            if (resp.has("code")) {
+                throw new DingTalkApiException("钉钉代执行审批失败（" + resp.path("code").asText()
+                        + "）：instanceId=" + processInstanceId + "，taskId=" + taskId
+                        + "，" + resp.path("message").asText(""));
+            }
+            log.info("钉钉代执行审批成功：instanceId={}, taskId={}, actioner={}, result={}",
+                    processInstanceId, taskId, actionerDdUserId, result);
+        } catch (DingTalkApiException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new DingTalkApiException("钉钉代执行审批失败：" + e.getMessage(), e);
+        }
+    }
+
     /** topapi 通用 POST：access_token 走 query 参数，errcode != 0 统一抛异常 */
     private JsonNode post(String path, JsonNode body) {
         String token = tokenClient.getAccessToken();

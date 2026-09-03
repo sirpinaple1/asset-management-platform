@@ -7,6 +7,7 @@ import com.sk.asset.dingtalk.client.DingTalkApiClient;
 import com.sk.asset.dingtalk.client.DingTalkApiException;
 import com.sk.asset.dingtalk.config.DingtalkProperties;
 import com.sk.asset.dingtalk.event.OaSyncRequestedEvent;
+import com.sk.asset.dingtalk.event.OaTaskExecuteRequestedEvent;
 import com.sk.asset.entity.asset.Asset;
 import com.sk.asset.entity.basedata.Location;
 import com.sk.asset.entity.change.ChangeOrder;
@@ -421,5 +422,83 @@ class ApprovalSyncServiceImplTest {
 
         verify(transferOrderMapper).update(isNull(), any());
         verify(approvalInstanceMapper).insert(any(ApprovalInstance.class));
+    }
+
+    // ------------------------------------------------------------ B5 双向同步：站内审批 → 代执行钉钉待办
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    private com.fasterxml.jackson.databind.JsonNode instanceDetail(String status, String taskStatus,
+                                                                   String taskUserDd, long taskId) {
+        String json = "{\"status\":\"" + status + "\",\"tasks\":[{"
+                + "\"taskid\":\"" + taskId + "\",\"userid\":\"" + taskUserDd + "\","
+                + "\"task_status\":\"" + taskStatus + "\"}]}";
+        try {
+            return MAPPER.readTree(json);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    @Test
+    void 代执行成功_审批人有待办任务() {
+        when(userDirectory.ddUserIdsByIds(any())).thenReturn(Map.of(STEP1_USER, "dd200"));
+        when(apiClient.getProcessInstance("inst-x")).thenReturn(
+                instanceDetail("RUNNING", "RUNNING", "dd200", 103538324808L));
+
+        service.onTaskExecuteRequested(new OaTaskExecuteRequestedEvent("inst-x", STEP1_USER, "agree", null));
+
+        verify(apiClient).executeApprovalTask("inst-x", 103538324808L, "dd200", "agree", null);
+        verify(notificationService, never()).notify(any(), any(NotificationType.class), anyString(), any(), any());
+    }
+
+    @Test
+    void 钉钉实例已终态_跳过代执行() {
+        when(userDirectory.ddUserIdsByIds(any())).thenReturn(Map.of(STEP1_USER, "dd200"));
+        when(apiClient.getProcessInstance("inst-x")).thenReturn(
+                instanceDetail("COMPLETED", "COMPLETED", "dd200", 103538324808L));
+
+        service.onTaskExecuteRequested(new OaTaskExecuteRequestedEvent("inst-x", STEP1_USER, "agree", null));
+
+        verify(apiClient, never()).executeApprovalTask(anyString(), org.mockito.ArgumentMatchers.anyLong(),
+                anyString(), anyString(), any());
+    }
+
+    @Test
+    void 审批人无待办任务_已在钉钉操作_跳过() {
+        when(userDirectory.ddUserIdsByIds(any())).thenReturn(Map.of(STEP1_USER, "dd200"));
+        when(apiClient.getProcessInstance("inst-x")).thenReturn(
+                instanceDetail("RUNNING", "COMPLETED", "dd200", 103538324808L));
+
+        service.onTaskExecuteRequested(new OaTaskExecuteRequestedEvent("inst-x", STEP1_USER, "agree", null));
+
+        verify(apiClient, never()).executeApprovalTask(anyString(), org.mockito.ArgumentMatchers.anyLong(),
+                anyString(), anyString(), any());
+    }
+
+    @Test
+    void 审批人未绑定钉钉_跳过() {
+        when(userDirectory.ddUserIdsByIds(any())).thenReturn(Map.of());
+
+        service.onTaskExecuteRequested(new OaTaskExecuteRequestedEvent("inst-x", STEP1_USER, "agree", null));
+
+        verifyNoInteractions(apiClient);
+    }
+
+    @Test
+    void 代执行API失败_告警不抛() {
+        when(userDirectory.ddUserIdsByIds(any())).thenReturn(Map.of(STEP1_USER, "dd200"));
+        when(userDirectory.userIdsByRole("systemAdmin")).thenReturn(List.of(999L));
+        when(apiClient.getProcessInstance("inst-x")).thenReturn(
+                instanceDetail("RUNNING", "RUNNING", "dd200", 103538324808L));
+        org.mockito.Mockito.doThrow(new DingTalkApiException("钉钉代执行审批失败（aflowProcessInstStatusException）"))
+                .when(apiClient).executeApprovalTask(eq("inst-x"), eq(103538324808L),
+                        eq("dd200"), eq("refuse"), any());
+
+        service.onTaskExecuteRequested(new OaTaskExecuteRequestedEvent("inst-x", STEP1_USER, "refuse", "站内拒绝：测试"));
+
+        verify(notificationService).notify(eq(999L), eq(NotificationType.DINGTALK_SYNC_ALERT),
+                contains("同步钉钉待办失败"), any(), any());
     }
 }

@@ -2,11 +2,13 @@ package com.sk.asset.service.dingtalk.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.sk.asset.auth.UserDirectory;
 import com.sk.asset.dingtalk.client.DingTalkApiClient;
 import com.sk.asset.dingtalk.client.DingTalkApiException;
 import com.sk.asset.dingtalk.config.DingtalkProperties;
 import com.sk.asset.dingtalk.event.OaSyncRequestedEvent;
+import com.sk.asset.dingtalk.event.OaTaskExecuteRequestedEvent;
 import com.sk.asset.entity.asset.Asset;
 import com.sk.asset.entity.basedata.Location;
 import com.sk.asset.entity.change.ChangeOrder;
@@ -97,6 +99,58 @@ public class ApprovalSyncServiceImpl implements ApprovalSyncService {
             alertAdmins("钉钉同步异常：" + e.getMessage() + "（kind=" + event.kind()
                     + ", bizId=" + event.bizId() + "）");
         }
+    }
+
+    /**
+     * AFTER_COMMIT 消费：站内审批（同意/拒绝）已落库，代执行钉钉侧对应待办任务。
+     * 幂等：实例非 RUNNING 或该审批人无待办任务（已在钉钉侧操作）则跳过；
+     * 失败仅告警不回滚业务单据（审批人以站内为准，钉钉残留待办由管理员跟进）。
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onTaskExecuteRequested(OaTaskExecuteRequestedEvent event) {
+        if (!props.isEnabled()) {
+            return;
+        }
+        try {
+            executeDingtalkTask(event);
+        } catch (Exception e) {
+            log.error("钉钉代执行审批异常（instanceId={}, actioner={}）：{}",
+                    event.processInstanceId(), event.actionerUserId(), e.getMessage(), e);
+            alertAdmins("站内审批已记录，但同步钉钉待办失败（" + e.getMessage()
+                    + "），请人工处理钉钉侧待办（instanceId=" + event.processInstanceId() + "）");
+        }
+    }
+
+    /** 查实例当前待办任务并代执行（B5 双向同步：系统→钉钉） */
+    private void executeDingtalkTask(OaTaskExecuteRequestedEvent event) {
+        String actionerDd = userDirectory.ddUserIdsByIds(
+                List.of(event.actionerUserId())).get(event.actionerUserId());
+        if (actionerDd == null) {
+            log.warn("站内审批人未绑定钉钉，跳过代执行（actionerUserId={}，instanceId={}）",
+                    event.actionerUserId(), event.processInstanceId());
+            return;
+        }
+        JsonNode detail = apiClient.getProcessInstance(event.processInstanceId());
+        if (!"RUNNING".equals(detail.path("status").asText(""))) {
+            log.info("钉钉实例已终态，跳过代执行（instanceId={}，status={}）",
+                    event.processInstanceId(), detail.path("status").asText(""));
+            return;
+        }
+        Long taskId = null;
+        for (JsonNode task : detail.path("tasks")) {
+            if (actionerDd.equals(task.path("userid").asText())
+                    && "RUNNING".equals(task.path("task_status").asText())) {
+                taskId = task.path("taskid").asLong();
+                break;
+            }
+        }
+        if (taskId == null) {
+            log.info("该审批人在钉钉侧无待办任务（可能已在钉钉操作），跳过代执行（instanceId={}，actioner={}）",
+                    event.processInstanceId(), actionerDd);
+            return;
+        }
+        apiClient.executeApprovalTask(event.processInstanceId(), taskId,
+                actionerDd, event.result(), event.remark());
     }
 
     @Override

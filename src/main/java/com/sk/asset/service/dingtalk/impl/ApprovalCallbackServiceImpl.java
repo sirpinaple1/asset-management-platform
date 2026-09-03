@@ -384,33 +384,40 @@ public class ApprovalCallbackServiceImpl implements ApprovalCallbackService {
 
     /** 拒绝：操作人优先取事件 staffId；单据拒绝/撤销语义按类型分发 */
     private void applyRefuse(ApprovalInstance record, Long operatorId, String operatorName, String reason) {
-        switch (record.getBizType()) {
-            case ApprovalInstance.BIZ_RECEIVE, ApprovalInstance.BIZ_BORROW -> {
-                // 操作人兜底：终态兜底事件可能无 staffId，取当前 step 快照审批人过链校验
-                if (operatorId == null) {
-                    ReceiveReceipt receipt = receiptMapper.selectById(record.getBizId());
-                    if (receipt == null) {
-                        return;
+        try {
+            switch (record.getBizType()) {
+                case ApprovalInstance.BIZ_RECEIVE, ApprovalInstance.BIZ_BORROW -> {
+                    // 操作人兜底：终态兜底事件可能无 staffId，取当前 step 快照审批人过链校验
+                    if (operatorId == null) {
+                        ReceiveReceipt receipt = receiptMapper.selectById(record.getBizId());
+                        if (receipt == null) {
+                            return;
+                        }
+                        operatorId = Integer.valueOf(1).equals(receipt.getApprovalStep())
+                                ? receipt.getApprovalStep1UserId() : receipt.getApprovalStep2UserId();
+                        operatorName = Integer.valueOf(1).equals(receipt.getApprovalStep())
+                                ? receipt.getApprovalStep1Name() : receipt.getApprovalStep2Name();
                     }
-                    operatorId = Integer.valueOf(1).equals(receipt.getApprovalStep())
-                            ? receipt.getApprovalStep1UserId() : receipt.getApprovalStep2UserId();
-                    operatorName = Integer.valueOf(1).equals(receipt.getApprovalStep())
-                            ? receipt.getApprovalStep1Name() : receipt.getApprovalStep2Name();
+                    receiveReceiptService.reject(record.getBizId(), reason, operatorId, operatorName);
                 }
-                receiveReceiptService.reject(record.getBizId(), reason, operatorId, operatorName);
-            }
-            case ApprovalInstance.BIZ_TRANSFER ->
-                    transferOrderService.reject(record.getBizId(), reason, operatorId, operatorName);
-            case ApprovalInstance.BIZ_CHANGE -> {
-                // 变更单无拒绝语义：钉钉拒绝 → 发起人撤销（CANCELLED，资产不变）
-                ChangeOrder order = changeOrderMapper.selectById(record.getBizId());
-                if (order != null && ChangeStatus.PENDING.name().equals(order.getStatus())) {
-                    changeOrderService.cancel(record.getBizId(), order.getApplicantUserId());
+                case ApprovalInstance.BIZ_TRANSFER ->
+                        transferOrderService.reject(record.getBizId(), reason, operatorId, operatorName);
+                case ApprovalInstance.BIZ_CHANGE -> {
+                    // 变更单无拒绝语义：钉钉拒绝 → 发起人撤销（CANCELLED，资产不变）
+                    ChangeOrder order = changeOrderMapper.selectById(record.getBizId());
+                    if (order != null && ChangeStatus.PENDING.name().equals(order.getStatus())) {
+                        changeOrderService.cancel(record.getBizId(), order.getApplicantUserId());
+                    }
                 }
+                case ApprovalInstance.BIZ_RETURN ->
+                        notifyReturnOriginator(record, "你提交的钉钉退还审批被拒绝，资产持有状态未变化。");
+                default -> log.debug("忽略拒绝动作（bizType={}）", record.getBizType());
             }
-            case ApprovalInstance.BIZ_RETURN ->
-                    notifyReturnOriginator(record, "你提交的钉钉退还审批被拒绝，资产持有状态未变化。");
-            default -> log.debug("忽略拒绝动作（bizType={}）", record.getBizType());
+        } catch (BusinessException e) {
+            // 幂等：站内先拒绝、代执行钉钉后 refuse 事件回传时单据已终态，
+            // 被业务校验拦截属预期——终态记录（status/result）仍正常落库
+            log.warn("钉钉拒绝事件被业务校验拦截（单据可能已终态，bizType={}, bizId={}）：{}",
+                    record.getBizType(), record.getBizId(), e.getMessage());
         }
     }
 
