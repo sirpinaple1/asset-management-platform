@@ -70,6 +70,12 @@ const router = createRouter({
           meta: { title: '审批中心' }
         },
         {
+          path: 'approvals/all',
+          name: 'approvals-all',
+          component: () => import('@/views/approval/DocumentOverview.vue'),
+          meta: { title: '全部单据' }
+        },
+        {
           path: 'assets',
           name: 'assets-list',
           component: () => import('@/views/asset/AssetList.vue'),

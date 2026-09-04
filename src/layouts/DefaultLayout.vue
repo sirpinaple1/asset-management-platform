@@ -93,6 +93,9 @@ const isApprovalsRoute = computed(() => String(route.name || '').startsWith('app
 const approvalsTabActive = (key: string) =>
   route.path === '/approvals' && (String(route.query.tab || 'todo') === key)
 
+/** 超管专属入口门禁：组织架构管理（审批链配置）+ 全部单据总览 */
+const isSuperAdmin = computed(() => userStore.me?.roles?.includes('systemAdmin') ?? false)
+
 /** 二级侧边栏：基础设置菜单（对齐原型：厂商/供应商/分类/位置/型号 + 公司主体） */
 const basedataMenus = computed(() => {
   const base = [
@@ -104,8 +107,7 @@ const basedataMenus = computed(() => {
     { path: '/basedata/models', title: '型号管理' },
     { path: '/basedata/migration', title: '数据迁移' },
   ]
-  /* 组织架构管理（审批链配置）仅超管可见 */
-  if (userStore.me?.roles?.includes('systemAdmin')) {
+  if (isSuperAdmin.value) {
     base.push({ path: '/basedata/approval-configs', title: '组织架构管理' })
   }
   return base
@@ -375,6 +377,13 @@ const handleLogout = () => {
               <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M3 6C3 4.34315 4.34315 3 6 3H14C15.6569 3 17 4.34315 17 6V12C17 13.6569 15.6569 15 14 15H9L6 17.5V15H6C4.34315 15 3 13.6569 3 12V6Z" stroke="currentColor" stroke-width="1.5" /></svg>
             </span>
             <span>抄送我的</span>
+          </router-link>
+          <!-- 全部单据总览：仅超管可见（全系统单据，不按当前用户隔离） -->
+          <router-link v-if="isSuperAdmin" to="/approvals/all" class="menu-item" :class="{ active: route.path === '/approvals/all' }">
+            <span class="menu-icon">
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="4" y="2.5" width="12" height="15" rx="1.5" stroke="currentColor" stroke-width="1.5" /><line x1="7" y1="6.5" x2="13" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /><line x1="7" y1="10" x2="13" y2="10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /><line x1="7" y1="13.5" x2="10.5" y2="13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg>
+            </span>
+            <span>全部单据</span>
           </router-link>
         </nav>
 
