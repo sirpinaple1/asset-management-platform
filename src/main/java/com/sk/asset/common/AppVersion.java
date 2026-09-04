@@ -13,13 +13,15 @@ public final class AppVersion {
     }
 
     /** 后端版本号（语义：功能上线 +1 末位） */
-    public static final String VERSION = "0.1.10";
+    public static final String VERSION = "0.1.11";
 
     /** 发布日期（yyyy-MM-dd） */
     public static final String RELEASE_DATE = "2026-09-04";
 
     /** 本版本新增功能（简要，供前端帮助面板展示） */
     public static final List<String> CHANGELOG = List.of(
+            "钉钉审批模板支持同类型多模板接入（逗号分隔配置），简化测试版退还模板可独立发起并自动导入",
+            "钉钉退还单纳入审批中心：新增退还审批列表接口（含发起人与资产明细快照），我发起的页面可直接查看退还单与钉钉审批进度",
             "修复钉钉退还单资产明细解析：适配钉钉现行明细表结构（此前读不到资产编码导致导入失败），资产编码一格多码自动拆分",
             "数据安全加固：并发操作防护——同一资产不可被两张单同时占用，审批双击/双端并发不再产生重复推进与重复通知",
             "钉钉审批事件落库审计：事件先落库后处理，重复推送自动去重，异常事件留痕可查，重启不丢审批回传",
