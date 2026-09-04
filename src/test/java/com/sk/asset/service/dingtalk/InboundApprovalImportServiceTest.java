@@ -181,17 +181,28 @@ class InboundApprovalImportServiceTest {
     // ------------------------------------------------------------ 退还（TableField 资产明细 + 终审执行归还）
 
     /**
-     * 退还模板详情。资产明细 value 兼容两种钉钉返回形态：
-     * 行对象 {列组件id:值}（第一行）与 [[{name,value}单元格]]（第二行），
-     * 备注列的普通文本（"屏幕破损"）不应被误认作资产编码。
+     * 退还模板详情（生产实测形态，2026-09 核实）：明细行 = {rowValue:[单元格], rowNumber}，
+     * 单元格 = {componentType,label,value,key}；第二行无备注单元格（列可少填）。
      */
     private com.fasterxml.jackson.databind.node.ObjectNode returnDetail(
             String status, String result) throws Exception {
         Object tableObj = List.of(
-                Map.of("TextField_1HCIL3BLRT7K0", "SKBGDN374",
-                        "TextField_O5ERQQ146N40", "屏幕破损"),
-                List.of(Map.of("name", "资产编码", "value", "SKBGDN375"),
-                        Map.of("name", "备注", "value", "")));
+                Map.of("rowValue", List.of(
+                                Map.of("componentType", "TextField", "label", "资产编码",
+                                        "value", "SKBGDN374", "key", "TextField_1HCIL3BLRT7K0"),
+                                Map.of("componentType", "TextField", "label", "备注",
+                                        "value", "屏幕破损", "key", "TextField_O5ERQQ146N40")),
+                        "rowNumber", "TableField_AEDO6YHFK800_1I57DHSPT74LC"),
+                Map.of("rowValue", List.of(
+                                Map.of("componentType", "TextField", "label", "资产编码",
+                                        "value", "SKBGDN375", "key", "TextField_1HCIL3BLRT7K0")),
+                        "rowNumber", "TableField_AEDO6YHFK800_1I57DHSPT74LD"));
+        return returnDetailWithTable(tableObj, status, result);
+    }
+
+    /** 自定义资产明细表格的退还模板详情（tableObj 会被双重编码为明细 value 字符串） */
+    private com.fasterxml.jackson.databind.node.ObjectNode returnDetailWithTable(
+            Object tableObj, String status, String result) throws Exception {
         // 双重编码：明细 value 是"JSON 字符串"（内层引号需转义）
         String tableValueLiteral = objectMapper.writeValueAsString(
                 objectMapper.writeValueAsString(tableObj));
@@ -334,11 +345,69 @@ class InboundApprovalImportServiceTest {
         when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(
                 returnDetail("COMPLETED", "agree"));
         when(userDirectory.findByDdUserId(APPROVER1)).thenReturn(user(200L, "李四"));
-        when(assetMapper.selectList(any())).thenReturn(List.of(asset(10L, "SKBGDN374")));
+        // 两台资产均可解析（此前只 mock 一台，实际走"编码不存在"异常路径，掩盖了幂等语义）
+        when(assetMapper.selectList(any())).thenReturn(
+                List.of(asset(10L, "SKBGDN374"), asset(11L, "SKBGDN375")));
         when(allocationMapper.selectOne(any())).thenReturn(null); // 已无持有中记录
 
         service.executeReturn(record, 200L, "李四");
 
+        verifyNoInteractions(allocationService);
+    }
+
+    @Test
+    void 退还终审agree_一格多码_分隔符拆分逐台归还() throws Exception {
+        // 生产实测（2026-09 冯海燕单）：资产编码一格填 "SFBGIT2795/SKBGDN285"，
+        // 备注含全角分隔符（"主机／显示器"）拆出的文本片段不误命中条码
+        Object tableObj = List.of(Map.of("rowValue", List.of(
+                        Map.of("componentType", "TextField", "label", "资产编码",
+                                "value", "SFBGIT2795/SKBGDN285", "key", "TextField_1HCIL3BLRT7K0"),
+                        Map.of("componentType", "TextField", "label", "备注",
+                                "value", "主机／显示器", "key", "TextField_O5ERQQ146N40")),
+                "rowNumber", "TableField_AEDO6YHFK800_1I57DHSPT74LC"));
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(null);
+        when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(
+                returnDetailWithTable(tableObj, "COMPLETED", "agree"));
+        when(userDirectory.findByDdUserId(ORIGINATOR)).thenReturn(user(100L, "张三"));
+        when(userDirectory.findByDdUserId(APPROVER1)).thenReturn(user(200L, "李四"));
+        when(assetMapper.selectList(any())).thenReturn(
+                List.of(asset(12L, "SFBGIT2795"), asset(13L, "SKBGDN285")));
+        when(allocationMapper.selectList(any())).thenReturn(
+                List.of(activeAlloc(12L), activeAlloc(13L)));
+        when(allocationMapper.selectOne(any())).thenReturn(activeAlloc(12L), activeAlloc(13L));
+
+        ApprovalInstance result = service.tryImport(objectMapper.readTree(eventData(RETURN_CODE)));
+
+        assertEquals("COMPLETED", result.getStatus());
+        // 一格两码拆分后逐台归还（allocationId = 712/713）
+        verify(allocationService).returnAllocation(eq(712L), contains("离职退还"), eq(200L));
+        verify(allocationService).returnAllocation(eq(713L), contains("离职退还"), eq(200L));
+    }
+
+    @Test
+    void 退还导入_旧版明细形态_向后兼容() throws Exception {
+        // 旧版钉钉返回形态：行对象 {列组件id:值}（第一行）与 [[{name,value}单元格]]（第二行），
+        // 备注列普通文本（"屏幕破损"）不应被误认作资产编码
+        Object tableObj = List.of(
+                Map.of("TextField_1HCIL3BLRT7K0", "SKBGDN374",
+                        "TextField_O5ERQQ146N40", "屏幕破损"),
+                List.of(Map.of("name", "资产编码", "value", "SKBGDN375"),
+                        Map.of("name", "备注", "value", "")));
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(null);
+        when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(
+                returnDetailWithTable(tableObj, null, null));
+        when(userDirectory.findByDdUserId(ORIGINATOR)).thenReturn(user(100L, "张三"));
+        when(assetMapper.selectList(any())).thenReturn(
+                List.of(asset(10L, "SKBGDN374"), asset(11L, "SKBGDN375")));
+        when(allocationMapper.selectList(any())).thenReturn(
+                List.of(activeAlloc(10L), activeAlloc(11L)));
+
+        ApprovalInstance result = service.tryImport(objectMapper.readTree(eventData(RETURN_CODE)));
+
+        assertNotNull(result);
+        assertEquals(ApprovalInstance.BIZ_RETURN, result.getBizType());
+        assertEquals(0L, result.getBizId());
+        // 导入期不执行归还（等终审事件）
         verifyNoInteractions(allocationService);
     }
 

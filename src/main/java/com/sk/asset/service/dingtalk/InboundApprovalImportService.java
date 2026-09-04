@@ -367,10 +367,11 @@ public class InboundApprovalImportService {
 
     /**
      * 退还模板资产明细（TableField「资产明细」，列 = 资产编码/备注）→ 资产列表。
-     * 明细 value 为 JSON 字符串，行/单元格结构随钉钉版本形态不一
-     * （[[{name,value}...]] / [{列组件id:值}]），统一收集每行叶子文本值后按系统
-     * 资产条码批量匹配（备注等非条码文本自然滤除）；每行至少命中一条资产编码，
-     * 否则视为编码填写错误拒绝。
+     * 明细 value 为 JSON 字符串，行结构以生产实测形态为准（{rowValue:[单元格], rowNumber}，
+     * 2026-09 核实），兼容旧版 [[{name,value}...]] / [{列组件id:值}]；统一收集每行叶子
+     * 文本值后按系统资产条码批量匹配（备注等非条码文本自然滤除）；资产编码一格可填
+     * 多台（生产实测 "SFBGIT2795/SKBGDN285"，按分隔符拆分逐段匹配）；每行至少命中
+     * 一条资产编码，否则视为编码填写错误拒绝。
      */
     private List<Asset> resolveReturnAssets(JsonNode detail, String instanceId) {
         String raw = formValue(detail, "资产明细");
@@ -392,8 +393,14 @@ public class InboundApprovalImportService {
             collectLeafTexts(row, vals);
             rowValues.add(vals);
         }
-        List<String> candidates = rowValues.stream().flatMap(List::stream)
-                .map(String::trim).filter(s -> !s.isEmpty()).distinct().toList();
+        // 一格多码（生产实测一格填 "SFBGIT2795/SKBGDN285"）：按分隔符拆分后逐段匹配，
+        // 备注列普通文本拆出的片段不命中条码，自然滤除
+        List<List<String>> rowCodes = rowValues.stream()
+                .map(vals -> vals.stream()
+                        .flatMap(v -> Arrays.stream(v.split("[/／,，、]")))
+                        .map(String::trim).filter(s -> !s.isEmpty()).toList())
+                .toList();
+        List<String> candidates = rowCodes.stream().flatMap(List::stream).distinct().toList();
         if (candidates.isEmpty()) {
             throw new BusinessException(400, "钉钉表单资产明细为空（instanceId=" + instanceId + "）");
         }
@@ -401,10 +408,10 @@ public class InboundApprovalImportService {
                         .in(Asset::getBarcode, candidates)).stream()
                 .collect(Collectors.toMap(Asset::getBarcode, Function.identity(), (a, b) -> a));
         Set<Long> seen = new LinkedHashSet<>();
-        for (int i = 0; i < rowValues.size(); i++) {
+        for (int i = 0; i < rowCodes.size(); i++) {
             boolean hit = false;
-            for (String v : rowValues.get(i)) {
-                Asset asset = byBarcode.get(v.trim());
+            for (String v : rowCodes.get(i)) {
+                Asset asset = byBarcode.get(v);
                 if (asset != null) {
                     hit = true;
                     seen.add(asset.getId());
@@ -412,7 +419,7 @@ public class InboundApprovalImportService {
             }
             if (!hit) {
                 throw new BusinessException(400, "钉钉表单资产明细第 " + (i + 1)
-                        + " 行资产编码在系统中不存在：" + String.join("、", rowValues.get(i)));
+                        + " 行资产编码在系统中不存在：" + String.join("、", rowCodes.get(i)));
             }
         }
         return seen.stream().map(id -> byBarcode.values().stream()
@@ -420,7 +427,12 @@ public class InboundApprovalImportService {
                 .filter(Objects::nonNull).toList();
     }
 
-    /** 递归收集节点叶子文本值（TableField 行内容兼容 {name,value} 单元格 / {列id:值} 行 / 纯文本数组） */
+    /**
+     * 递归收集节点叶子文本值（TableField 行内容兼容多种钉钉返回形态）：
+     * 生产实测行对象 {rowValue:[{componentType,label,value,key}...], rowNumber:...}
+     * （递归下钻 rowValue 数组）；旧版 {name,value} 单元格数组 / {列组件id:值} 行对象 /
+     * 纯文本数组。rowNumber 为行结构元数据，跳过不收集。
+     */
     private void collectLeafTexts(JsonNode node, List<String> out) {
         if (node.isTextual()) {
             out.add(node.asText());
@@ -429,14 +441,14 @@ public class InboundApprovalImportService {
         } else if (node.isObject()) {
             JsonNode value = node.path("value");
             if (value.isTextual()) {
-                // 单元格 {name: 列名, value: 填写值}：只取填写值
+                // 单元格 {name/label: 列名, value: 填写值}：只取填写值（componentType/key 等元数据滤除）
                 out.add(value.asText());
                 return;
             }
-            // 行对象 {列组件id: 填写值}：取全部文本属性值
+            // 行对象：文本属性 = 旧版 {列id:值} 形态直接取值；嵌套结构（rowValue 数组）递归下钻
             node.properties().forEach(e -> {
-                if (e.getValue().isTextual()) {
-                    out.add(e.getValue().asText());
+                if (!"rowNumber".equals(e.getKey())) {
+                    collectLeafTexts(e.getValue(), out);
                 }
             });
         }
