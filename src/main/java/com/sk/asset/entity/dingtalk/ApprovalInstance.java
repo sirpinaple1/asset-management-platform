@@ -59,6 +59,9 @@ public class ApprovalInstance {
     /** 钉钉审批结果：agree/refuse */
     private String result;
 
+    /** 关联资产 id（退还单导入时快照，逗号分隔；其余类型为空） */
+    private String assetIds;
+
     /** 事件回调明细（JSON 数组字符串，按次追加，审计用） */
     private String callbacks;
 

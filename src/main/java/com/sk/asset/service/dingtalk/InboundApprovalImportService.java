@@ -138,11 +138,11 @@ public class InboundApprovalImportService {
 
         try {
             return switch (template) {
-                case TEMPLATE_BIZ_RECEIVE -> importReceipt(detail, applicant, TEMPLATE_BIZ_RECEIVE, "RECEIVE", instanceId);
-                case TEMPLATE_BIZ_BORROW -> importReceipt(detail, applicant, TEMPLATE_BIZ_BORROW, "BORROW", instanceId);
-                case TEMPLATE_BIZ_TRANSFER -> importTransfer(detail, applicant, instanceId);
-                case TEMPLATE_BIZ_CHANGE -> importChange(detail, applicant, instanceId);
-                case TEMPLATE_BIZ_RETURN -> importReturn(detail, instanceId);
+                case TEMPLATE_BIZ_RECEIVE -> importReceipt(detail, applicant, TEMPLATE_BIZ_RECEIVE, "RECEIVE", instanceId, processCode);
+                case TEMPLATE_BIZ_BORROW -> importReceipt(detail, applicant, TEMPLATE_BIZ_BORROW, "BORROW", instanceId, processCode);
+                case TEMPLATE_BIZ_TRANSFER -> importTransfer(detail, applicant, instanceId, processCode);
+                case TEMPLATE_BIZ_CHANGE -> importChange(detail, applicant, instanceId, processCode);
+                case TEMPLATE_BIZ_RETURN -> importReturn(detail, instanceId, processCode);
                 default -> null;
             };
         } catch (BusinessException e) {
@@ -163,13 +163,22 @@ public class InboundApprovalImportService {
         }
     }
 
+    /**
+     * 事件 processCode → 模板 key。同一业务类型可配置多个模板（逗号分隔，
+     * 如正式版 + 简化测试版），命中任一即按该业务类型导入。
+     */
     private String matchTemplate(String processCode) {
         var codes = props.getProcessCodes();
         for (String key : List.of(TEMPLATE_BIZ_RECEIVE, TEMPLATE_BIZ_BORROW,
                 TEMPLATE_BIZ_TRANSFER, TEMPLATE_BIZ_CHANGE, TEMPLATE_BIZ_RETURN)) {
-            String code = codes.get(key);
-            if (code != null && !code.isBlank() && code.equals(processCode)) {
-                return key;
+            String configured = codes.get(key);
+            if (configured == null || configured.isBlank()) {
+                continue;
+            }
+            for (String code : configured.split(",")) {
+                if (processCode.equals(code.trim())) {
+                    return key;
+                }
             }
         }
         return null;
@@ -178,7 +187,8 @@ public class InboundApprovalImportService {
     // ------------------------------------------------------------ 领用 / 借用（两级审批链）
 
     private ApprovalInstance importReceipt(JsonNode detail, UserResp applicant,
-                                           String templateKey, String receiptType, String instanceId) {
+                                           String templateKey, String receiptType, String instanceId,
+                                           String processCode) {
         // 审批人快照以钉钉 tasks 为准（两级 AND 节点同人合并）
         ApprovalChainResolver.ResolvedChain chain = resolveApproversFromTasks(detail, instanceId);
         // 系统红线"审批人与申请人不能是同一人"（approve 时 403）——导入前预检：
@@ -200,13 +210,14 @@ public class InboundApprovalImportService {
 
         ReceiveReceipt receipt = receiveReceiptService.createFromDingtalk(
                 req, applicant.id(), applicant.name(), chain);
-        return insertRecord(bizTypeOf(templateKey), templateKey,
+        return insertRecord(bizTypeOf(templateKey), processCode,
                 receipt.getId(), receipt.getSerialNo(), detail, instanceId);
     }
 
     // ------------------------------------------------------------ 调拨（审批人 = 调入方 toUserId）
 
-    private ApprovalInstance importTransfer(JsonNode detail, UserResp applicant, String instanceId) {
+    private ApprovalInstance importTransfer(JsonNode detail, UserResp applicant, String instanceId,
+                                            String processCode) {
         // 入口 A 契约：钉钉审批人 = 调入方 → toUserId 以钉钉 tasks 为准（表单"目标使用人"不覆盖）
         UserResp approver = resolveFirstApprover(detail, instanceId);
 
@@ -222,13 +233,14 @@ public class InboundApprovalImportService {
 
         TransferOrder order = transferOrderService.createFromDingtalk(
                 req, applicant.id(), applicant.name());
-        return insertRecord(ApprovalInstance.BIZ_TRANSFER, TEMPLATE_BIZ_TRANSFER,
+        return insertRecord(ApprovalInstance.BIZ_TRANSFER, processCode,
                 order.getId(), order.getSerialNo(), detail, instanceId);
     }
 
     // ------------------------------------------------------------ 变更（审批人 = 处理人 assignee）
 
-    private ApprovalInstance importChange(JsonNode detail, UserResp applicant, String instanceId) {
+    private ApprovalInstance importChange(JsonNode detail, UserResp applicant, String instanceId,
+                                          String processCode) {
         // 入口 A 契约：钉钉审批人 = 处理人 → assigneeUserId 以钉钉 tasks 为准
         UserResp approver = resolveFirstApprover(detail, instanceId);
 
@@ -247,7 +259,7 @@ public class InboundApprovalImportService {
 
         ChangeOrder order = changeOrderService.createFromDingtalk(
                 req, applicant.id(), applicant.name());
-        return insertRecord(ApprovalInstance.BIZ_CHANGE, TEMPLATE_BIZ_CHANGE,
+        return insertRecord(ApprovalInstance.BIZ_CHANGE, processCode,
                 order.getId(), order.getSerialNo(), detail, instanceId);
     }
 
@@ -258,7 +270,7 @@ public class InboundApprovalImportService {
      * （bizId=0，无系统单据）。实例终审 agree 由 {@link #executeReturn} 执行归还；
      * 拒绝/撤销仅通知发起人，资产不动。
      */
-    private ApprovalInstance importReturn(JsonNode detail, String instanceId) {
+    private ApprovalInstance importReturn(JsonNode detail, String instanceId, String processCode) {
         // 导入期校验持有关系：给发起人即时反馈（无持有记录的资产退还无意义，等终审才发现就晚了）
         List<Asset> assets = resolveReturnAssets(detail, instanceId);
         Set<Long> held = allocationMapper.selectList(new LambdaQueryWrapper<AssetAllocation>()
@@ -271,8 +283,9 @@ public class InboundApprovalImportService {
             throw new BusinessException(400, "钉钉表单资产当前无持有记录（可能已归还，无需退还）："
                     + String.join("、", notHeld));
         }
-        return insertRecord(ApprovalInstance.BIZ_RETURN, TEMPLATE_BIZ_RETURN,
-                0L, null, detail, instanceId);
+        return insertRecord(ApprovalInstance.BIZ_RETURN, processCode,
+                0L, null, detail, instanceId,
+                assets.stream().map(a -> String.valueOf(a.getId())).collect(Collectors.joining(",")));
     }
 
     /**
@@ -325,6 +338,13 @@ public class InboundApprovalImportService {
             alertAdmins("钉钉退还终审执行失败（" + e.getMessage() + "），请人工核对归还"
                     + "（钉钉实例 " + instanceId + "）");
             return;
+        }
+        // 资产快照自愈：存量记录（快照列上线前导入）无 assetIds 时回填，供审批中心列表展示
+        if (record.getAssetIds() == null || record.getAssetIds().isBlank()) {
+            approvalInstanceMapper.update(null, new LambdaUpdateWrapper<ApprovalInstance>()
+                    .eq(ApprovalInstance::getId, record.getId())
+                    .set(ApprovalInstance::getAssetIds, assets.stream()
+                            .map(a -> String.valueOf(a.getId())).collect(Collectors.joining(","))));
         }
         String reason = formValue(detail, "归还原因");
         String remark = formValue(detail, "备注");
@@ -622,17 +642,25 @@ public class InboundApprovalImportService {
     }
 
     /** 落映射记录（sync_status=SYNCED：实例已存在于钉钉侧，非本系统推送） */
-    private ApprovalInstance insertRecord(String bizType, String templateKey, Long bizId,
+    private ApprovalInstance insertRecord(String bizType, String processCode, Long bizId,
                                           String serialNo, JsonNode detail, String instanceId) {
+        return insertRecord(bizType, processCode, bizId, serialNo, detail, instanceId, null);
+    }
+
+    /** 带资产快照的导入（退还：assetIds 逗号分隔，供审批中心列表展示明细） */
+    private ApprovalInstance insertRecord(String bizType, String processCode, Long bizId,
+                                          String serialNo, JsonNode detail, String instanceId,
+                                          String assetIds) {
         ApprovalInstance record = new ApprovalInstance();
         record.setBizType(bizType);
         record.setBizId(bizId);
-        record.setProcessCode(props.getProcessCodes().get(templateKey));
+        record.setProcessCode(processCode);
         record.setProcessInstanceId(instanceId);
         record.setTitle(detail.path("title").asText(""));
         record.setOriginatorDdUserId(detail.path("originator_userid").asText(""));
         record.setSyncStatus(ApprovalInstance.SYNC_SYNCED);
         record.setStatus(detailStatusOf(detail));
+        record.setAssetIds(assetIds);
         approvalInstanceMapper.insert(record);
         // 回填单据 dingtalk_instance_id（与入口 A 同步后回填对齐，审批中心区分站内/钉钉通道展示）
         backfillInstanceId(bizType, bizId, instanceId);

@@ -243,6 +243,31 @@ class InboundApprovalImportServiceTest {
     }
 
     @Test
+    void 退还导入_多模板配置_简化版模板同样导入且落真实processCode() throws Exception {
+        // 同业务类型配置两个模板（正式版 + 简化测试版，逗号分隔）
+        props.getProcessCodes().put("return", RETURN_CODE + ",PROC-RETURN-SIMPLE");
+        when(approvalInstanceMapper.selectOne(any())).thenReturn(null);
+        when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(returnDetail(null, null));
+        when(userDirectory.findByDdUserId(ORIGINATOR)).thenReturn(user(100L, "张三"));
+        when(assetMapper.selectList(any())).thenReturn(
+                List.of(asset(10L, "SKBGDN374"), asset(11L, "SKBGDN375")));
+        when(allocationMapper.selectList(any())).thenReturn(
+                List.of(activeAlloc(10L), activeAlloc(11L)));
+
+        // 简化版模板发起的实例：命中 return 类型，正常导入
+        ApprovalInstance result = service.tryImport(
+                objectMapper.readTree(eventData("PROC-RETURN-SIMPLE")));
+
+        assertNotNull(result);
+        assertEquals(ApprovalInstance.BIZ_RETURN, result.getBizType());
+        // 落库 processCode 为事件真实命中的模板（非配置整串）
+        assertEquals("PROC-RETURN-SIMPLE", result.getProcessCode());
+        assertEquals("10,11", result.getAssetIds());
+        // 未配置的模板仍不导入
+        assertNull(service.tryImport(objectMapper.readTree(eventData("PROC-UNKNOWN"))));
+    }
+
+    @Test
     void 退还导入_解析资产明细_仅落映射记录不动业务() throws Exception {
         when(approvalInstanceMapper.selectOne(any())).thenReturn(null);
         when(apiClient.getProcessInstance(INSTANCE_ID)).thenReturn(returnDetail(null, null));
@@ -379,6 +404,8 @@ class InboundApprovalImportServiceTest {
         ApprovalInstance result = service.tryImport(objectMapper.readTree(eventData(RETURN_CODE)));
 
         assertEquals("COMPLETED", result.getStatus());
+        // 资产快照随导入落库（供审批中心列表展示）
+        assertEquals("12,13", result.getAssetIds());
         // 一格两码拆分后逐台归还（allocationId = 712/713）
         verify(allocationService).returnAllocation(eq(712L), contains("离职退还"), eq(200L));
         verify(allocationService).returnAllocation(eq(713L), contains("离职退还"), eq(200L));
@@ -407,6 +434,7 @@ class InboundApprovalImportServiceTest {
         assertNotNull(result);
         assertEquals(ApprovalInstance.BIZ_RETURN, result.getBizType());
         assertEquals(0L, result.getBizId());
+        assertEquals("10,11", result.getAssetIds());
         // 导入期不执行归还（等终审事件）
         verifyNoInteractions(allocationService);
     }

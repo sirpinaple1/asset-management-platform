@@ -397,8 +397,12 @@ public class ApprovalSyncServiceImpl implements ApprovalSyncService {
     }
 
     private String processCode(String key) {
+        // 入口 A 推送只用主模板：配置多模板（逗号分隔，如正式版+简化测试版）时取第一个
         String code = props.getProcessCodes().get(key);
-        return (code == null || code.isBlank()) ? null : code;
+        if (code == null || code.isBlank()) {
+            return null;
+        }
+        return code.split(",")[0].trim();
     }
 
     private Map<Long, Asset> loadAssets(List<Long> assetIds) {

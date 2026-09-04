@@ -62,9 +62,11 @@ app:
     # 部门树同步 cron（默认每日 02:40，启动时也会全量同步一次）
     # dept-sync-cron: "0 40 2 * * ?"
     # 单据类型 → 审批模板 processCode（开放平台 → 审批 → 模板唯一码）
+    # 同一类型可配多个模板（逗号分隔，如正式版 + 简化测试版），命中任一即按该类型导入；
+    # 站内单据推送（入口 A）始终用第一个
     process-codes:
       receive: PROC-xxxxxxxx-xxxx  # 领用
       borrow:  PROC-xxxxxxxx-xxxx  # 借用
       transfer: PROC-xxxxxxxx-xxxx # 调拨
       change:  PROC-xxxxxxxx-xxxx  # 实物变更
-      return:  PROC-xxxxxxxx-xxxx  # 退还（终审通过后系统自动执行归还）
+      return:  PROC-xxxxxxxx-xxxx,PROC-yyyyyyyy-yyyy  # 退还（终审通过后系统自动执行归还）
