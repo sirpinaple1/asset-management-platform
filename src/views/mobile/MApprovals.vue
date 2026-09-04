@@ -171,6 +171,7 @@ import {
 import type { ApprovalBizType, ApprovalItem } from '@/api/interface/approval'
 import type { ReceiveReceipt, ReceiptItem } from '@/api/interface/receipt'
 import type { TransferOrder } from '@/api/interface/transfer'
+import type { ReturnApproval } from '@/api/interface/returnApproval'
 
 const route = useRoute()
 const router = useRouter()
@@ -228,6 +229,18 @@ const curList = computed(() => (tab.value === 'todo' ? todoList.value : mineList
 /** 单据明细（领用/借用/调拨均有 items） */
 const detailItems = computed<ReceiptItem[]>(() => {
   if (!detail.value) return []
+  if (detail.value.bizType === 'RETURN') {
+    // 钉钉退还单：资产快照映射为明细行展示
+    const ret = detail.value.raw as ReturnApproval
+    return (ret.assets || []).map((a) => ({
+      id: a.id,
+      receiptId: 0,
+      assetId: a.id,
+      assetBarcode: a.barcode,
+      assetName: a.name,
+      createdAt: ret.createdAt,
+    })) as ReceiptItem[]
+  }
   const raw = detail.value.raw as ReceiveReceipt & { items?: ReceiptItem[] }
   return raw.items || []
 })

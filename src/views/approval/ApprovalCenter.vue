@@ -25,6 +25,7 @@ import IconDocReceive from '@/components/icons/IconDocReceive.vue'
 import IconDocBorrow from '@/components/icons/IconDocBorrow.vue'
 import IconDocTransfer from '@/components/icons/IconDocTransfer.vue'
 import IconDocChange from '@/components/icons/IconDocChange.vue'
+import IconDocReturn from '@/components/icons/IconDocReturn.vue'
 
 /**
  * 审批中心：M04 领用/借用 + M05 调拨 + M06 变更三类单据的统一处理入口（共享池语义——
@@ -74,12 +75,12 @@ const tabs = computed(() => [
 
 /* ---------------- 类型筛选 chips ---------------- */
 type TypeKey = 'ALL' | ApprovalBizType
-const TYPE_KEYS: TypeKey[] = ['ALL', 'RECEIVE', 'BORROW', 'TRANSFER', 'CHANGE']
+const TYPE_KEYS: TypeKey[] = ['ALL', 'RECEIVE', 'BORROW', 'TRANSFER', 'CHANGE', 'RETURN']
 const activeType = ref<TypeKey>('ALL')
 
 const typeChips = computed(() => [
   { key: 'ALL' as TypeKey, label: '全部类型' },
-  ...(['RECEIVE', 'BORROW', 'TRANSFER', 'CHANGE'] as ApprovalBizType[]).map((key) => ({
+  ...(['RECEIVE', 'BORROW', 'TRANSFER', 'CHANGE', 'RETURN'] as ApprovalBizType[]).map((key) => ({
     key: key as TypeKey,
     label: APPROVAL_BIZ_META[key].label,
   })),
@@ -346,9 +347,11 @@ const handleReject = async (row: ApprovalItem) => {
   }
 }
 
-/* 详情：深链跳对应列表页，?id= 自动打开详情抽屉 */
+/* 详情：深链跳对应列表页，?id= 自动打开详情抽屉（钉钉退还单无系统单据，不跳转） */
 const goDetail = (row: ApprovalItem) => {
-  router.push({ path: APPROVAL_BIZ_META[row.bizType].listPath, query: { id: String(row.bizId) } })
+  const meta = APPROVAL_BIZ_META[row.bizType]
+  if (!meta.listPath) return
+  router.push({ path: meta.listPath, query: { id: String(row.bizId) } })
 }
 
 /* ---------------- 输入与触发：Ctrl+F 聚焦搜索 ---------------- */
@@ -369,6 +372,7 @@ const BIZ_ICONS: Record<ApprovalBizType, Component> = {
   BORROW: IconDocBorrow,
   TRANSFER: IconDocTransfer,
   CHANGE: IconDocChange,
+  RETURN: IconDocReturn,
 }
 
 const bizLabel = (row: ApprovalItem) => APPROVAL_BIZ_META[row.bizType].label
@@ -503,7 +507,7 @@ const emptyText = computed(() =>
                 拒绝
               </el-button>
             </template>
-            <el-button link type="primary" @click="goDetail(row)">详情</el-button>
+            <el-button v-if="row.bizType !== 'RETURN'" link type="primary" @click="goDetail(row)">详情</el-button>
           </template>
         </el-table-column>
       </el-table>

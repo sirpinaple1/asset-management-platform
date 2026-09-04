@@ -9,12 +9,14 @@
 import type { ReceiveReceipt } from './receipt'
 import type { TransferOrder } from './transfer'
 import type { ChangeOrder } from './change'
+import type { ReturnApproval } from './returnApproval'
 import { RECEIPT_STATUS_META } from './receipt'
 import { TRANSFER_STATUS_META } from './transfer'
 import { CHANGE_STATUS_META } from './change'
+import { returnStatusTag } from './returnApproval'
 
 /** 参与审批中心的单据类型 */
-export type ApprovalBizType = 'RECEIVE' | 'BORROW' | 'TRANSFER' | 'CHANGE'
+export type ApprovalBizType = 'RECEIVE' | 'BORROW' | 'TRANSFER' | 'CHANGE' | 'RETURN'
 
 /** 审批中心 tab：待我处理 / 我发起的 / 我处理的 / 抄送我的（DOC_CC 通知） */
 export type ApprovalTabKey = 'todo' | 'mine' | 'handled' | 'cc'
@@ -37,7 +39,7 @@ export interface ApprovalItem {
   status: string
   createdAt: string
   /** 原始单据（行内操作/详情跳转取字段用） */
-  raw: ReceiveReceipt | TransferOrder | ChangeOrder
+  raw: ReceiveReceipt | TransferOrder | ChangeOrder | ReturnApproval
 }
 
 /** 待办分区：定向给我 vs 共享池（审批中心待我处理 tab 的两级分区） */
@@ -61,6 +63,8 @@ export const APPROVAL_BIZ_META: Record<ApprovalBizType, { label: string; listPat
   BORROW: { label: '借用', listPath: '/receipts/borrow' },
   TRANSFER: { label: '调拨', listPath: '/transfers' },
   CHANGE: { label: '变更', listPath: '/changes' },
+  /** 钉钉发起的退还：无系统单据，无列表页落点（不跳详情） */
+  RETURN: { label: '退还', listPath: '' },
 }
 
 /** tab 展示配置 */
@@ -92,6 +96,10 @@ export function approvalStatusTag(item: ApprovalItem): { label: string; tagType:
       const raw = item.raw as ChangeOrder
       const meta = CHANGE_STATUS_META[raw.status]
       return { label: raw.statusLabel || meta.label, tagType: meta.tagType }
+    }
+    case 'RETURN': {
+      const raw = item.raw as ReturnApproval
+      return returnStatusTag(raw)
     }
   }
 }

@@ -20,9 +20,13 @@ export const useApprovalStore = defineStore('approval', () => {
   /** 待我处理数（PENDING 且非我发起；变更单含自己发起——后端允许自审） */
   const todoCount = computed(() => items.value.filter((it) => isTodoFor(it, meUserId())).length)
 
-  /** 我发起的进行中数 */
-  const mineActiveCount = computed(
-    () => items.value.filter((it) => isMine(it, meUserId()) && it.status === 'PENDING').length,
+  /** 我发起的进行中数（含钉钉退还单审批中） */
+  const mineActiveCount = computed(() =>
+    items.value.filter(
+      (it) =>
+        isMine(it, meUserId()) &&
+        (it.status === 'PENDING' || (it.bizType === 'RETURN' && it.status === 'RUNNING')),
+    ).length,
   )
 
   /** 我处理的数（审批人/确认人是我，含拒绝记录） */

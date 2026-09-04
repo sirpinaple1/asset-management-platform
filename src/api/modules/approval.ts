@@ -1,6 +1,8 @@
 import { receiptApi } from './receipt'
 import { transferApi } from './transfer'
 import { changeApi } from './change'
+import { returnApprovalApi } from './returnApproval'
+import type { ReturnApproval } from '@/api/interface/returnApproval'
 import type { ApprovalItem } from '@/api/interface/approval'
 import type { ReceiveReceipt } from '@/api/interface/receipt'
 import type { TransferOrder } from '@/api/interface/transfer'
@@ -75,16 +77,35 @@ const fromChange = (c: ChangeOrder): ApprovalItem => {
   }
 }
 
-/** 拉取三类单据并归一化（按申请时间倒序） */
+/** 钉钉退还单摘要：N 台资产 · 编码列表（无系统单据，状态以钉钉实例为准，仅"我发起的"可见） */
+const fromReturn = (r: ReturnApproval): ApprovalItem => {
+  const assets = r.assets || []
+  const codes = assets.map((a) => a.barcode).join('、')
+  return {
+    bizType: 'RETURN',
+    bizId: r.id,
+    serialNo: r.title,
+    applicantUserId: r.applicantUserId ?? 0,
+    applicantName: r.applicantName ?? undefined,
+    summary: assets.length ? `${assets.length} 台资产${codes ? ` · ${codes}` : ''}` : '钉钉退还单',
+    status: r.status,
+    createdAt: r.createdAt,
+    raw: r,
+  }
+}
+
+/** 拉取四类单据并归一化（按申请时间倒序） */
 export async function fetchAllApprovalItems(): Promise<ApprovalItem[]> {
-  const [receipts, transfers, changes] = await Promise.allSettled([
+  const [receipts, transfers, changes, returns] = await Promise.allSettled([
     receiptApi.getReceipts(),
     transferApi.getTransfers(),
     changeApi.getChangeOrders(),
+    returnApprovalApi.getReturnApprovals(),
   ])
   const items: ApprovalItem[] = []
   if (receipts.status === 'fulfilled') items.push(...receipts.value.map(fromReceipt))
   if (transfers.status === 'fulfilled') items.push(...transfers.value.map(fromTransfer))
   if (changes.status === 'fulfilled') items.push(...changes.value.map(fromChange))
+  if (returns.status === 'fulfilled') items.push(...returns.value.map(fromReturn))
   return items.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
 }
