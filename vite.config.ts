@@ -12,6 +12,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [vue()],
+    build: {
+      // 产物目录不能用默认 assets：会与 SPA 路由 /assets 撞名，
+      // 刷新该路由时 nginx 命中真实目录（无索引页）返回 403
+      assetsDir: 'static'
+    },
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url))
