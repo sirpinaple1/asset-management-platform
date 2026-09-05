@@ -1,10 +1,10 @@
 import { request } from '@/api/config/request'
 
 // 前端版本信息（唯一来源）
-export const FRONTEND_VERSION = '0.3.3'
-export const RELEASE_DATE = '2026-09-04'
+export const FRONTEND_VERSION = '0.3.4'
+export const RELEASE_DATE = '2026-09-05'
 export const CHANGELOG: string[] = [
-  '修复资产列表页刷新/直达链接 403：Vite 构建产物目录由 assets 改为 static，消除与 SPA 路由 /assets 的目录撞名（此前 nginx 命中真实资源目录且无索引页导致 403）',
+  '部署配置纳入仓库管理：nginx.conf / nginx.main.conf / Dockerfile / .dockerignore 由服务器未跟踪文件入库，镜像构建输入全部可追溯，消除单点丢失风险',
   '审批中心「我发起的」纳入钉钉退还单：展示发起人、资产明细与钉钉审批状态（审批中/已归还/已拒绝/已撤销），终审通过后资产自动归还，状态在列表直观可见',
   '新增超管「全部单据」总览页：领用/借用/调拨/变更/钉钉退还/退库归还六类单据全系统统一视图（不按当前用户隔离），支持状态/类型/关键词筛选与深链，仅 systemAdmin 可见',
   '扫码识别率提升：新增页内连续扫码（zxing 逐帧解码 + 取景框引导 + 手电筒），对旧条形码容错远高于单次拍照识别；HTTPS 环境自动启用，摄像头不可用时降级钉钉原生扫码',

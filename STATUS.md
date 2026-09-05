@@ -6,12 +6,11 @@
 
 ## 当前阶段
 
-**钉钉免登上线（2026-09-02，v0.1.11/0.1.12 已推）**：
-- 钉钉 PC/手机工作台打开系统静默免登（authCode→`/auth-api/api/dingtalk/getUserInfo`→dd_user_id 映射→Redis token），401 自动静登重进；浏览器内仍走 auth-center
-- 服务器侧：网关 80 端口从 301 跳 HTTPS 改为直接代理（钉钉入口 HTTP，规避自签证书）；comm_public_basic 免登兑换密钥切到 stream 应用 `dingva0y6beuzfsrculs`（私改仓，随镜像部署不提交）
-- 安全补丁：生产 token TTL 从永久(-1) 收紧为 **4 小时**（compose 注入 `AUTH_TOKEN_TTLSECONDS=14400`），旧永久 token 已清除；登录页跳转改相对路径 `/auth-center`（http 入口不再撞自签证书）
-- 免登载体应用：钉钉开发者后台已配好网页应用能力（首页地址 `http://193.112.174.178/?corpid=$CORPID$`）
-- 生产遗留：服务器 2026-09-27 到期需续费；`.env.production` 由部署脚本 `deploy-frontend.sh` 注入（corpId 等）
+**部署运维加固（2026-09-05，v0.3.4 已推）**：/assets 刷新 403 修复收尾 + 镜像构建配置入库。前端开发回归主线，push 即部署。
+
+- 上线拓扑：`asset-gateway`(nginx) 反代 → `asset-frontend`(nginx 容器 serve dist) + `asset-backend`(6006) 等；部署脚本 `/srv/deploy/deploy-frontend.sh`（webhook 触发：git pull → node 容器 vite build → compose 重建 → 探活）
+- `/assets` 刷新 403 根因：Vite 默认 `assetsDir: 'assets'` 与 SPA 路由撞名，容器内 nginx `location /assets/`（长缓存块）命中真实产物目录无索引页；修复=前端产物目录改 `static` + 容器 nginx 缓存块同步改 `/static/`（v0.3.3）
+- `nginx.conf` / `nginx.main.conf` / `Dockerfile` / `.dockerignore` 原为服务器 `/srv/app/asset-frontend/` 未跟踪文件（不在 git，仅存服务器），本次纳入仓库管理，镜像构建输入全部可追溯（v0.3.4）
 
 ## 已完成（按里程碑）
 
@@ -36,6 +35,17 @@
   - LocationModal：父位置 el-tree-select（不限层级），编辑时剔除自身及子孙防环
   - 资产 spec 全链：AssetModal 细则输入（maxlength 500 对齐后端 varchar(500)、占位"如：16G内存/512G固态"）、列表列、详情抽屉；AssetQuery 不支持 spec 搜索仅展示；导出"细则"列由后端提供前端零改动
 - [x] **帮助面板版本信息**（08-31）：左下角问号 → el-drawer（贴左侧）前后端版本分开展示——前端版本直渲 `src/version.ts` 常量（唯一来源），后端版本打开时拉一次 `GET /v1/version`，失败显示"后端版本获取失败"占位不弹错；`request` 封装新增 `skipErrorToast` 静默选项；AGENTS.md 建立并写入版本号纪律（每次 push 末位 +1 + CHANGELOG 增补）
+- [x] **移动端 H5 改版 + 扫码增强**（09-03，0076275/fd9ec34/af5689a 已推，v0.1.18~0.1.20）：
+  - MobileLayout 底部导航改版：SVG 线性图标 + 中央凸起 FAB「发起」，tabbar fixed 钉底不随内容滚动；全部页面承袭 PC 端设计 token（颜色/圆角/阴影），骨架屏 shimmer、卡片错峰入场，适配 `prefers-reduced-motion`
+  - MApply 发起申请两步向导（领用/借用切换 → 搜索多选闲置资产 → 区域树弹层 + 部门/事由）；MProfile 我的页（账户/角色/版本/退出）
+  - 扫码兼容旧 Code 128 条形码：AIM 制式前缀剥离、编码→序列号精确→模糊命中链、多候选匹配、空结果自动切条码模式重扫；后续追加 zxing 页内连续扫码（取景框 + 手电筒，HTTPS 环境启用）
+  - 服务器 `index.html` 加 `Cache-Control: no-cache` 根治钉钉 webview 缓存旧版
+- [x] **审批中心扩展 + 403 修复 + 配置入库**（09-03~09-05，4bb54e5/676bdaa/本次 已推，v0.3.2~0.3.4）：
+  - 超管「全部单据」总览页 `/approvals/all`：领用/借用/调拨/变更/钉钉退还/退库归还六类单据全系统统一视图（**不按登录用户隔离**），状态/类型/关键词筛选 + 分页 + 深链，仅 systemAdmin 可见（侧边栏入口 + 页内门禁）
+  - 审批中心「我发起的」纳入钉钉退还单：发起人/资产明细/钉钉审批状态（审批中/已归还/已拒绝/已撤销），终审通过资产自动归还；移动端明细同步适配
+  - 版本号规则确立：末位满 9 进中位（0.1.21 → 0.3.1 折算），后续按此递增
+  - `/assets` 刷新 403 修复：`vite.config.ts` `assetsDir: 'static'`（产物目录与 SPA 路由解耦），服务器容器 nginx 长缓存块同步改 `/static/`，缓存头验证通过（static 30d immutable / html no-cache）
+  - `nginx.conf`/`nginx.main.conf`/`Dockerfile`/`.dockerignore` 纳入仓库（原服务器未跟踪文件，deploy 脚本 `git pull` 后即用仓库版本构建镜像）
 - [x] **钉钉免登 + 安全收紧**（09-02，acbfb8f/25188b1 已推）：
   - 免登链路：`src/utils/dingtalk.ts`（JSAPI 检测/corpId 解析/authCode 兑换，requestAuthCode 必须包 `dd.ready`——PC 钉钉硬要求）；路由守卫钉钉容器内静默免登、失败降级登录页；401 拦截器钉钉内刷新页面重登（浏览器跳 auth-center 不变）；退出登录在钉钉内变为"重置并重登"
   - tab 未读角标 + 退出登录跳 auth-center（returnUrl 带回）
@@ -52,16 +62,16 @@
 | keep-alive | 缓存键 = 路由 name，组件 `defineOptions({ name })` 必须对齐 |
 | 错误提示 | 后端 400 业务错误由 axios 拦截器统一 ElMessage 展示，页面不二次处理 |
 | 提交载荷 | 文本 trim、空值归一 undefined（不发空串）；可编辑 code/path 类字段由后端生成，前端契约不提交 |
-| 提交门禁 | `npx vue-tsc --noEmit` 零错误（约 10s）；改动先落工作区，经用户确认后 commit 推 `feat/m02-basedata` |
+| 提交门禁 | `npx vue-tsc --noEmit` 零错误（约 10s）；改动先落工作区，经用户确认后 commit 推 `main`（push 即自动部署） |
 | 深链同步 | 列表筛选/搜索词/页码同步 URL query（replace 不产生历史），`?id=` 定位编辑/详情、`?compose=1` 弹发起弹窗 |
 
 ## 本地联调环境
 
-- 前端 dev：worktree `.worktrees/feat-m02-basedata`，端口 **5173**；asset-backend **6006**，接口前缀 `/api/v1`
+- 前端 dev：主仓 main 工作区（worktree 已停），端口 **5173**；asset-backend **6006**，接口前缀 `/api/v1`
 - auth 链路：comm_public_basic **6002**（登录 `POST /login/check`，RSA 加密）；auth-center-frontend 8321
 - 联调账号：`assetfe / Asset@2026`（userId=787，角色 asset-资产管理员）；备选 `SK9802`
 - ⚠️ 403"尚未分配 asset 系统角色"复发性坑：密码被重置回默认 123456 会触发 comm_public_basic 默认密码拦截 → 直写本地库 bcrypt 修复
 
 ---
 
-**最后更新**：2026-09-02（钉钉免登上线 + token TTL 收紧 4h + 网关 80 直连；开发回归主仓 main，push 即部署）
+**最后更新**：2026-09-05（/assets 刷新 403 修复 + nginx/Dockerfile 部署配置入库；补记 09-03 移动端改版与审批中心扩展）
