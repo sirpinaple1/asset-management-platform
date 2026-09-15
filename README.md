@@ -215,7 +215,7 @@ Spring Boot 3 基于 Spring Framework 6，原生支持 Jakarta EE（不再是 ja
 
 ## 许可
 
-MIT License - 随便用，但不保证啥也不出问题（开源项目标配免责声明 😄）
+MIT License - 随便用，但不保证啥也不出问题
 
 ## 联系我
 
