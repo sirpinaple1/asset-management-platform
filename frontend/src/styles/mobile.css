@@ -1,0 +1,371 @@
+/* =====================================================================
+ * 移动 H5 共享样式（/m 路由组）
+ * - 全部走 PC 端设计 token（styles/variables.css），自动跟随暗色模式
+ * - 页面私有样式仍写在各 .vue 的 scoped 中，此处只放跨页复用的原子类
+ * ===================================================================== */
+
+:root {
+  --skeleton-hi: rgba(255, 255, 255, 0.65);
+}
+html.dark {
+  --skeleton-hi: rgba(255, 255, 255, 0.07);
+}
+
+.m-page {
+  padding: 12px 12px 24px;
+}
+
+/* ---------- 分段控制器（两档，滑动指示器） ---------- */
+.m-seg {
+  position: relative;
+  display: flex;
+  padding: 3px;
+  margin-bottom: 12px;
+  background: var(--color-bg-3);
+  border-radius: var(--radius-round);
+}
+
+.m-seg-indicator {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  background: var(--color-bg-2);
+  border-radius: var(--radius-round);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.28s cubic-bezier(0.34, 0.72, 0, 1);
+  will-change: transform;
+}
+
+.m-seg[data-active='1'] .m-seg-indicator {
+  transform: translateX(100%);
+}
+
+.m-seg-btn {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  height: 32px;
+  border: none;
+  background: none;
+  font-size: var(--text-base);
+  color: var(--color-text-3);
+  transition: color 0.2s;
+}
+
+.m-seg-btn.active {
+  color: var(--color-text-1);
+  font-weight: 600;
+}
+
+.m-seg-count {
+  display: inline-block;
+  min-width: 18px;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: var(--radius-round);
+  background: var(--color-error);
+  color: var(--color-text-inverse);
+  font-size: var(--text-xs);
+  line-height: 16px;
+  font-weight: 500;
+}
+
+.m-seg-btn.active .m-seg-count {
+  background: var(--color-primary);
+}
+
+/* ---------- 列表卡片 ---------- */
+.m-card {
+  background: var(--color-bg-2);
+  border-radius: var(--radius-xl);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  box-shadow: var(--shadow-sm);
+  animation: m-enter 0.3s cubic-bezier(0.3, 0.7, 0.4, 1) both;
+  animation-delay: calc(var(--i, 0) * 32ms);
+  transition: transform 0.12s ease;
+}
+
+.m-card:active {
+  transform: scale(0.985);
+}
+
+@keyframes m-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.m-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.m-card-tag {
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  color: var(--color-text-inverse);
+  background: var(--color-text-4);
+}
+
+.m-card-tag[data-type='RECEIVE'] { background: var(--color-primary); }
+.m-card-tag[data-type='BORROW'] { background: var(--color-purple); }
+.m-card-tag[data-type='TRANSFER'] { background: var(--color-warning); }
+.m-card-tag[data-type='CHANGE'] { background: var(--color-info); }
+
+.m-card-title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--color-text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-card-sub {
+  margin-top: 6px;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+.m-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+/* ---------- 状态文字 ---------- */
+.m-status { font-size: var(--text-xs); flex-shrink: 0; }
+.m-status.pending { color: var(--color-warning-text); }
+.m-status.ok { color: var(--color-success-text); }
+.m-status.bad { color: var(--color-error-text); }
+.m-status.info { color: var(--color-text-3); }
+
+/* ---------- 空态 / 骨架屏 ---------- */
+.m-empty {
+  text-align: center;
+  padding: 56px 0;
+  color: var(--color-text-3);
+  font-size: var(--text-base);
+}
+
+.m-skeleton-card {
+  height: 88px;
+  border-radius: var(--radius-xl);
+  margin-bottom: 10px;
+  background: linear-gradient(100deg, var(--color-bg-3) 40%, var(--skeleton-hi) 50%, var(--color-bg-3) 60%);
+  background-size: 200% 100%;
+  animation: m-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes m-shimmer {
+  from { background-position: 120% 0; }
+  to { background-position: -80% 0; }
+}
+
+/* ---------- 全屏弹层（iOS 曲线上滑） ---------- */
+.m-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-1);
+}
+
+.m-sheet.in { animation: m-sheet-in 0.32s cubic-bezier(0.32, 0.72, 0, 1); }
+.m-sheet.out { animation: m-sheet-out 0.24s cubic-bezier(0.4, 0, 1, 1) forwards; }
+
+@keyframes m-sheet-in {
+  from { transform: translateY(60%); opacity: 0.4; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes m-sheet-out {
+  from { transform: none; opacity: 1; }
+  to { transform: translateY(60%); opacity: 0; }
+}
+
+.m-sheet-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  height: 46px;
+  background: var(--color-bg-2);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.m-sheet-head-title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-text-1);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-sheet-close {
+  border: none;
+  background: none;
+  padding: 8px 2px 8px 12px;
+  color: var(--color-text-3);
+  display: flex;
+  align-items: center;
+  transition: color 0.15s;
+}
+
+.m-sheet-close:active { color: var(--color-text-1); }
+
+.m-sheet-body {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px;
+}
+
+/* ---------- 信息行 ---------- */
+.m-row {
+  display: flex;
+  gap: 12px;
+  padding: 11px 14px;
+  background: var(--color-bg-2);
+  border-radius: var(--radius-lg);
+  margin-bottom: 8px;
+  font-size: var(--text-base);
+}
+
+.m-row > span {
+  flex-shrink: 0;
+  width: 80px;
+  color: var(--color-text-3);
+}
+
+.m-row > b {
+  flex: 1;
+  min-width: 0;
+  font-weight: 400;
+  color: var(--color-text-1);
+  word-break: break-all;
+}
+
+/* ---------- 按钮 ---------- */
+.m-btn {
+  flex: 1;
+  height: 44px;
+  border-radius: var(--radius-round);
+  border: none;
+  font-size: var(--text-md);
+  font-weight: 600;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.m-btn:active { transform: scale(0.97); }
+.m-btn:disabled { opacity: 0.45; }
+
+.m-btn.primary {
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+}
+
+.m-btn.danger-ghost {
+  background: var(--color-bg-2);
+  border: 1px solid var(--color-error);
+  color: var(--color-error-text);
+}
+
+.m-btn.ghost {
+  background: var(--color-bg-3);
+  color: var(--color-text-2);
+}
+
+/* ---------- 底部操作条 ---------- */
+.m-actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  background: var(--color-bg-2);
+  border-top: 1px solid var(--color-border-light);
+}
+
+/* ---------- 表单控件 ---------- */
+.m-field {
+  background: var(--color-bg-2);
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  transition: box-shadow 0.2s;
+}
+
+.m-field-label {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
+  margin-bottom: 6px;
+}
+
+.m-field-label.required::before {
+  content: '* ';
+  color: var(--color-error);
+}
+
+.m-input,
+.m-textarea {
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--color-text-1);
+  font-size: var(--text-base);
+  font-family: inherit;
+}
+
+.m-input::placeholder,
+.m-textarea::placeholder {
+  color: var(--color-text-4);
+}
+
+.m-textarea {
+  min-height: 72px;
+  resize: none;
+  line-height: 1.6;
+}
+
+.m-input:focus,
+.m-textarea:focus {
+  outline: none;
+}
+
+.m-field:focus-within {
+  box-shadow: 0 0 0 2px var(--color-primary-border);
+}
+
+/* ---------- 通用动画偏好 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .m-card,
+  .m-sheet.in,
+  .m-sheet.out {
+    animation: none;
+  }
+  .m-seg-indicator {
+    transition: none;
+  }
+}

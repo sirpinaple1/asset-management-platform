@@ -1,0 +1,32 @@
+{
+  "name": "asset-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "资产管理系统前端（Vue3 + Vite + TypeScript + Element Plus）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview",
+    "type-check": "vue-tsc -b"
+  },
+  "dependencies": {
+    "@zxing/library": "^0.21.3",
+    "axios": "^1.7.9",
+    "dingtalk-jsapi": "^3.2.9",
+    "element-plus": "^2.9.3",
+    "pinia": "^2.3.1",
+    "qrcode": "^1.5.4",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/qrcode": "^1.5.6",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "@vue/tsconfig": "^0.7.0",
+    "typescript": "~5.6.3",
+    "vite": "^6.0.7",
+    "vue-tsc": "^2.2.0"
+  }
+}
