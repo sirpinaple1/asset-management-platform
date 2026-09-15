@@ -1,0 +1,33 @@
+# IDE
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temp
+*.tmp
+.temp/
+
+# Build artifacts
+target/
+dist/
+node_modules/
+
+# Environment
+.env.local
+.env.development.local
+.env.production.local
+application-local.yml
+application-local.yaml
+
+# Git
+.git/refs/original/
