@@ -16,7 +16,7 @@ export interface ReturnApprovalAsset {
 export interface ReturnApproval {
   /** approval_instance.id */
   id: number
-  /** 钉钉实例标题（如"肖鹏提交的IT资产退还单"） */
+  /** 钉钉实例标题（如"李四提交的IT资产退还单"） */
   title: string
   /** 发起人（系统用户 id；未绑定内部账号为 null） */
   applicantUserId: number | null

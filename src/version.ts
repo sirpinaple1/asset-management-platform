@@ -28,7 +28,7 @@ export const CHANGELOG: string[] = [
   '多标签页会话同步：任一标签页退出或换账号，其余标签页自动同步登出/刷新，不再残留旧会话',
   '全局异常兜底：新增 403/500/网络异常页，页面崩溃自动跳转，支持返回工作台/刷新重试',
   '通知实时性基建：支持配置 SSE 推送端点（VITE_NOTIFICATION_SSE_URL），未配置或断连自动降级 60s 轮询',
-  '版权说明改为标准写法（Copyright © 2026 潘雨松. All rights reserved.），固定展示于版本面板底部',
+  '版权说明改为标准写法（Copyright © 2026 王五. All rights reserved.），固定展示于版本面板底部',
   '版本信息面板优化：更新日志独立滚动，版权说明固定在面板底部不再被顶出视野',
   '资产搜索支持多关键词：空格分隔=或（任一命中，如「笔记本 台式机」），- 连接=且（同时包含，如「笔记本-联想」）；列表及领用/借用/调拨/变更选资产搜索框均已支持',
   '修复 PC 钉钉免登静默失败（JSAPI 需在 dd.ready 内调用）；登录页跳转改为相对路径，http 入口不再被自签证书拦截',
@@ -44,7 +44,7 @@ export const CHANGELOG: string[] = [
   '领用/借用/调拨/变更/盘点五类单据全流程',
   '通知中心 + 左下角帮助面板版本信息（本面板）',
 ]
-export const CREDIT = 'Copyright © 2026 潘雨松. All rights reserved.'
+export const CREDIT = 'Copyright © 2026 王五. All rights reserved.'
 
 export interface BackendVersion { version: string; releaseDate: string; changelog: string[]; credit: string }
 

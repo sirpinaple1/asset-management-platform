@@ -24,7 +24,7 @@
     <div class="m-row"><span>前端版本</span><b>v{{ FRONTEND_VERSION }}</b></div>
     <div class="m-row"><span>发布日期</span><b>{{ RELEASE_DATE }}</b></div>
 
-    <div class="credit">Copyright © 2026 潘雨松. All rights reserved.</div>
+    <div class="credit">Copyright © 2026 王五. All rights reserved.</div>
 
     <!-- 退出 -->
     <button class="m-btn danger-ghost logout-btn" type="button" @click="onLogout">

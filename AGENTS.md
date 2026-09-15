@@ -1,6 +1,6 @@
 # AGENTS.md — asset-frontend 项目必读（AI 开工前先读完本文）
 
-> 本仓为森科资产管理系统前端（Vue 3.5 + Vite + TS + Element Plus + Pinia）。开发直接在 `main` 分支进行，完成后 push `origin/main`（不绕 feat 分支）。
+> 本仓为示例科技资产管理系统前端（Vue 3.5 + Vite + TS + Element Plus + Pinia）。开发直接在 `main` 分支进行，完成后 push `origin/main`（不绕 feat 分支）。
 
 ## 工程红线
 
