@@ -1,0 +1,18 @@
+target/
+*.class
+*.jar
+*.war
+.idea/
+*.iml
+.DS_Store
+application-local.yml
+application-local.properties
+*.env
+# gitlab-runner 本地注册信息（含 runner token，R3 红线不入库）
+.gitlab-runner/
+# 本地调试脚本 / 临时日志（不入库）
+.scratch/
+.import-scratch/
+.c*.log
+.t*.log
+svcheck.log

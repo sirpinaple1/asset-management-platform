@@ -1,0 +1,30 @@
+package com.sk.asset.entity.basedata;
+
+import com.baomidou.mybatisplus.annotation.*;
+import lombok.Data;
+
+import java.time.LocalDateTime;
+
+/**
+ * 公司主体表
+ */
+@Data
+@TableName("company")
+public class Company {
+
+    @TableId(type = IdType.AUTO)
+    private Long id;
+
+    private String code;
+    private String name;
+    private String remark;
+
+    @TableLogic
+    private Integer deleted;
+
+    @TableField(fill = FieldFill.INSERT)
+    private LocalDateTime createdAt;
+
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+    private LocalDateTime updatedAt;
+}

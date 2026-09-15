@@ -1,0 +1,90 @@
+spring:
+  application:
+    name: asset-backend
+  # 默认激活 local（application-local.yml 已 gitignore，R3 红线）；
+  # 测试/生产通过环境变量 SPRING_PROFILES_ACTIVE 覆盖。
+  # 数据源连接串/密码只存在于 application-local.yml，本文件不放任何敏感信息。
+  profiles:
+    active: local
+
+  # JSON 序列化（与 produce 约定一致）
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: non_null
+
+  # 数据库迁移（脚本位于 db/migration，schema 变更唯一合法途径）
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    encoding: UTF-8
+
+server:
+  port: 6006
+
+# 生产可观测（Actuator）：只暴露健康端点，env/beans 等敏感端点不开（fail-closed）。
+# /actuator/health 由 SecurityConfig + TokenAuthFilter 双层放行，无 token 可探测（运维窗口）。
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true   # 暴露 /actuator/health/liveness 与 /readiness，容器/负载均衡健康检查用
+
+# MyBatis-Plus（逻辑删除约定与 produce 一致）
+mybatis-plus:
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+    banner: false
+  configuration:
+    map-underscore-to-camel-case: true
+
+# API 文档：knife4j 静态 UI（/doc.html，由 webjar 提供），OpenAPI 数据端点由 SpringDoc 提供
+# （knife4j 只用 UI，不启用其增强组件，原因见 pom.xml 注释）
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
+# 跨域白名单：asset-frontend（M-FE01 Vite 开发服务器默认端口 5173）；
+# 多个 origin 用逗号分隔；测试/生产由各自 profile 覆盖
+app:
+  cors:
+    allowed-origins: http://localhost:5173
+  # 鉴权复用 comm_public_basic（ADR-0004）：
+  # base-url 真实地址不入库（R3 红线），只在 application-local.yml / 环境变量提供
+  auth:
+    system-code: asset
+    cache-ttl-seconds: 30
+    connect-timeout-ms: 2000
+    read-timeout-ms: 5000
+  security:
+    # API 文档端点是否免认证：仅 local 置 true（fail-closed，默认 false）
+    docs-permit-all: false
+  # M08 历史数据迁移（一次性工具，默认关闭；敏感项只放 application-local.yml / 环境变量）
+  migration:
+    enabled: false
+    required-role: asset-资产管理员
+    # Excel 源文件目录与 comm_public_basic 库连接（auth-db-url/username/password）不入库
+    log-cutoff: 2026-08-19T00:00:00
+  # 用户目录（B1 定向待办：用户搜索接口 + assignee 存在性校验，只读直连 comm_public_basic sys_user）。
+  # 连接串不入库（R3 红线）；未配置时用户搜索接口返回 503、assignee 存在性校验降级跳过。
+  user-directory:
+    # url: jdbc:mysql://127.0.0.1:3306/comm_public_basic?useSSL=false&serverTimezone=Asia/Shanghai
+    # username: readonly
+    # password: xxx
+  # 钉钉 OA 审批联动（M10，ADR-0007）：默认关闭（站内审批）；
+  # 凭证（appKey/appSecret/agentId/corpId）与模板 processCode 只放 application-local.yml / 环境变量（R3 红线），
+  # 实验公司 → 生产公司切换只换配置不改代码。
+  dingtalk:
+    enabled: false
+    stream-enabled: true
+    admin-role: systemAdmin
+    # app-key / app-secret / agent-id / corp-id / cc-user-ids / process-codes 见 application-local.yml.example

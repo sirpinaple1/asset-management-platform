@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.16</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.sk.asset</groupId>
+    <artifactId>asset-backend</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>asset-backend</name>
+    <description>森科资产管理系统后端（资产全生命周期管理，鉴权复用 comm_public_basic）</description>
+
+    <properties>
+        <java.version>17</java.version>
+        <!-- 持久层与 produce / comm_public_basic 同栈（ADR-0005） -->
+        <mybatis-plus.version>3.5.17</mybatis-plus.version>
+        <!-- knife4j 4.5.0 基于 springdoc 2.8 编译；2.9.x 移除了 getGroupConfigs() 会触发 NoSuchMethodError，故钉 2.8.x -->
+        <springdoc.version>2.8.17</springdoc.version>
+        <knife4j.version>4.5.0</knife4j.version>
+    </properties>
+
+    <dependencies>
+        <!-- Web 与参数校验 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- 安全：M01-B 将在此之上接入 TokenFilter（HTTP 调 comm_public_basic 校验，ADR-0004） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!-- ORM：MyBatis Plus（Spring Boot 3 专用 starter） -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+            <version>${mybatis-plus.version}</version>
+        </dependency>
+        <!-- MP 3.5.9+ 分页拦截器拆分到独立模块（不引入时 PaginationInnerInterceptor 不存在） -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-jsqlparser</artifactId>
+            <version>${mybatis-plus.version}</version>
+        </dependency>
+
+        <!-- 生产可观测：Actuator 健康端点（部署验证/监控探活/排障快判），
+             只暴露 health（application.yml），env/beans 等敏感端点不开（fail-closed） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- 数据库迁移：Flyway 是 schema 变更唯一合法途径（ENGINEERING R6） -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+        </dependency>
+
+        <!-- MySQL 驱动（本地 MariaDB / 测试与生产 MySQL 8 均使用此驱动） -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- API 文档：SpringDoc 端点 + knife4j 静态 UI（/doc.html，与 produce 使用习惯一致） -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
+        </dependency>
+        <!-- 只引入 knife4j 的静态 UI webjar（doc.html 页面），不引入其增强 starter：
+             knife4j 4.5.0 增强组件基于 springdoc 2.2 编译，与 springdoc 2.3+ 不兼容
+             （Knife4jOpenApiCustomizer 调用已移除的 getGroupConfigs 触发 NoSuchMethodError）。 -->
+        <dependency>
+            <groupId>com.github.xiaoymin</groupId>
+            <artifactId>knife4j-openapi3-ui</artifactId>
+            <version>${knife4j.version}</version>
+        </dependency>
+
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- 鉴权 token 本地短缓存（ADR-0004：30-60s TTL 摊薄回源，版本由 Spring Boot BOM 管理，Apache-2.0） -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
+        <!-- Excel 导出（EasyExcel 3.3.4，Apache-2.0，注解式流式写，对齐原型"导出"按钮） -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>easyexcel</artifactId>
+            <version>3.3.4</version>
+        </dependency>
+
+        <!-- 钉钉 Stream 事件订阅 SDK（M10 OA 审批联动，ADR-0007；官方开源 Apache-2.0，
+             与 comm_public_basic 已引入的 dingtalk-stream 同源，此为官方现行 artifact 名） -->
+        <dependency>
+            <groupId>com.dingtalk.open</groupId>
+            <artifactId>app-stream-client</artifactId>
+            <version>1.3.6</version>
+        </dependency>
+
+        <!-- 测试：JUnit5 + Mockito + MockMvc -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- 容器化集成测试（M01-B/CI 阶段启用，版本由 Spring Boot BOM 管理） -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>mysql</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>asset-backend</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

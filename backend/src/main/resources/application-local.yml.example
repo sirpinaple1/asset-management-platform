@@ -1,0 +1,72 @@
+# ============================================================
+# 本地开发环境配置模板
+# 复制为同目录 application-local.yml 后按本机实际情况修改。
+# application-local.yml 已被 .gitignore 排除（R3 红线：连接串/密码不入库）。
+# ============================================================
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # 本机 MariaDB / MySQL 均使用此驱动；库名 db_sk_asset 需先手工创建
+    url: jdbc:mysql://127.0.0.1:3306/db_sk_asset?useUnicode=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    username: root
+    password: 123456
+
+logging:
+  level:
+    com.sk.asset: debug
+    # 排查 SQL 时打开：
+    # com.sk.asset.mapper: debug
+
+# 本地 comm_public_basic（私改版，端口 6002，永久 token 方便联调）
+app:
+  auth:
+    base-url: http://127.0.0.1:6002
+  security:
+    # 本地放开 /doc.html、/v3/api-docs 等文档端点（生产 fail-closed）
+    docs-permit-all: true
+  # M08 历史数据迁移（可选；xlsx-dir 为 4 份导出 Excel 所在目录，
+  # auth-db-* 为 comm_public_basic 库 JDBC——迁移直读 sys_user 匹配/建账号）
+  migration:
+    enabled: false
+    xlsx-dir: /path/to/excel-export-dir
+    auth-db-url: jdbc:mysql://127.0.0.1:3306/db_comm_public_basic?useUnicode=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    auth-db-username: root
+    auth-db-password: 123456
+  # 用户目录（B1 定向待办：用户搜索 + assignee 存在性校验，只读 sys_user；与 migration.auth-db-* 独立）
+  user-directory:
+    url: jdbc:mysql://127.0.0.1:3306/db_comm_public_basic?useUnicode=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    username: root
+    password: 123456
+  # 钉钉 OA 审批联动（M10）：enabled=true 开启后单据自动推钉钉 + Stream 事件回传；
+  # 实验公司凭证（开放平台 → 应用开发 → asset-oa）
+  dingtalk:
+    enabled: true
+    app-key: dingxxxxxxxx
+    app-secret: xxxxxxxx
+    agent-id: 123456789
+    corp-id: dingxxxxxxxx
+    # 额外抄送人钉钉 userid（发起人默认始终抄送，可空）
+    cc-user-ids:
+      - "0346334069651060985"  # 小彭
+      - "104937075035144123"   # 顾仍山（固定一级审批人）
+      - "02025321346228616430" # 潘宇松
+    # 多级主管审批链（领用/借用）：固定一级审批人钉钉 userid（顾仍山）
+    fixed-first-approver-dd-user-id: "104937075035144123"
+    # 特殊部门主管兜底：部门名（路径中任一段匹配）→ 主管钉钉 userid
+    # （钉钉后台未配置主管时回退使用；从最深段向最浅段匹配）
+    # 注意：环境变量无法承载中文 Map 键，生产/容器部署改用扁平文本
+    # special-dept-managers-text: "森丰:0346334069651060985,锐鑫智能:0346334069651060985"
+    special-dept-managers:
+      森丰: "0346334069651060985"
+      锐鑫智能: "0346334069651060985"
+    # 部门树同步 cron（默认每日 02:40，启动时也会全量同步一次）
+    # dept-sync-cron: "0 40 2 * * ?"
+    # 单据类型 → 审批模板 processCode（开放平台 → 审批 → 模板唯一码）
+    # 同一类型可配多个模板（逗号分隔，如正式版 + 简化测试版），命中任一即按该类型导入；
+    # 站内单据推送（入口 A）始终用第一个
+    process-codes:
+      receive: PROC-xxxxxxxx-xxxx  # 领用
+      borrow:  PROC-xxxxxxxx-xxxx  # 借用
+      transfer: PROC-xxxxxxxx-xxxx # 调拨
+      change:  PROC-xxxxxxxx-xxxx  # 实物变更
+      return:  PROC-xxxxxxxx-xxxx,PROC-yyyyyyyy-yyyy  # 退还（终审通过后系统自动执行归还）
