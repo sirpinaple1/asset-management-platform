@@ -107,8 +107,8 @@ public class MigrationService {
     private static final int LG_OPERATOR = 22;
     private static final int LG_CONTENT = 23;
 
-    private static final String COMPANY_SK = "森科五金(深圳)有限公司";
-    private static final String COMPANY_SF = "森丰";
+    private static final String COMPANY_SK = "示例科技有限公司";
+    private static final String COMPANY_SF = "示例丰";
 
     private final AssetMapper assetMapper;
     private final AssetLogMapper assetLogMapper;
@@ -270,7 +270,7 @@ public class MigrationService {
     }
 
     /**
-     * 按路径（如 "森科/PMC部/森科物料仓"）逐级解析/创建位置节点。
+     * 按路径（如 "示例科技/PMC部/示例科技物料仓"）逐级解析/创建位置节点。
      * 叶子段若已有同名顶级节点（V20260820 种子），将其收养至正确父级而非重复建行。
      */
     private Long resolveOrCreateLocation(String path, MigrationResult.PhaseResult phase) {

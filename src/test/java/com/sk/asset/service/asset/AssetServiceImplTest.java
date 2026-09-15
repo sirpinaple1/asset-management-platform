@@ -482,7 +482,7 @@ class AssetServiceImplTest {
 
         Company company = new Company();
         company.setId(6L);
-        company.setName("森科五金");
+        company.setName("示例科技五金");
         when(companyMapper.selectBatchIds(anyCollection())).thenReturn(List.of(company));
 
         IPage<Asset> result = assetService.page(1, 20, null);
@@ -493,7 +493,7 @@ class AssetServiceImplTest {
         assertEquals("供应商A", filled.getSupplierName());
         assertEquals("一楼车间", filled.getLocationName());
         assertEquals("物料仓", filled.getHomeLocationName());
-        assertEquals("森科五金", filled.getCompanyName());
+        assertEquals("示例科技五金", filled.getCompanyName());
     }
 
     @Test

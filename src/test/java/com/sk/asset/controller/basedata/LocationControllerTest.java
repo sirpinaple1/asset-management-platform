@@ -37,7 +37,7 @@ class LocationControllerTest {
     void list_shouldReturn200WithFlatList() throws Exception {
         Location l1 = new Location();
         l1.setId(1L);
-        l1.setName("森科");
+        l1.setName("示例科技");
         l1.setPath("/1/");
 
         Location l2 = new Location();
@@ -51,7 +51,7 @@ class LocationControllerTest {
         mockMvc.perform(get("/api/v1/locations"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data[0].name").value("森科"))
+                .andExpect(jsonPath("$.data[0].name").value("示例科技"))
                 .andExpect(jsonPath("$.data[0].path").value("/1/"))
                 .andExpect(jsonPath("$.data[1].parentId").value(1));
     }
@@ -78,14 +78,14 @@ class LocationControllerTest {
     void getById_shouldReturn200WhenExists() throws Exception {
         Location loc = new Location();
         loc.setId(1L);
-        loc.setName("森科");
+        loc.setName("示例科技");
 
         when(locationService.getById(1L)).thenReturn(loc);
 
         mockMvc.perform(get("/api/v1/locations/1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.name").value("森科"));
+                .andExpect(jsonPath("$.data.name").value("示例科技"));
     }
 
     @Test

@@ -23,7 +23,7 @@ public class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("资产管理系统 API")
-                        .description("森科资产管理系统：IT 资产 / 固定资产 / 生产设备工装模具 / 耗材配件的全生命周期管理。"
+                        .description("示例科技资产管理系统：IT 资产 / 固定资产 / 生产设备工装模具 / 耗材配件的全生命周期管理。"
                                 + "鉴权复用 comm_public_basic，请求统一携带 Authorization: Bearer <token> 头。")
                         .version("v1"))
                 // 注册 Bearer 认证：/doc.html 右上角 Authorize 输入 token 后，

@@ -13,11 +13,11 @@ class LogContentParserTest {
 
     @Test
     void 括号格式多段解析() {
-        String content = "【使用人】字段由【】变更为【谷仍山】;【使用部门】字段由【】变更为【IT部】;";
+        String content = "【使用人】字段由【】变更为【张三】;【使用部门】字段由【】变更为【IT部】;";
         String json = LogContentParser.parseDiffJson(content);
         assertTrue(json.contains("\"field\":\"使用人\""));
         assertTrue(json.contains("\"before\":\"\""));
-        assertTrue(json.contains("\"after\":\"谷仍山\""));
+        assertTrue(json.contains("\"after\":\"张三\""));
         assertTrue(json.contains("\"field\":\"使用部门\""));
         assertTrue(json.contains("\"after\":\"IT部\""));
     }
@@ -61,7 +61,7 @@ class LogContentParserTest {
 
     @Test
     void 自由文本无diff() {
-        assertNull(LogContentParser.parseDiffJson("从管理员\"丘碧玲\"调出，将资产从\"森科五金(深圳)有限公司\"调入到\"森科五金(深圳)有限公司\"，\"白救通\"名下"));
+        assertNull(LogContentParser.parseDiffJson("从管理员\"丘碧玲\"调出，将资产从\"示例科技有限公司\"调入到\"示例科技有限公司\"，\"白救通\"名下"));
         assertNull(LogContentParser.parseDiffJson("盘点单号: AIN202606100001（未盘）"));
     }
 

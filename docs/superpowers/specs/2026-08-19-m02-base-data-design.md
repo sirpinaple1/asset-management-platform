@@ -61,7 +61,7 @@ public interface CategoryService {
 ### D3. 种子数据范围：简化集（核心数据 + 示例）
 
 **决策**：种子数据脚本插入：
-- company：1 条（森科五金，code=SK）
+- company：1 条（示例科技五金，code=SK）
 - asset_category：4 个核心分类（镀膜/辅助/检测/IT设备）
 - asset_location：5 个叶子节点（物料仓/设备仓/IT在用仓/IT闲置仓/设备维护仓）
 - 其他表留空
@@ -367,7 +367,7 @@ public class ManufacturerController {
 ```sql
 -- 1. 公司主体（1 条）
 INSERT INTO company (code, name, remark) VALUES
-('SK', '森科五金(深圳)有限公司', '主体公司');
+('SK', '示例科技有限公司', '主体公司');
 
 -- 2. 资产分类（4 个核心分类，扁平结构，不建二级层级）
 INSERT INTO asset_category (name, code, sort_order) VALUES
@@ -379,8 +379,8 @@ INSERT INTO asset_category (name, code, sort_order) VALUES
 -- 3. 区域位置（5 个叶子节点，简化层级）
 -- path 字段暂时简化为 /id/，后续可根据实际层级调整
 INSERT INTO asset_location (name, code, path, sort_order) VALUES
-('森科物料仓', 'MATERIAL_WH', '/1/', 10),
-('森科设备仓', 'EQUIPMENT_WH', '/2/', 20),
+('示例科技物料仓', 'MATERIAL_WH', '/1/', 10),
+('示例科技设备仓', 'EQUIPMENT_WH', '/2/', 20),
 ('IT部在用仓', 'IT_INUSE_WH', '/3/', 30),
 ('IT部闲置仓', 'IT_IDLE_WH', '/4/', 40),
 ('设备维护仓', 'MAINTENANCE_WH', '/5/', 50);
@@ -389,7 +389,7 @@ INSERT INTO asset_location (name, code, path, sort_order) VALUES
 **注意事项**：
 - path 字段在实际使用时需要根据父子关系构建（如 `/1/3/` 表示 3 是 1 的子节点）
 - 当前简化版本每个节点都是顶级节点（`parent_id=NULL`，`path=/id/`）
-- M08 迁移时会解析完整的层级路径（如"森科/总办/IT部/IT部在用仓"）
+- M08 迁移时会解析完整的层级路径（如"示例科技/总办/IT部/IT部在用仓"）
 
 ## 7. 测试策略
 

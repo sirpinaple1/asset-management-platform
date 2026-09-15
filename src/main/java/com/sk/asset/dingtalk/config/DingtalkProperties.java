@@ -57,7 +57,7 @@ public class DingtalkProperties {
 
     /**
      * 特殊部门主管覆盖：部门名 → 主管钉钉 userid。
-     * 森丰/锐鑫智能等不在钉钉部门树内的部门，其链上主管经此配置指定
+     * 示例丰/锐鑫智能等不在钉钉部门树内的部门，其链上主管经此配置指定
      * （同样命中钉钉树内同名部门，优先于 dept_manager_userid_list）。
      * 注意：环境变量无法承载中文 Map 键（非 ASCII 键在属性名转换中丢失），
      * 生产经 {@link #specialDeptManagersText} 扁平文本配置，@PostConstruct 解析合并进本 Map。
@@ -67,7 +67,7 @@ public class DingtalkProperties {
     /**
      * 特殊部门主管覆盖（扁平文本形态，供环境变量配置）：
      * {@code 部门名:钉钉userid} 逗号分隔（中英文逗号/冒号均可），如
-     * {@code 森丰:0346334069651060985,锐鑫智能:0346334069651060985}。
+     * {@code 示例丰:user_example_002,锐鑫智能:user_example_002}。
      */
     private String specialDeptManagersText = "";
 

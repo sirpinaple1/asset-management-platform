@@ -59,7 +59,7 @@ class DeptManagerChainResolverTest {
 
     private void stubFixedFirst() {
         lenient().when(userDirectory.findByDdUserId(FIXED_DD)).thenReturn(
-                new UserResp(FIXED_USER, "gurs", "谷仍山", "综合管理部"));
+                new UserResp(FIXED_USER, "gurs", "张三", "综合管理部"));
     }
 
     private DingtalkDept dept(long deptId, String name, long parentId, String managerDd) {
@@ -99,7 +99,7 @@ class DeptManagerChainResolverTest {
         assertEquals(List.of(FIXED_DD, "dd-zhang", "dd-yao"), r.allDdUserIds());
         // 站内快照：step1=固定一级，step2=直接主管（回退命中张胜瑶）
         assertEquals(FIXED_USER, r.snapshot().getStep1UserId());
-        assertEquals("谷仍山", r.snapshot().getStep1Name());
+        assertEquals("张三", r.snapshot().getStep1Name());
         assertEquals(200L, r.snapshot().getStep2UserId());
         assertEquals("张胜瑶", r.snapshot().getStep2Name());
         assertEquals("项目一科", r.snapshot().getStep2SourceKey());
@@ -183,10 +183,10 @@ class DeptManagerChainResolverTest {
 
     @Test
     void 旧横线分隔路径_原始名称精确匹配() {
-        stubApplicant("供应链管理中心-森科采购部");
+        stubApplicant("供应链管理中心-示例科技采购部");
         stubFixedFirst();
         // 部门名本身含「-」：原始路径精确匹配优先于切分
-        stubDepts(dept(40, "供应链管理中心-森科采购部", 1, "dd-li"));
+        stubDepts(dept(40, "供应链管理中心-示例科技采购部", 1, "dd-li"));
         when(userDirectory.findByDdUserId("dd-li")).thenReturn(
                 new UserResp(400L, "li", "李四", "供应链管理中心"));
 
@@ -215,29 +215,29 @@ class DeptManagerChainResolverTest {
     }
 
     @Test
-    void 特殊部门_森丰_走配置主管() {
-        stubApplicant("森丰");
+    void 特殊部门_示例丰_走配置主管() {
+        stubApplicant("示例丰");
         stubFixedFirst();
-        // 森丰不在钉钉树内：钉钉树空表，主管经 special-dept-managers 配置
-        props.getSpecialDeptManagers().put("森丰", "dd-xiao");
+        // 示例丰不在钉钉树内：钉钉树空表，主管经 special-dept-managers 配置
+        props.getSpecialDeptManagers().put("示例丰", "dd-xiao");
         when(userDirectory.findByDdUserId("dd-xiao")).thenReturn(
-                new UserResp(691L, "xp", "肖鹏", "综合管理部/IT科"));
+                new UserResp(691L, "xp", "李四", "综合管理部/IT科"));
 
         DeptManagerChainResolver.MultiResolution r = resolver.tryResolveMultiLevel(APPLICANT);
 
         assertTrue(r.resolvable());
         assertEquals(List.of(FIXED_DD, "dd-xiao"), r.allDdUserIds());
         assertEquals(691L, r.snapshot().getStep2UserId());
-        assertEquals("森丰", r.snapshot().getStep2SourceKey());
+        assertEquals("示例丰", r.snapshot().getStep2SourceKey());
     }
 
     @Test
     void 特殊部门_扁平文本配置解析_中英文分隔符兼容() {
         // 环境变量无法承载中文 Map 键，生产经 special-dept-managers-text 扁平文本配置
-        props.setSpecialDeptManagersText("森丰:dd-xiao，锐鑫智能：dd-xp");
+        props.setSpecialDeptManagersText("示例丰:dd-xiao，锐鑫智能：dd-xp");
         props.parseSpecialDeptManagersText();
 
-        assertEquals("dd-xiao", props.getSpecialDeptManagers().get("森丰"));
+        assertEquals("dd-xiao", props.getSpecialDeptManagers().get("示例丰"));
         assertEquals("dd-xp", props.getSpecialDeptManagers().get("锐鑫智能"));
     }
 
@@ -281,7 +281,7 @@ class DeptManagerChainResolverTest {
     void 固定一级为申请人本人_死单防御() {
         stubApplicant("研发部/项目一科");
         when(userDirectory.findByDdUserId(FIXED_DD)).thenReturn(
-                new UserResp(APPLICANT, "gurs", "谷仍山", "综合管理部"));
+                new UserResp(APPLICANT, "gurs", "张三", "综合管理部"));
 
         DeptManagerChainResolver.MultiResolution r = resolver.tryResolveMultiLevel(APPLICANT);
 

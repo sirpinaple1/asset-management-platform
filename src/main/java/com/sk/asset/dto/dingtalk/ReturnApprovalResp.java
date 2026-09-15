@@ -17,7 +17,7 @@ public class ReturnApprovalResp {
     /** 映射记录 id（approval_instance.id） */
     private Long id;
 
-    /** 钉钉实例标题（如"肖鹏提交的IT资产退还单"） */
+    /** 钉钉实例标题（如"李四提交的IT资产退还单"） */
     private String title;
 
     /** 发起人（系统用户 id；未绑定内部账号时为 null） */

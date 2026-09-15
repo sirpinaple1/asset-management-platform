@@ -49,11 +49,11 @@ class ReturnApprovalServiceImplTest {
 
     @Test
     void 列表_发起人反查与资产快照明细() {
-        ApprovalInstance r1 = record(1L, "0346334069651060985", "RUNNING", null, "101");
+        ApprovalInstance r1 = record(1L, "user_example_002", "RUNNING", null, "101");
         ApprovalInstance r2 = record(2L, "1839004256848168", "COMPLETED", "agree", "98,166");
         when(approvalInstanceMapper.selectList(any())).thenReturn(List.of(r1, r2));
-        when(userDirectory.findByDdUserId("0346334069651060985"))
-                .thenReturn(new UserResp(691L, "xp", "肖鹏", "综合管理部/IT科"));
+        when(userDirectory.findByDdUserId("user_example_002"))
+                .thenReturn(new UserResp(691L, "xp", "李四", "综合管理部/IT科"));
         when(userDirectory.findByDdUserId("1839004256848168"))
                 .thenReturn(new UserResp(164L, "lr", "李溶", "非A商务部"));
         Asset a98 = asset(98L, "SKBGDN394");
@@ -66,7 +66,7 @@ class ReturnApprovalServiceImplTest {
         assertEquals(2, list.size());
         ReturnApprovalResp first = list.get(0);
         assertEquals(691L, first.getApplicantUserId());
-        assertEquals("肖鹏", first.getApplicantName());
+        assertEquals("李四", first.getApplicantName());
         assertEquals("RUNNING", first.getStatus());
         assertEquals(1, first.getAssets().size());
         assertEquals("SKBGIT0151", first.getAssets().get(0).getBarcode());

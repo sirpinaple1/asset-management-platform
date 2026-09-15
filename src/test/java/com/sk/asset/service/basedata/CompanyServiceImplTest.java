@@ -32,7 +32,7 @@ class CompanyServiceImplTest {
         Company company1 = new Company();
         company1.setId(1L);
         company1.setCode("SK");
-        company1.setName("森科五金");
+        company1.setName("示例科技五金");
 
         Company company2 = new Company();
         company2.setId(2L);

@@ -386,10 +386,10 @@ class ApprovalCallbackServiceImplTest {
         order.setId(5L);
         order.setStatus("PENDING");
         order.setToUserId(762L);
-        order.setToUserName("潘雨松");
+        order.setToUserName("王五");
         when(transferOrderMapper.selectById(5L)).thenReturn(order);
         // 调拨发起人=调入人：兜底 confirm 被业务校验拦截（403）
-        when(transferOrderService.confirm(5L, 762L, "潘雨松"))
+        when(transferOrderService.confirm(5L, 762L, "王五"))
                 .thenThrow(new BusinessException(403, "调入方确认/拒绝不能由发起人自己操作"));
 
         service.onEvent("evt-inst-x", "bpms_instance_change", instanceEvent("finish", "agree", "", CORP_ID));
@@ -407,10 +407,10 @@ class ApprovalCallbackServiceImplTest {
         ReceiveReceipt approved = pendingReceipt(2);
         approved.setStatus("APPROVED");
         when(receiptMapper.selectById(1L)).thenReturn(approved);
-        // 模板抄送人：肖鹏（已绑定）+ 未绑定者
+        // 模板抄送人：李四（已绑定）+ 未绑定者
         when(apiClient.getProcessInstance(INSTANCE_ID))
                 .thenReturn(detailWithCc("COMPLETED", "agree", "dd691", "dd-unknown"));
-        mockOperator("dd691", 691L, "肖鹏");
+        mockOperator("dd691", 691L, "李四");
 
         service.onEvent("evt-inst-x", "bpms_instance_change", instanceEvent("finish", "agree", "", CORP_ID));
 
@@ -425,7 +425,7 @@ class ApprovalCallbackServiceImplTest {
         when(receiptMapper.selectById(1L)).thenReturn(pendingReceipt(2));
         when(apiClient.getProcessInstance(INSTANCE_ID))
                 .thenReturn(detailWithCc("COMPLETED", "refuse", "dd691"));
-        mockOperator("dd691", 691L, "肖鹏");
+        mockOperator("dd691", 691L, "李四");
 
         service.onEvent("evt-inst-x", "bpms_instance_change", instanceEvent("finish", "refuse", "", CORP_ID));
 
@@ -440,7 +440,7 @@ class ApprovalCallbackServiceImplTest {
         when(apiClient.getProcessInstance(INSTANCE_ID))
                 .thenReturn(detailWithCc("TERMINATED", "", "dd691"));
         mockOperator("dd100", 100L, "张三");
-        mockOperator("dd691", 691L, "肖鹏");
+        mockOperator("dd691", 691L, "李四");
 
         service.onEvent("evt-inst-x", "bpms_instance_change", instanceEvent("terminate", "", "dd100", CORP_ID));
 

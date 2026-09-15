@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
  *
  * <p>已知格式（实测 1773 条日志）：</p>
  * <pre>
- *   【使用人】字段由【】变更为【谷仍山】;【使用部门】字段由【】变更为【IT部】;    （领用/变更/导入修改，多段）
+ *   【使用人】字段由【】变更为【张三】;【使用部门】字段由【】变更为【IT部】;    （领用/变更/导入修改，多段）
  *   【规格型号】字段由【&lt;空&gt;】变更为【21.5英寸HDMI接口】;                        （&lt;空&gt; 原样保留）
  *   【资产编码】字段由 "SFBGKT0279" 变更为 "SKBGKT0279";                        （数据机器人，双引号）
  *   【资产编码】字段由 SFBGIT3244 变更为 SKBGDN241;                            （数据机器人Pro，裸值）
@@ -23,7 +23,7 @@ import java.util.regex.Pattern;
  *   从管理员"丘碧玲"调出，将资产…                                             （资产调拨/盘点处理，自由文本 → 无 diff）
  * </pre>
  *
- * <p>产出结构：{@code [{"field":"使用人","before":"","after":"谷仍山"}]}；无可解析片段返回 null。</p>
+ * <p>产出结构：{@code [{"field":"使用人","before":"","after":"张三"}]}；无可解析片段返回 null。</p>
  */
 public final class LogContentParser {
 

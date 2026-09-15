@@ -9,7 +9,7 @@ package com.sk.asset.enums.approval;
  */
 public enum ApprovalConfigType {
 
-    /** 部门主管（config_key = 部门路径字符串，如「资材管理中心/森科PMC部」） */
+    /** 部门主管（config_key = 部门路径字符串，如「资材管理中心/示例科技PMC部」） */
     DEPT_SUPERVISOR("部门主管"),
 
     /** 领料仓管理员（config_key = 领用区域 id 字符串） */

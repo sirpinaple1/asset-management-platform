@@ -32,7 +32,7 @@ class LocationServiceImplTest {
         // Given
         Location l1 = new Location();
         l1.setId(1L);
-        l1.setName("森科");
+        l1.setName("示例科技");
         l1.setPath("/1/");
 
         Location l2 = new Location();
@@ -107,11 +107,11 @@ class LocationServiceImplTest {
     void save_shouldRejectDuplicateNameInSameLevel() {
         Location parent = new Location();
         parent.setId(1L);
-        parent.setName("森科");
+        parent.setName("示例科技");
         parent.setPath("/1/");
 
         Location location = new Location();
-        location.setName("森科物料仓");
+        location.setName("示例科技物料仓");
         location.setParentId(1L);
 
         // validateParent 先于重名校验执行，需打桩父节点存在
@@ -193,7 +193,7 @@ class LocationServiceImplTest {
     void delete_shouldRejectWhenHasChildren() {
         Location existing = new Location();
         existing.setId(1L);
-        existing.setName("森科");
+        existing.setName("示例科技");
 
         when(locationMapper.selectById(1L)).thenReturn(existing);
         when(locationMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(2L);
@@ -208,7 +208,7 @@ class LocationServiceImplTest {
     void delete_shouldRejectWhenReferencedByAsset() {
         Location existing = new Location();
         existing.setId(1L);
-        existing.setName("森科物料仓");
+        existing.setName("示例科技物料仓");
 
         when(locationMapper.selectById(1L)).thenReturn(existing);
         when(locationMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);

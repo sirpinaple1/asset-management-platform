@@ -145,8 +145,8 @@ class ApprovalChainResolverTest {
 
     @Test
     void resolve_shouldFallbackWithDashSeparator() {
-        // sys_user.dept 实测存在「-」分隔（如 供应链管理中心-森科采购部），回退链兼容
-        String dashDept = "供应链管理中心-森科采购部";
+        // sys_user.dept 实测存在「-」分隔（如 供应链管理中心-示例科技采购部），回退链兼容
+        String dashDept = "供应链管理中心-示例科技采购部";
         stubConfigLookup();
         configs.put("DEPT_SUPERVISOR|供应链管理中心", config("DEPT_SUPERVISOR", "供应链管理中心", SUPERVISOR));
         configs.put("WAREHOUSE_KEEPER|" + LOCATION_ID, config("WAREHOUSE_KEEPER", String.valueOf(LOCATION_ID), KEEPER));

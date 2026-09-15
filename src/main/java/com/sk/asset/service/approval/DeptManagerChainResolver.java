@@ -20,14 +20,14 @@ import java.util.Set;
 /**
  * 多级主管审批链解析器（领用/借用单提交时路由审批人，替代两级链的"部门主管+仓管员"）。
  *
- * <p>链结构：固定一级审批人（app.dingtalk.fixed-first-approver-dd-user-id，如谷仍山）
+ * <p>链结构：固定一级审批人（app.dingtalk.fixed-first-approver-dd-user-id，如张三）
  * → 发起人所在部门逐级向上的各级主管（直接主管 → 部门主管 → … → 顶层部门）。
  * 站内快照只记前两级（step1=固定一级，step2=直接主管，快照外审批节点的操作
  * 由回调侧记日志，见 ApprovalCallbackServiceImpl）；钉钉推送则使用完整节点序列。</p>
  *
  * <p>部门定位：sys_user.dept 为钉钉完整路径（实测存在「/」与「-」两种分隔符），
  * 先按原始路径精确匹配 dingtalk_dept 全路径，再逐级去末级回退；特殊部门
- * （森丰/锐鑫智能等不在钉钉树内）经 app.dingtalk.special-dept-managers 配置主管。
+ * （示例丰/锐鑫智能等不在钉钉树内）经 app.dingtalk.special-dept-managers 配置主管。
  * 未设主管部门一律向上回退（不填临时主管），多主管取第一人入链。</p>
  *
  * <p>兜底 = 阻止提交（400）：固定一级未配置/未绑定、申请人无部门、链上无可绑定主管、
@@ -149,7 +149,7 @@ public class DeptManagerChainResolver {
             return managers;
         }
 
-        // 钉钉树未命中（森丰/锐鑫智能等特殊部门）：路径段从深到浅匹配特殊部门配置
+        // 钉钉树未命中（示例丰/锐鑫智能等特殊部门）：路径段从深到浅匹配特殊部门配置
         List<String> segments = splitSegments(dept);
         for (int i = segments.size() - 1; i >= 0; i--) {
             String special = specialManagerOf(segments.get(i));
@@ -234,7 +234,7 @@ public class DeptManagerChainResolver {
         return segments;
     }
 
-    /** 部门主管：特殊部门配置优先（森丰/锐鑫智能等），否则取缓存表第一主管 */
+    /** 部门主管：特殊部门配置优先（示例丰/锐鑫智能等），否则取缓存表第一主管 */
     private String managerOf(DingtalkDept dept) {
         String special = specialManagerOf(dept.getName());
         if (special != null) {

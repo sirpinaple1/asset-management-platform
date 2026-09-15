@@ -401,7 +401,7 @@ public class ApprovalCallbackServiceImpl implements ApprovalCallbackService {
     /**
      * 领用/借用任务级同意（多级主管模板兼容，快照只记前两级审批人）：
      * <ul>
-     *   <li>一级（快照 step1，如固定审批人谷仍山）：操作人=快照一级 → 推进 step2，
+     *   <li>一级（快照 step1，如固定审批人张三）：操作人=快照一级 → 推进 step2，
      *       单据仍 PENDING 不关单；快照外人 → 记日志忽略</li>
      *   <li>二级（快照 step2，如发起人直接主管）：关单前置条件 = 钉钉实例已终审同意——
      *       回查实例详情，COMPLETED+agree 才终审关单；实例仍在审批（第 2/3 级主管未审完）

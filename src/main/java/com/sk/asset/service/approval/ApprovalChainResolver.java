@@ -145,8 +145,8 @@ public class ApprovalChainResolver {
 
     /**
      * 部门路径回退链：精确优先，逐级去掉末级向上回退。
-     * sys_user.dept 实测存在两种分隔符：「/」（如 森科制造中心/生产工程部/设备维护）
-     * 与「-」（如 供应链管理中心-森科采购部）；含「/」优先按「/」切分，否则按「-」，单段无回退。
+     * sys_user.dept 实测存在两种分隔符：「/」（如 示例科技制造中心/生产工程部/设备维护）
+     * 与「-」（如 供应链管理中心-示例科技采购部）；含「/」优先按「/」切分，否则按「-」，单段无回退。
      */
     private List<String> deptFallbackChain(String dept) {
         List<String> chain = new ArrayList<>();

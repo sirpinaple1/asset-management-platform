@@ -33,7 +33,7 @@ class CompanyControllerTest {
         Company company = new Company();
         company.setId(1L);
         company.setCode("SK");
-        company.setName("森科五金");
+        company.setName("示例科技五金");
 
         when(companyService.list()).thenReturn(Arrays.asList(company));
 
